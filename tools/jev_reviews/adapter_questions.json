@@ -1,0 +1,7 @@
+[
+  {"key": "swap_without_engine_change", "type": "noul", "instructions": "Will the real DearLive adapter be pluggable WITHOUT modifying the game engine or service layer?"},
+  {"key": "contract_gap", "type": "noul", "instructions": "Is any critical wallet/token/session contract rule MISSING from C1-C5 (e.g. timeout retry, clock skew, currency)?"},
+  {"key": "fault_injection_realistic", "type": "noul", "instructions": "Do the injected faults (timeout/insufficient/transport) realistically cover DearLive failure modes, or are major modes missed?"},
+  {"key": "adapter_soundness", "type": "score", "instructions": "Adapter/contract design soundness?",
+   "criteria": ["blocking gaps, rework needed", "minor gaps, proceed then extend", "sound"]}
+]

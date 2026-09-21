@@ -15,7 +15,7 @@ Bots (auto-play) use the same place_bet path as players: same validation,
 same settlement. No forceWin/forceLoss flags exist anywhere in this codebase
 (by design — grep for them in review).
 """
-from typing Callable, Dict
+from typing import Callable, Dict
 
 
 MATRIX: Dict[str, set] = {

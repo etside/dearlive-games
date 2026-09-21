@@ -1,0 +1,54 @@
+{
+  "title": "adapter-review",
+  "elapsed_ms": 84709.55481099918,
+  "result": {
+    "model": "opencode/muse-spark-1.2-contributor-free",
+    "answers": {
+      "swap_without_engine_change": {
+        "type": "noul",
+        "noul": 0.96
+      },
+      "contract_gap": {
+        "type": "noul",
+        "noul": 0.18000000000000005
+      },
+      "fault_injection_realistic": {
+        "type": "noul",
+        "noul": 0.76
+      },
+      "adapter_soundness": {
+        "type": "score",
+        "score": 1.82,
+        "legend": {
+          "0": "blocking gaps, rework needed",
+          "1": "minor gaps, proceed then extend",
+          "2": "sound"
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.06,
+          "2": 0.88
+        },
+        "confidence": 0.5902989092852948
+      }
+    },
+    "usage": {
+      "input_tokens": 646,
+      "output_tokens": 63
+    }
+  },
+  "flags": [
+    [
+      "swap_without_engine_change",
+      0.96
+    ],
+    [
+      "fault_injection_realistic",
+      0.76
+    ],
+    [
+      "adapter_soundness",
+      1.82
+    ]
+  ]
+}

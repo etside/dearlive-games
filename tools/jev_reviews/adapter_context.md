@@ -1,0 +1,6 @@
+ADAPTER LAYER UNDER REVIEW (handover phase): mock DearLive adapters + contract suite.
+Design: game engine depends ONLY on common.wallet.WalletAdapter (get_balance/debit/credit/void_debit, idempotent keys, integer coins) and common.session TokenStore/SessionStore (mint/redeem single-use TTL, create/get/touch/end).
+integrations/dearlive_mock.py: MockDearLiveWallet (append-only ledger DL-TXN-ids, idempotent replay, fault injection timeout/insufficient/transport), MockDearLiveTokens (dl_<game>_<rand> format, game-scoped, TTL, single-use), MockDearLiveSessions (PLAYER_STATUS ban gate).
+tests/test_adapter_contract.py: AdapterContract mixin (C1 integer+idempotent+append-only ledger, C2 token single-use/TTL/scope, C3 status gate, C4 full 3-player game conservation+exactly-once, C5 faults never lose silently). Concrete TestMockDearLiveContract runs now; future TestDearLiveStagingContract swaps factories only — zero engine changes (rule: Engine->Interface->DearLiveAdapter->DearLiveAPI, never direct DB).
+Failure semantics validated: wallet fault pre-debit leaves balance untouched; post-debit engine failure always compensated (service fix); settle credits under _settle_lock.
+Question: does this adapter/contract design let the REAL DearLive implementation replace mocks WITHOUT engine changes, and is any contract rule missing or unenforceable?
