@@ -1,0 +1,62 @@
+{
+  "title": "testgen",
+  "elapsed_ms": 87948.66798699877,
+  "result": {
+    "model": "opencode/muse-spark-1.2-contributor-free",
+    "answers": {
+      "concurrent_settle_risk": {
+        "type": "noul",
+        "noul": 0.96
+      },
+      "carry_chain_risk": {
+        "type": "noul",
+        "noul": 0.89
+      },
+      "timer_expiry_risk": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "limit_enforcement_risk": {
+        "type": "noul",
+        "noul": 0.77
+      },
+      "ws_protocol_risk": {
+        "type": "noul",
+        "noul": 0.29000000000000004
+      },
+      "priority_gap": {
+        "type": "choice",
+        "choice": "concurrent_settle",
+        "probabilities": {
+          "concurrent_settle": 0.93,
+          "carry_chain": 0.023333333333333317,
+          "timer_expiry": 0.023333333333333317,
+          "ws_live": 0.023333333333333317
+        },
+        "confidence": 0.7615644870246481
+      }
+    },
+    "usage": {
+      "input_tokens": 723,
+      "output_tokens": 95
+    }
+  },
+  "flags": [
+    [
+      "concurrent_settle_risk",
+      0.96
+    ],
+    [
+      "carry_chain_risk",
+      0.89
+    ],
+    [
+      "timer_expiry_risk",
+      0.91
+    ],
+    [
+      "limit_enforcement_risk",
+      0.77
+    ]
+  ]
+}

@@ -1,0 +1,15 @@
+[
+  {"key": "timer_tbc_blocks_build", "type": "noul", "instructions": "Timer duration TBC blocks building the engine/skeleton now (as opposed to config-gating it)?"},
+  {"key": "ranking_tbc_blocks_settlement", "type": "noul", "instructions": "Unconfirmed hand-ranking variant blocks implementing settlement logic now?"},
+  {"key": "pot_payout_tie_blocks_settlement", "type": "noul", "instructions": "Unspecified pot/payout/tie rules block implementing settlement flow now?"},
+  {"key": "webview_token_risk", "type": "noul", "instructions": "Is reusing the Redis launch-token pattern (same-Redis mint/validate) a HIGH integration risk given backend is closed-source?"},
+  {"key": "wallet_adapter_risk", "type": "noul", "instructions": "Is integrating wallet via an adapter interface (exact DearLive paths unknown) a HIGH risk of double-debit or lost settlement?"},
+  {"key": "no_ui_reference_risk", "type": "noul", "instructions": "Does missing gameplay video/screenshots create HIGH risk of UI mismatch with the real Teen Patti Pro?"},
+  {"key": "config_gate_required", "type": "noul", "instructions": "Must unconfirmed rules be versioned-config-gated with TBC flags (never hardcoded) before any build proceeds?"},
+  {"key": "standard_defaults_acceptable", "type": "noul", "instructions": "Is it acceptable to ship standard Teen Patti defaults (3 cards, trail>pure-seq>seq>color>pair>high, pot-takes-all) as explicitly-unconfirmed defaults pending business sign-off?"},
+  {"key": "missing_reconnect_spec", "type": "noul", "instructions": "Does the BRD lack sufficient reconnect/state-recovery specification, requiring us to design it ourselves?"},
+  {"key": "readiness", "type": "score", "instructions": "Overall requirements readiness for building Game 1 skeleton + engine?",
+   "criteria": ["blocked: must wait for business input first", "buildable now with config-gated TBC defaults + CLIENT API REQUIRED adapters", "fully specified, build as-is"]},
+  {"key": "biggest_risk", "type": "choice", "instructions": "Biggest single integration risk?",
+   "criteria": {"launch_token_redis": "same-Redis launch token mint/validate against closed backend", "wallet_api": "wallet debit/credit paths unknown, double-spend risk", "webview_viewport": "unknown WebView viewport/sizing breaking table UI", "timer_sync": "server/client timer drift causing late-bet disputes"}}
+]

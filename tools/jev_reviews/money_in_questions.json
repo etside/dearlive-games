@@ -1,0 +1,7 @@
+[
+  {"key": "close_race", "type": "noul", "instructions": "Can a bet be accepted with decision_time at/after betting_end_at (close-vs-bet race)?"},
+  {"key": "double_debit", "type": "noul", "instructions": "Can one idempotency key cause two wallet debits (claim/replay race or retry path)?"},
+  {"key": "lost_debit", "type": "noul", "instructions": "Is there a path where debit succeeds but the player gets neither a bet nor a refund?"},
+  {"key": "money_in_sound", "type": "score", "instructions": "Money-in path soundness?",
+   "criteria": ["blocking bug, must fix", "minor issues, fix then proceed", "sound"]}
+]

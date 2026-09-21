@@ -1,0 +1,97 @@
+{
+  "title": "req-analysis",
+  "elapsed_ms": 61654.35757999876,
+  "result": {
+    "model": "opencode/muse-spark-1.2-contributor-free",
+    "answers": {
+      "timer_tbc_blocks_build": {
+        "type": "noul",
+        "noul": 0.040000000000000036
+      },
+      "ranking_tbc_blocks_settlement": {
+        "type": "noul",
+        "noul": 0.050000000000000044
+      },
+      "pot_payout_tie_blocks_settlement": {
+        "type": "noul",
+        "noul": 0.050000000000000044
+      },
+      "webview_token_risk": {
+        "type": "noul",
+        "noul": 0.92
+      },
+      "wallet_adapter_risk": {
+        "type": "noul",
+        "noul": 0.78
+      },
+      "no_ui_reference_risk": {
+        "type": "noul",
+        "noul": 0.28
+      },
+      "config_gate_required": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "standard_defaults_acceptable": {
+        "type": "noul",
+        "noul": 0.89
+      },
+      "missing_reconnect_spec": {
+        "type": "noul",
+        "noul": 0.84
+      },
+      "readiness": {
+        "type": "score",
+        "score": 1.0,
+        "legend": {
+          "0": "blocked: must wait for business input first",
+          "1": "buildable now with config-gated TBC defaults + CLIENT API REQUIRED adapters",
+          "2": "fully specified, build as-is"
+        },
+        "probabilities": {
+          "0": 0.030000000000000027,
+          "1": 0.94,
+          "2": 0.030000000000000027
+        },
+        "confidence": 0.7555494726353529
+      },
+      "biggest_risk": {
+        "type": "choice",
+        "choice": "launch_token_redis",
+        "probabilities": {
+          "launch_token_redis": 0.9,
+          "wallet_api": 0.033333333333333326,
+          "webview_viewport": 0.033333333333333326,
+          "timer_sync": 0.033333333333333326
+        },
+        "confidence": 0.6862540781693016
+      }
+    },
+    "usage": {
+      "input_tokens": 1527,
+      "output_tokens": 177
+    }
+  },
+  "flags": [
+    [
+      "webview_token_risk",
+      0.92
+    ],
+    [
+      "wallet_adapter_risk",
+      0.78
+    ],
+    [
+      "config_gate_required",
+      0.97
+    ],
+    [
+      "standard_defaults_acceptable",
+      0.89
+    ],
+    [
+      "missing_reconnect_spec",
+      0.84
+    ]
+  ]
+}

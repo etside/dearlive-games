@@ -1,0 +1,46 @@
+{
+  "title": "code-money-out",
+  "elapsed_ms": 48504.56909599961,
+  "result": {
+    "model": "opencode/muse-spark-1.2-contributor-free",
+    "answers": {
+      "double_pay": {
+        "type": "noul",
+        "noul": 0.030000000000000027
+      },
+      "split_unfair": {
+        "type": "noul",
+        "noul": 0.89
+      },
+      "cancel_settle_race": {
+        "type": "noul",
+        "noul": 0.040000000000000036
+      },
+      "money_out_sound": {
+        "type": "score",
+        "score": 0.18,
+        "legend": {
+          "0": "blocking bug, must fix",
+          "1": "minor issues, fix then proceed",
+          "2": "sound"
+        },
+        "probabilities": {
+          "0": 0.88,
+          "1": 0.06,
+          "2": 0.06
+        },
+        "confidence": 0.5902989092852948
+      }
+    },
+    "usage": {
+      "input_tokens": 2085,
+      "output_tokens": 57
+    }
+  },
+  "flags": [
+    [
+      "split_unfair",
+      0.89
+    ]
+  ]
+}

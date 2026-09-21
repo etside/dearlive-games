@@ -1,0 +1,46 @@
+{
+  "title": "code-money-in",
+  "elapsed_ms": 89720.83210100027,
+  "result": {
+    "model": "opencode/muse-spark-1.2-contributor-free",
+    "answers": {
+      "close_race": {
+        "type": "noul",
+        "noul": 0.040000000000000036
+      },
+      "double_debit": {
+        "type": "noul",
+        "noul": 0.06999999999999995
+      },
+      "lost_debit": {
+        "type": "noul",
+        "noul": 0.21999999999999997
+      },
+      "money_in_sound": {
+        "type": "score",
+        "score": 1.82,
+        "legend": {
+          "0": "blocking bug, must fix",
+          "1": "minor issues, fix then proceed",
+          "2": "sound"
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.06,
+          "2": 0.88
+        },
+        "confidence": 0.5902989092852948
+      }
+    },
+    "usage": {
+      "input_tokens": 1875,
+      "output_tokens": 55
+    }
+  },
+  "flags": [
+    [
+      "money_in_sound",
+      1.82
+    ]
+  ]
+}

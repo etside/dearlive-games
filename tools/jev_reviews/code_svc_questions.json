@@ -1,0 +1,9 @@
+[
+  {"key": "debit_compensation_hole", "type": "noul", "instructions": "Is there a path where a wallet debit happens but the player is neither given a bet nor refunded (lost funds)?"},
+  {"key": "idempotency_hole", "type": "noul", "instructions": "Can the same idempotency key produce two debits or two bets (claim vs room-replay race)?"},
+  {"key": "cancel_race", "type": "noul", "instructions": "Can cancel() race with calculate_result/settle to void an already-settled round or settle a cancelled round?"},
+  {"key": "tbc_gate_bypass", "type": "noul", "instructions": "Can any real-money path (bet, settle, cancel-refund) execute while config.confirmed is False?"},
+  {"key": "double_credit", "type": "noul", "instructions": "Can settle() credit the same bet twice (settled_bet_ids bypass, replay, or concurrent settle calls)?"},
+  {"key": "service_soundness", "type": "score", "instructions": "Service-layer soundness?",
+   "criteria": ["blocking bugs present, must fix before use", "minor issues only, fix then proceed", "no significant issues found"]}
+]

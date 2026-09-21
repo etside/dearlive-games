@@ -1,0 +1,7 @@
+[
+  {"key": "double_pay", "type": "noul", "instructions": "Can settle() credit the same bet twice via replay, concurrency, or flag path?"},
+  {"key": "split_unfair", "type": "noul", "instructions": "Does the per-position-equal then pro-rata split mis-allocate winnings or create/destroy money?"},
+  {"key": "cancel_settle_race", "type": "noul", "instructions": "Can cancel() void a settled round, or settle() pay a cancelled round?"},
+  {"key": "money_out_sound", "type": "score", "instructions": "Money-out path soundness?",
+   "criteria": ["blocking bug, must fix", "minor issues, fix then proceed", "sound"]}
+]

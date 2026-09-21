@@ -1,0 +1,9 @@
+[
+  {"key": "concurrent_settle_risk", "type": "noul", "instructions": "Is concurrent settle() at service level (two threads settling same round) a REAL double-credit risk needing a test?"},
+  {"key": "carry_chain_risk", "type": "noul", "instructions": "Is the multi-round carry_over chain (tie carry into next round pot) at REAL risk of money leak needing a test?"},
+  {"key": "timer_expiry_risk", "type": "noul", "instructions": "Is missing timer-expiry auto-close coverage a REAL risk (rounds stuck open forever in production)?"},
+  {"key": "limit_enforcement_risk", "type": "noul", "instructions": "Are per-player bet limits and denom validation at REAL risk of bypass needing HTTP-level tests?"},
+  {"key": "ws_protocol_risk", "type": "noul", "instructions": "Is the hand-rolled WebSocket framing code at REAL risk of interop failure needing a live protocol test?"},
+  {"key": "priority_gap", "type": "choice", "instructions": "Highest-priority test gap to close first?",
+   "criteria": {"concurrent_settle": "concurrent service-level settle", "carry_chain": "multi-round carry chain", "timer_expiry": "timer expiry auto-close", "ws_live": "live WS protocol test"}}
+]

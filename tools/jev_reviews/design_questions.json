@@ -1,0 +1,15 @@
+[
+  {"key": "late_bet_race", "type": "noul", "instructions": "Does the betting-window design have a race where a bet passes validation just before close but is created after close (accept-then-close inconsistency)?"},
+  {"key": "debit_orphan_risk", "type": "noul", "instructions": "Does debit-before-create risk permanent lost funds if the process dies between debit and bet-create and recovery is not implemented?"},
+  {"key": "idempotency_bypass", "type": "noul", "instructions": "Can a client bypass idempotency (e.g. omitting/changing the key per retry) to cause double debit?"},
+  {"key": "timer_drift_dispute", "type": "noul", "instructions": "Will echoing serverTime/betting_end_at on rejection FAIL to prevent late-bet disputes from clock drift?"},
+  {"key": "reconnect_card_leak", "type": "noul", "instructions": "Does the reconnect snapshot design risk leaking hole cards before RESULT (e.g. redaction bug)?"},
+  {"key": "tie_remainder_unfair", "type": "noul", "instructions": "Is awarding the 1-unit tie remainder to the earliest seat an unfairness/dispute risk requiring a different rule?"},
+  {"key": "event_seq_gap", "type": "noul", "instructions": "Can per-round event_seq with 500-cap log LOSE events under load, breaking client state recovery?"},
+  {"key": "cancel_refund_hole", "type": "noul", "instructions": "Does the cancel→void-debit path risk double-refund or missed refund (bets voided but credit not sent)?"},
+  {"key": "client_authority_leak", "type": "noul", "instructions": "Does any part of the design let the client be authoritative for balance, bets, results or payouts?"},
+  {"key": "design_soundness", "type": "score", "instructions": "Overall design soundness for server-authoritative multiplayer?",
+   "criteria": ["unsound: rework required before implementation", "acceptable with fixes to flagged items", "sound as designed"]},
+  {"key": "weakest_area", "type": "choice", "instructions": "Weakest area of the design?",
+   "criteria": {"betting_window": "betting close / late-bet race", "money_safety": "debit / idempotency / settlement safety", "reconnect": "reconnect / snapshot / event replay", "tie_cancel": "tie handling and cancel/refund paths"}}
+]
