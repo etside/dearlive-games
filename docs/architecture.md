@@ -18,10 +18,13 @@ DearLive auth/player/room/wallet APIs  [CLIENT API REQUIRED]
 
 ## Module map
 - `common/` — engine iface, lifecycle, envelope, idempotency, wallet iface (+memory),
-  session/token iface (+memory), audit, webhooks (HMAC). Game-agnostic.
+  session/token iface (+memory), audit, webhooks (HMAC), **plugins** (versioned engine
+  registry, fail-closed), **skills** (isolated post-commit hooks). Game-agnostic.
 - `games/teen_patti_pro/` — config (versioned, TBC-flagged), engine (pure+locked),
-  service (money order, TBC gate, sweep), api (REST+static client), ws (RFC6455 push),
-  client (Canvas WebView). `games/greedy`, `games/animal_wheel` — interface stubs.
+  **table** (precomputed 22,100-hand O(1) lookup, parity-guaranteed), service (money
+  order, TBC gate, sweep, skill emits), api (REST+static client+catalog), ws (RFC6455
+  push), client (Canvas WebView), plugin (live 1.1.0).
+- `games/greedy`, `games/animal_wheel/` — registered plugins, status=planned.
 - `admin/api.py` — RBAC matrix + audited() wrapper. `tools/jev_review.py` — review harness.
 
 ## Key decisions (all JEV-reviewed)

@@ -98,9 +98,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.ok({"game": "teen-patti-pro", "config": self.svc.config.version,
                                  "confirmed": self.svc.config.confirmed})
             if path == "/api/v1/games":
-                return self.ok([{"id": "teen-patti-pro", "name": "Teen Patti Pro",
-                                  "status": "active",
-                                  "config_version": self.svc.config.version}])
+                from common.plugins import catalog, import_builtin_games
+                import_builtin_games()
+                games = catalog()
+                for g in games:
+                    if g["game_id"] == "teen-patti-pro":
+                        g["config_version"] = self.svc.config.version
+                return self.ok(games)
+            if path == "/api/v1/skills":
+                from common.skills import HOOKS
+                bus = getattr(self.svc, "skills", None)
+                return self.ok({"hooks": list(HOOKS),
+                                 "registered": bus.catalog() if bus else []})
             if path == "/api/v1/games/teen-patti-pro":
                 c = self.svc.config
                 return self.ok({"id": "teen-patti-pro", "seats": list(c.seats),

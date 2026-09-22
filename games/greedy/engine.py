@@ -1,22 +1,21 @@
-"""Game 2: Greedy — FUTURE MODULE. Interface stub only (not developed).
+"""Game 2: Greedy — FUTURE MODULE (registered plugin, status=planned).
 
-Shares common.CommonGameEngine + lifecycle + wallet + webhooks when built.
+Shares CommonGameEngine + lifecycle + wallet + webhooks when built.
 See BRD SRS Game 1 (Greedy) + docs/business-tbc.md for its TBC list.
 """
 from common.engine import CommonGameEngine
 
 
+def _todo(*args, **kwargs):
+    raise NotImplementedError("Game 2 (Greedy) not developed yet — see roadmap")
+
+
 class GreedyEngine(CommonGameEngine):
     game_id = "greedy"
 
-    def _todo(self):
-        raise NotImplementedError("Game 2 (Greedy) not developed yet — see roadmap")
 
-    createSession = joinSession = leaveSession = getState = validateAction = None
-    def __getattr__(self, name):
-        if name in ("createSession", "joinSession", "leaveSession", "getState",
-                    "validateAction", "applyAction", "startRound", "endRound",
-                    "calculateResult", "settle", "cancel", "handleTimeout",
-                    "handleReconnect"):
-            return lambda *a, **k: self._todo()
-        raise AttributeError(name)
+for _m in ("createSession", "joinSession", "leaveSession", "getState",
+           "validateAction", "applyAction", "startRound", "endRound",
+           "calculateResult", "settle", "cancel", "handleTimeout",
+           "handleReconnect"):
+    setattr(GreedyEngine, _m, staticmethod(_todo))

@@ -112,8 +112,15 @@ def best_expansion(hand: List[Card], ace_low_rank: str = "lowest") -> List[Card]
 
 
 def score_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:
-    """Authoritative hand score: resolve jokers first, then evaluate."""
-    return evaluate_hand(best_expansion(hand, ace_low_rank), ace_low_rank)
+    """Authoritative hand score: resolve jokers first, then O(1) table lookup
+    for plain hands (parity-guaranteed with evaluate_hand by construction)."""
+    if any(is_joker(c) for c in hand):
+        return evaluate_hand(best_expansion(hand, ace_low_rank), ace_low_rank)
+    from . import table as _table
+    try:
+        return _table.score(hand, ace_low_rank)
+    except (ValueError, KeyError):
+        return evaluate_hand(hand, ace_low_rank)  # fail-open to live evaluator
 
 
 def evaluate_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:

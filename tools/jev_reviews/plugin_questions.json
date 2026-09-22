@@ -1,0 +1,7 @@
+[
+  {"key": "registry_fallback_risk", "type": "noul", "instructions": "Can the plugin registry resolve the WRONG game (fallback/mismatch) instead of failing closed on unknown or disabled ids?"},
+  {"key": "skill_money_interference", "type": "noul", "instructions": "Can a skill (crash, slowness, mutation, double-registration) alter, block, or duplicate any money outcome?"},
+  {"key": "table_divergence_risk", "type": "noul", "instructions": "Can the lookup table ever disagree with the live evaluator in production (stale build, mode mismatch, key collision)?"},
+  {"key": "arch_soundness", "type": "score", "instructions": "Plugin/skill/table architecture soundness?",
+   "criteria": ["unsafe, rework needed", "acceptable with caveats", "sound"]}
+]
