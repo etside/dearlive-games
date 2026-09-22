@@ -1,0 +1,74 @@
+# Offline demo APK — Teen Patti Pro replay, no login / domain / VPS.
+#
+# Scope: demo-only manual verification (AGENTS.md override confirmed by owner).
+# Production (api.dearlive.pro) is never touched: the wrapper declares NO
+# INTERNET permission and loads file:///android_asset/demo.html, a fixed-seed
+# engine replay bundled from games/teen_patti_pro/client/.
+#
+# Trigger: Actions tab → "Build offline demo APK" → Run workflow,
+# or push to the paths below. Download the `teen-patti-demo-apk` artifact,
+# install app-debug.apk on a device (debug-signed, installable), open
+# "Teen Patti Pro Demo". No GitHub auth needed on the device.
+name: Build offline demo APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "games/teen_patti_pro/client/**"
+      - "android-demo/**"
+      - ".github/workflows/demo-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate demo bundle
+        run: |
+          python3 -c "import json;d=json.load(open('games/teen_patti_pro/client/demo_round.json'));assert len(d['frames'])==5, d;print('demo frames ok:', [f['label'] for f in d['frames']])"
+          grep -q "demo_round.json" games/teen_patti_pro/client/demo.html
+          test -f android-demo/app/src/main/java/com/dearlive/teenpatti/demo/MainActivity.java
+          test -f android-demo/app/src/main/AndroidManifest.xml
+
+      - name: Stage client assets into wrapper
+        run: |
+          mkdir -p android-demo/app/src/main/assets
+          cp games/teen_patti_pro/client/demo.html android-demo/app/src/main/assets/
+          cp games/teen_patti_pro/client/demo_round.json android-demo/app/src/main/assets/
+          cp games/teen_patti_pro/client/index.html android-demo/app/src/main/assets/
+          cp games/teen_patti_pro/client/game.js android-demo/app/src/main/assets/
+          ls -la android-demo/app/src/main/assets/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
+
+      - name: Accept SDK licences
+        run: yes | sdkmanager --licenses
+
+      - name: Build debug APK
+        working-directory: android-demo
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Checksum + summary
+        run: |
+          sha256sum android-demo/app/build/outputs/apk/debug/app-debug.apk
+          ls -la android-demo/app/build/outputs/apk/debug/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teen-patti-demo-apk
+          path: android-demo/app/build/outputs/apk/debug/app-debug.apk

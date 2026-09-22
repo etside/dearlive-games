@@ -1,0 +1,29 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dearlive.teenpatti.demo'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.dearlive.teenpatti.demo'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0-demo'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
