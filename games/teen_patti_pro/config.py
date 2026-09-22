@@ -28,7 +28,9 @@ class TeenPattiConfig:
         "SEATS",     # fixed A/B/C
         "TIE-REMAINDER",  # carry-over default (JEV design fix)
         "A23-RANK",  # A-2-3 straight placement: lowest/highest/ace-high-14
+        "JOKER",     # wild jokers in deck; count + substitution rule
     )
+    jokers: int = 0  # wild jokers added to the 52-deck (reference uses 3; TBC)
     seats: Tuple[str, ...] = ("A", "B", "C")
     cards_per_hand: int = 3
     denoms: Tuple[int, ...] = (20, 100, 500, 1000)

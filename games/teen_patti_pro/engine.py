@@ -23,16 +23,29 @@ from .config import TeenPattiConfig, DEFAULT_CONFIG
 SUITS = ("S", "H", "D", "C")  # spades hearts diamonds clubs
 RANKS = tuple(range(2, 15))  # 2..14 (11=J 12=Q 13=K 14=A)
 
-Card = Tuple[int, str]  # (rank, suit)
+Card = Tuple[int, str]  # (rank, suit); joker is the JOKER sentinel below
+JOKER: Card = (0, "J")
 
 
-def build_deck() -> List[Card]:
-    return [(r, s) for s in SUITS for r in RANKS]
+def is_joker(c: Card) -> bool:
+    return c == JOKER
 
 
-def shuffle_deck(seed_hex: str) -> List[Card]:
-    """Deterministic Fisher-Yates driven by seed. Same seed -> same deck."""
-    deck = build_deck()
+def fmt_card(c: Card) -> str:
+    return "JOK" if is_joker(c) else f"{c[0]}{c[1]}"
+
+
+def build_deck(n_jokers: int = 0) -> List[Card]:
+    if not 0 <= n_jokers <= 3:
+        raise ValueError("jokers must be 0..3")
+    return [(r, s) for s in SUITS for r in RANKS] + [JOKER] * n_jokers
+
+
+def shuffle_deck(seed_hex: str, n_jokers: int = 0) -> List[Card]:
+    """Deterministic Fisher-Yates driven by seed. Same seed -> same deck.
+    Jokers (if configured) are part of the single shuffled deck, so their
+    positions are covered by the same seed + deck commitment audit."""
+    deck = build_deck(n_jokers)
     rng = random.Random(int(seed_hex, 16))
     rng.shuffle(deck)
     return deck
@@ -61,6 +74,46 @@ def _is_sequence(ranks: List[int], ace_low_rank: str = "lowest") -> Tuple[bool, 
         # for all normal straights since their highs always differ.
         return True, (s[2], s[1], s[0])
     return False, ()
+
+
+def best_expansion(hand: List[Card], ace_low_rank: str = "lowest") -> List[Card]:
+    """Resolve wild jokers to the optimal substitution (reference getMax).
+    No jokers -> hand unchanged. Rules mirror esrrhs maxCards: substitutes must
+    come from the 52-deck excluding cards already present (no duplicates).
+      3 jokers        -> trail of Aces (global max).
+      2 jokers + [x]  -> trail of x's rank (three suits != x's suit).
+      1 joker + [a,b] -> best of 52-minus-present candidates by evaluate_hand.
+    """
+    js = sum(1 for c in hand if is_joker(c))
+    if js == 0:
+        return list(hand)
+    plain = [c for c in hand if not is_joker(c)]
+    if js == 3:
+        return [(14, "S"), (14, "H"), (14, "D")]
+    if js == 2:
+        # Keep the dealt card (audit fidelity, like reference maxCards keeping
+        # `left`); add two same-rank cards in the other suits -> trail of x.
+        (x,) = plain
+        others = [(x[0], s) for s in SUITS if s != x[1]][:2]
+        return [x] + others
+    # 1 joker: exhaustive over legal substitutes (<=52 evals, trivial cost).
+    present = set(plain)
+    best, best_key = None, None
+    for r in RANKS:
+        for s in SUITS:
+            cand = (r, s)
+            if cand in present:
+                continue
+            resolved = plain + [cand]
+            key = evaluate_hand(resolved, ace_low_rank)
+            if best_key is None or key > best_key:
+                best, best_key = resolved, key
+    return best
+
+
+def score_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:
+    """Authoritative hand score: resolve jokers first, then evaluate."""
+    return evaluate_hand(best_expansion(hand, ace_low_rank), ace_low_rank)
 
 
 def evaluate_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:
@@ -108,6 +161,7 @@ class Round:
     seed_hex: str = ""
     deck_commit: str = ""
     hands: Dict[str, List[Card]] = field(default_factory=dict)
+    resolved: Dict[str, List[Card]] = field(default_factory=dict)  # jokers expanded
     winner_positions: List[str] = field(default_factory=list)
     bets: List[Bet] = field(default_factory=list)
     settlements: List[dict] = field(default_factory=list)
@@ -156,7 +210,7 @@ class Room:
                       seed_hex=seed_hex or secrets.token_hex(16),
                       carry_in=self.carry_over,
                       config_version=self.config.version)
-            deck = shuffle_deck(r.seed_hex)
+            deck = shuffle_deck(r.seed_hex, self.config.jokers)
             r.deck_commit = deck_commitment(deck)
             r.hands = {p: deck[i * 3:(i + 1) * 3] for i, p in enumerate(self.config.seats)}
             transition(r.status, RoundStatus.BETTING_OPEN)
@@ -236,8 +290,10 @@ class Room:
                 raise LifecycleError("No active round")
             if r.status != RoundStatus.BETTING_CLOSED:
                 raise LifecycleError(f"Result requires BETTING_CLOSED, have {r.status}")
+            r.resolved = {p: best_expansion(h, self.config.ace_low_rank)
+                          for p, h in r.hands.items()}
             scored = {p: evaluate_hand(h, self.config.ace_low_rank)
-                      for p, h in r.hands.items()}
+                      for p, h in r.resolved.items()}
             best = max(scored.values())
             r.winner_positions = sorted(p for p, s in scored.items() if s == best)
             transition(r.status, RoundStatus.RESULT)
@@ -245,7 +301,8 @@ class Room:
             r.emit("result.published", {
                 "round_id": r.round_id,
                 "winners": r.winner_positions,
-                "hands": {p: [f"{rk}{st}" for rk, st in h] for p, h in r.hands.items()},
+                "hands": {p: [fmt_card(c) for c in h] for p, h in r.resolved.items()},
+                "raw_hands": {p: [fmt_card(c) for c in h] for p, h in r.hands.items()},
                 "deck_commit": r.deck_commit, "seed": r.seed_hex}, now_ms)
             return r
 
@@ -350,8 +407,11 @@ class Room:
             "betting_end_at": r.betting_end_at_ms,
             "pots": pots, "pot_total": sum(pots.values()) + r.carry_in,
             "my_bet": mine, "carry_in": r.carry_in,
-            "hands": ({p: [f"{rk}{st}" for rk, st in h] for p, h in r.hands.items()}
+            "hands": ({p: [fmt_card(c) for c in r.resolved.get(p, h)]
+                       for p, h in r.hands.items()}
                       if reveal else {p: ["**"] * 3 for p in r.hands}),
+            "raw_hands": ({p: [fmt_card(c) for c in h] for p, h in r.hands.items()}
+                          if reveal and self.config.jokers else {}),
             "winners": r.winner_positions if reveal else [],
             "config_version": r.config_version,
         }
@@ -368,6 +428,7 @@ class Room:
                 continue
             ev = dict(ev)
             if ev["kind"] == "result.published" and not reveal:
-                ev = {k: v for k, v in ev.items() if k not in ("hands", "seed")}
+                ev = {k: v for k, v in ev.items()
+                      if k not in ("hands", "raw_hands", "seed")}
             out.append(ev)
         return out[-self.config.event_log_cap:]

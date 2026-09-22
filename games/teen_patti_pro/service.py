@@ -175,8 +175,10 @@ class TeenPattiService:
                           after={"winners": r.winner_positions})
         self._fire("result.published", {"round_id": r.round_id,
                                         "winners": r.winner_positions})
+        from .engine import fmt_card
         return {"round_id": r.round_id, "winners": r.winner_positions,
-                "hands": {p: [f"{rk}{st}" for rk, st in h] for p, h in r.hands.items()},
+                "hands": {p: [fmt_card(c) for c in h] for p, h in r.resolved.items()},
+                "raw_hands": {p: [fmt_card(c) for c in h] for p, h in r.hands.items()},
                 "deck_commit": r.deck_commit, "seed": r.seed_hex}
 
     def settle(self, room_id: str, round_id: str = "") -> dict:

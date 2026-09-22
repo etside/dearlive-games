@@ -1,0 +1,7 @@
+[
+  {"key": "expansion_suboptimal", "type": "noul", "instructions": "Can best_expansion return a suboptimal resolution (weaker than some legal substitute) in any joker count?"},
+  {"key": "audit_gap", "type": "noul", "instructions": "Does joker dealing/resolution break auditability (seed/commitment no longer reproduces the result)?"},
+  {"key": "default_unsafe", "type": "noul", "instructions": "Does adding the joker code path risk changing default (jokers=0) game behavior?"},
+  {"key": "joker_soundness", "type": "score", "instructions": "Joker integration soundness?",
+   "criteria": ["unsafe, rework needed", "acceptable with caveats", "sound"]}
+]

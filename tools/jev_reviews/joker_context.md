@@ -1,0 +1,4 @@
+RULE CHANGE UNDER REVIEW: wild-joker support (config.jokers 0..3, default 0, TBC-flagged JOKER).
+Mechanics: single seeded shuffle over 52+jokers deck (same seed+commitment audit); best_expansion resolver mirroring reference maxCards (substitutes from 52-deck excluding dealt cards, no duplicates; 3 jokers->trail Aces; 2 jokers->keep dealt card + trail it; 1 joker->exhaustive <=52 candidates); score_hand resolves then evaluates; result stores raw + resolved hands; snapshot shows resolved post-RESULT (redacted pre-RESULT incl. seed); config default 0 preserves all existing behavior.
+Proof: 400 random joker hands (1/2/3 jokers) x 2 A23 modes vs independent brute-force reference implementation: 0 score mismatches, plus invariants (no unresolved jokers, no duplicate cards, dealt cards preserved).
+Question: is joker integration safe and complete (audit, display, default-off)?

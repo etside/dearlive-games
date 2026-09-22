@@ -11,6 +11,9 @@ From BRD/SRS §§3,11–12,14 (Game 3 + platform), all live as flags in
 3. G3-BR-03 pot/payout/tie (default: dead-heat pro-rata, dust carried, rake 0).
 4. G3-BR-04 timer (default: guess_ms 20000).
 5. G3-BR-05-MECH RNG mechanism (default: server CSPRNG seed + sha256 deck commitment).
+   JOKERS (TBC JOKER, `config.jokers` 0..3, default 0): wild-joker dealing + optimal
+   expansion implemented (proven: 400 joker hands x 2 modes, 0 mismatches vs reference
+   maxCards semantics). Reference uses 3 jokers; DearLive has not confirmed any.
 6. DENOMS (default 20/100/500/1000), min 20 / max 100000.
 7. SEATS fixed A/B/C. 8. TIE-REMAINDER carry-over.
 9. Final branding/game name. 10. Admin RBAC matrix sign-off. 11. Auth/wallet source +

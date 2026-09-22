@@ -156,5 +156,70 @@ class TestTieFairness(unittest.TestCase):
         self.assertEqual(sum(x["payout"] for x in rows) + room.carry_over, 1100)
 
 
+class TestJokers(unittest.TestCase):
+    """Wild-joker support (reference getMax parity; TBC JOKER, default off)."""
+
+    def test_disabled_by_default(self):
+        self.assertEqual(CONF.jokers, 0)
+        room = Room("noj", CONF)
+        r = room.start_round(T0, seed_hex="dd" * 16)
+        flat = [c for h in r.hands.values() for c in h]
+        self.assertEqual(len(flat), 9)
+        self.assertTrue(all(c != (0, "J") for c in flat))
+
+    def test_triple_joker_is_aces(self):
+        from games.teen_patti_pro.engine import best_expansion, JOKER
+        self.assertEqual(best_expansion([JOKER, JOKER, JOKER]),
+                         [(14, "S"), (14, "H"), (14, "D")])
+
+    def test_double_joker_makes_trail(self):
+        from games.teen_patti_pro.engine import best_expansion, JOKER, evaluate_hand
+        for rank in (5, 14, 2):
+            res = best_expansion([(rank, "C"), JOKER, JOKER])
+            self.assertEqual(evaluate_hand(res)[0], 6)  # trail
+            self.assertTrue(all(c[0] == rank for c in res))
+            self.assertEqual(len(set(res)), 3)  # distinct cards
+
+    def test_single_joker_pair_to_trail(self):
+        from games.teen_patti_pro.engine import best_expansion, JOKER, evaluate_hand
+        res = best_expansion([(13, "S"), (13, "H"), JOKER])
+        self.assertEqual(res, [(13, "S"), (13, "H"), (13, "D")])
+        self.assertEqual(evaluate_hand(res)[0], 6)
+
+    def test_single_joker_best_straight_flush(self):
+        from games.teen_patti_pro.engine import best_expansion, JOKER, evaluate_hand
+        # 9S TS + joker -> Qs J? best is straight flush Q-high? K/Q/J... optimal: (12,11,10)?S?
+        res = best_expansion([(9, "S"), (10, "S"), JOKER])
+        cat, _ = evaluate_hand(res)
+        self.assertEqual(cat, 5)  # straight flush (J/Q/K-high all cat 5; any is optimal)
+        self.assertTrue(all(c[1] == "S" for c in res))
+
+    def test_joker_round_end_to_end(self):
+        cfg = TeenPattiConfig(confirmed=True, jokers=3)
+        room = Room("jok", cfg)
+        r = room.start_round(T0, seed_hex="ee" * 16)
+        room.place_bet("p1", "A", 100, "k1", T0 + 10)
+        room.close_betting(T0 + cfg.guess_ms + 1)
+        room.calculate_result(T0 + cfg.guess_ms + 2)
+        self.assertEqual(set(r.resolved), {"A", "B", "C"})
+        for p, h in r.resolved.items():
+            self.assertTrue(all(c != (0, "J") for c in h))  # fully expanded
+        rows = room.settle(T0 + cfg.guess_ms + 3)
+        self.assertEqual(sum(x["payout"] for x in rows) + room.carry_over, 100)
+
+    def test_expansion_optimality_fuzz(self):
+        """best_expansion must equal brute-force optimum over all substitutes."""
+        import itertools
+        from games.teen_patti_pro.engine import (best_expansion, build_deck, evaluate_hand,
+                                                 JOKER)
+        full = [c for c in build_deck() if c != JOKER]
+        rng_cases = [[(14, "S"), (13, "H")], [(2, "C"), (7, "D")], [(9, "S"), (9, "H")],
+                     [(5, "C"), (5, "D")], [(14, "S"), (2, "H")]]
+        for plain in rng_cases:
+            got = best_expansion(plain + [JOKER])
+            best = max((evaluate_hand(plain + [c]) for c in full if tuple(c) not in plain))
+            self.assertEqual(evaluate_hand(got), best, f"suboptimal for {plain}")
+
+
 if __name__ == "__main__":
     unittest.main()
