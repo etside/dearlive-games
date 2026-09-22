@@ -1,21 +1,37 @@
-"""Game 2: Greedy — FUTURE MODULE (registered plugin, status=planned).
+"""Game 2: Greedy Monkey — wheel outcome engine (parity with DearLive current).
 
-Shares CommonGameEngine + lifecycle + wallet + webhooks when built.
-See BRD SRS Game 1 (Greedy) + docs/business-tbc.md for its TBC list.
+Same logic as Uradhura `WheelDriver` code `greedy_monkey`: weighted
+HMAC-SHA256 pick + deterministic landing angle (see common/wheel.py).
+Options (foods + weights + multipliers + icon/colorHex) are
+operator-configured in DearLive; the engine only resolves the committed
+seed into an outcome. Betting/service integration stays planned until
+business confirms rules (plugin status="planned" — not playable via
+plugins.create).
 """
 from common.engine import CommonGameEngine
+from common.wheel import wheel_outcome
+
+GAME_ID = "greedy-monkey"
+
+
+def spin(options, server_seed: str, client_seed: str, nonce: int) -> dict:
+    """Pure outcome: weighted pick + angle. Deterministic per seed."""
+    return wheel_outcome(options, server_seed, client_seed, nonce)
 
 
 def _todo(*args, **kwargs):
-    raise NotImplementedError("Game 2 (Greedy) not developed yet — see roadmap")
+    raise NotImplementedError("Greedy Monkey betting not developed yet — see roadmap")
 
 
-class GreedyEngine(CommonGameEngine):
-    game_id = "greedy"
+class GreedyMonkeyEngine(CommonGameEngine):
+    game_id = GAME_ID
 
 
 for _m in ("createSession", "joinSession", "leaveSession", "getState",
            "validateAction", "applyAction", "startRound", "endRound",
            "calculateResult", "settle", "cancel", "handleTimeout",
            "handleReconnect"):
-    setattr(GreedyEngine, _m, staticmethod(_todo))
+    setattr(GreedyMonkeyEngine, _m, staticmethod(_todo))
+
+# Back-compat name (previous stub).
+GreedyEngine = GreedyMonkeyEngine

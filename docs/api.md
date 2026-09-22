@@ -1,8 +1,32 @@
-# REST API v1 — Teen Patti Pro
+# REST API v1 — all games (envelope on everything)
 
 Envelope: `{success, code, message, data, serverTime, requestId}` (serverTime authoritative).
-Auth: player `Authorization: Bearer <session_id>`; admin `X-Admin-Key` (+ RBAC matrix).
-Bets: `Idempotency-Key` header REQUIRED.
+Auth: player `Authorization: Bearer <session_id>` (any game's session accepted
+cross-game); admin `X-Admin-Key` (+ RBAC matrix; config PUT = superadmin only).
+Bets: `Idempotency-Key` header (or `idempotencyKey` body field for tables clients).
+Lifecycle: `UPCOMING → BETTING_OPEN → BETTING_CLOSED → RESULT_PROCESSING →
+RESULT → SETTLED → CLOSED`. Full contract: `docs/integration-contract.md`,
+machine spec: `docs/openapi.yaml`, traceability: `docs/traceability.md`.
+
+## Cross-game routes (every game; `{gameId}` incl. aliases like `teen_patti`)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/games` | catalog (game_id, name, status, entry, dearlive_code) |
+| POST | `/api/v1/games/{gameId}/sessions` `{launch_token}` | join (game-scoped token) |
+| GET | `/api/v1/games/{gameId}/rounds/current?room=` | state: timer, options/totals or pots, my contribution |
+| POST | `/api/v1/games/{gameId}/rounds/{roundId}/bets` | bet (position \| option_id, amount; stale roundId → 409) |
+| GET | `/api/v1/games/{gameId}/rounds/{roundId}/result?room=` | authoritative result (404 pre-RESULT) |
+| GET | `/api/v1/games/{gameId}/history?room=` | own bets (+ earnings_today on wheels) |
+| GET | `/api/v1/games/{gameId}/results/recent?room=` | recent-result strip (wheel games) |
+| POST | `/api/v1/games/{gameId}/autobet` \| `/autoplay` | Auto Bet/Play config (403 where unapproved) |
+| POST | `/api/v1/games/{gameId}/tables/{tableId}/bets` | G3 tables bet (roundId/position/amount/idempotencyKey) |
+| GET | `/api/v1/games/{gameId}/tables/{tableId}/state` | G3 table state (players, pots, timer, card visibility) |
+| POST | `/api/v1/games/{gameId}/rooms/{room}/rounds/start\|close\|result\|settle` | round control (admin) |
+| GET | `/api/v1/admin/games` | game inventory (admin) |
+| GET/PUT | `/api/v1/admin/games/{gameId}/config` | game config read (admin) / update (superadmin) |
+
+## Teen Patti Pro legacy routes (unchanged, still served)
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|

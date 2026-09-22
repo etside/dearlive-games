@@ -5,7 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Teen Patti Pro</title>
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#0b3d2e;overflow:hidden;
+  /* DearLive current theme (Uradhura teen_patti seed + catalog palette).
+   * Full tokens: theme.json. Layout/logic below unchanged. */
+  :root{
+    --dl-navy:#050914; --dl-blue:#2e6bff; --dl-violet:#7c3aed; --dl-cyan:#22d3ee;
+    --dl-text:#fef2f2; --dl-muted:#8fa3c8;
+    --dl-table-a:#450a0a; --dl-table-b:#7f1d1d;
+    --dl-primary:#dc2626; --dl-accent:#fbbf24;
+    --dl-seat-a:#ef4444; --dl-seat-b:#3b82f6; --dl-seat-c:#22c55e;
+  }
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;
+    background:linear-gradient(180deg,var(--dl-table-a) 0%,var(--dl-table-b) 100%);
+    color:var(--dl-text);
     font-family:system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
   #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
   #err{position:fixed;top:8px;left:8px;right:8px;color:#ffd54a;font-size:13px;display:none;

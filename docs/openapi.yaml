@@ -1,0 +1,303 @@
+openapi: 3.0.3
+info:
+  title: DearLive Games — Teen Patti Pro
+  version: 1.1.0
+  description: >
+    Server-authoritative game API. DearLive owns users + wallet balances;
+    the game server owns game logic + round records. Auth: player
+    `Authorization: Bearer <session_id>`; admin `X-Admin-Key`. Bets require
+    `Idempotency-Key`. Envelope: {success, code, message, data, serverTime,
+    requestId}. See docs/integration-contract.md.
+servers:
+  - url: '{games_base_url}'
+    variables:
+      games_base_url:
+        default: http://127.0.0.1:5002
+        description: Developer GAMES_BASE_URL (sandbox default; prod is developer domain)
+paths:
+  /health:
+    get:
+      summary: Liveness + config version
+      responses:
+        '200': { description: OK }
+  /api/v1/games:
+    get:
+      summary: Game catalog (Games section tiles)
+      responses:
+        '200': { description: list of games }
+  /api/v1/games/teen-patti-pro:
+    get:
+      summary: Game rules/denoms/limits/TBC
+      responses:
+        '200': { description: rules }
+  /api/v1/sessions:
+    post:
+      summary: Redeem launch token → session (join)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [launch_token]
+              properties:
+                launch_token: { type: string, example: dl_teen-patti-pro_abc }
+      responses:
+        '200': { description: session opened }
+        '401': { description: invalid token }
+  /api/v1/sessions/{id}:
+    get:
+      summary: Session info
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: session }
+        '404': { description: unknown session }
+  /api/v1/games/teen-patti-pro/rounds/current:
+    get:
+      summary: Visibility-safe round state
+      parameters:
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: snapshot }
+        '401': { description: unauthenticated }
+  /api/v1/games/teen-patti-pro/rooms/{room}/bets:
+    post:
+      summary: Place bet (debit + create, idempotent)
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [position, amount]
+              properties:
+                position: { type: string, enum: [A, B, C] }
+                amount: { type: integer, example: 100 }
+      responses:
+        '200': { description: bet accepted }
+        '402': { description: insufficient balance }
+        '409': { description: betting closed / duplicate }
+  /api/v1/games/teen-patti-pro/rounds/{id}/result:
+    get:
+      summary: Round result (404 pre-RESULT)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: winners + hands }
+        '404': { description: not published }
+  /api/v1/games/teen-patti-pro/history:
+    get:
+      summary: Own bets
+      parameters:
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: bets }
+  /api/v1/games/teen-patti-pro/rooms/{room}/wallet:
+    get:
+      summary: Own balance (DearLive-owned)
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: balance }
+  /api/v1/games/teen-patti-pro/rooms/{room}/reconnect:
+    post:
+      summary: Snapshot + missed events
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id: { type: string }
+                last_seen_seq: { type: integer }
+      responses:
+        '200': { description: snapshot + missed events }
+  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/start:
+    post:
+      summary: Start round (admin)
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: round started }
+  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/close:
+    post:
+      summary: Close betting (admin)
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: betting closed }
+  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/result:
+    post:
+      summary: Publish result (admin)
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: result }
+  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/settle:
+    post:
+      summary: Settle (admin, idempotent)
+      parameters:
+        - { name: room, in: path, required: true, schema: { type: string } }
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: settlements }
+  /api/v1/admin/config:
+    get:
+      summary: Versioned config + TBC (admin, teen-patti-pro)
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: config }
+  /api/v1/games/{gameId}/rounds/current:
+    get:
+      summary: Current round state (any game; teen alias teen_patti works)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: snapshot with serverTime/betting_end_at/status/options/totals }
+  /api/v1/games/{gameId}/rounds/{roundId}/bets:
+    post:
+      summary: Place bet (any game; teen uses position, wheels use option_id)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: roundId, in: path, required: true, schema: { type: string } }
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                position: { type: string }
+                option_id: { type: string }
+                amount: { type: integer }
+                idempotencyKey: { type: string }
+      responses:
+        '200': { description: bet accepted with unique bet_id }
+  /api/v1/games/{gameId}/rounds/{roundId}/result:
+    get:
+      summary: Authoritative result (404 pre-RESULT)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: roundId, in: path, required: true, schema: { type: string } }
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: winner + cards/angle + settlement refs }
+  /api/v1/games/{gameId}/history:
+    get:
+      summary: Player history (bets + earnings)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: bets }
+  /api/v1/games/{gameId}/results/recent:
+    get:
+      summary: Recent-result strip (wheel games)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: room, in: query, schema: { type: string, default: default } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: recent results }
+  /api/v1/games/{gameId}/autobet:
+    post:
+      summary: Configure Auto Bet (only where approved; autoplay is an alias)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                option_id: { type: string }
+                amount: { type: integer }
+                rounds: { type: integer }
+      responses:
+        '200': { description: autobet configured }
+        '403': { description: not approved }
+  /api/v1/games/{gameId}/tables/{tableId}/bets:
+    post:
+      summary: G3 tables bet (roundId/position/amount/idempotencyKey)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: tableId, in: path, required: true, schema: { type: string } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: bet accepted }
+  /api/v1/games/{gameId}/tables/{tableId}/state:
+    get:
+      summary: G3 table state (players, pots, timer, card visibility)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+        - { name: tableId, in: path, required: true, schema: { type: string } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: table snapshot }
+  /api/v1/admin/games:
+    get:
+      summary: Game inventory (admin)
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: games with enabled/config_version/confirmed }
+  /api/v1/admin/games/{gameId}/config:
+    get:
+      summary: Game configuration (admin)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: full config incl options/HOT/packages/localization }
+    put:
+      summary: Update game configuration (superadmin; teen frozen except enabled/packages/localization)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: updated config }
+  /api/v1/admin/audit:
+    get:
+      summary: Audit trail (admin)
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: entries }
+  /api/v1/admin/webhooks:
+    get:
+      summary: Delivery log (admin)
+      security: [{ adminKey: [] }]
+      responses:
+        '200': { description: deliveries }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: session_id
+    adminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key

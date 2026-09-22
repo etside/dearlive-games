@@ -21,19 +21,22 @@ class EnginePlugin:
     tbc: tuple = ()
     engine_factory: Optional[Callable] = None
     description: str = ""
+    entry: str = ""
+    dearlive_code: str = ""
 
 
 _REGISTRY: Dict[str, EnginePlugin] = {}
 
 
 def engine_plugin(game_id: str, name: str, version: str, status: str = "live",
-                  tbc: tuple = (), description: str = ""):
+                  tbc: tuple = (), description: str = "", entry: str = "",
+                  dearlive_code: str = ""):
     def deco(factory: Callable):
         if game_id in _REGISTRY:
             raise ValueError(f"duplicate engine plugin: {game_id}")
         _REGISTRY[game_id] = EnginePlugin(game_id, name, version, status, tbc,
                                           factory if status == "live" else None,
-                                          description)
+                                          description, entry, dearlive_code)
         return factory
     return deco
 
@@ -53,6 +56,19 @@ def get(game_id: str) -> EnginePlugin:
         raise UnknownGame(f"unknown game {game_id!r}; registered: {sorted(_REGISTRY)}")
 
 
+def alias(new_id: str, existing_id: str):
+    """Register new_id as an alias of an already-registered game (same
+    status/factory/description). Used for DearLive-code compat
+    (e.g. teen_patti -> teen-patti-pro) without duplicating engines."""
+    src = get(existing_id)
+    if new_id in _REGISTRY:
+        raise ValueError(f"duplicate engine plugin: {new_id}")
+    _REGISTRY[new_id] = EnginePlugin(new_id, src.name, src.version,
+                                     src.status, src.tbc, src.engine_factory,
+                                     src.description + f" (alias of {existing_id})",
+                                     src.entry, src.dearlive_code)
+
+
 def create(game_id: str, *args, **kwargs):
     plugin = get(game_id)
     if plugin.status != "live" or plugin.engine_factory is None:
@@ -63,7 +79,8 @@ def create(game_id: str, *args, **kwargs):
 def catalog() -> List[dict]:
     return [{"game_id": p.game_id, "name": p.name, "version": p.version,
              "status": p.status, "tbc": list(p.tbc),
-             "description": p.description} for p in _REGISTRY.values()]
+             "description": p.description, "entry": p.entry,
+             "dearlive_code": p.dearlive_code} for p in _REGISTRY.values()]
 
 
 def import_builtin_games():

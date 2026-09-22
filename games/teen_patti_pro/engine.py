@@ -297,6 +297,9 @@ class Room:
                 raise LifecycleError("No active round")
             if r.status != RoundStatus.BETTING_CLOSED:
                 raise LifecycleError(f"Result requires BETTING_CLOSED, have {r.status}")
+            transition(r.status, RoundStatus.RESULT_PROCESSING)
+            r.status = RoundStatus.RESULT_PROCESSING
+            r.emit("result.processing", {"round_id": r.round_id}, now_ms)
             r.resolved = {p: best_expansion(h, self.config.ace_low_rank)
                           for p, h in r.hands.items()}
             scored = {p: evaluate_hand(h, self.config.ace_low_rank)

@@ -1,9 +1,12 @@
 """Common round lifecycle per BRD SRS 3.1.
 
-UPCOMING -> BETTING_OPEN -> BETTING_CLOSED -> RESULT -> SETTLED -> CLOSED
+UPCOMING -> BETTING_OPEN -> BETTING_CLOSED -> RESULT_PROCESSING -> RESULT
+  -> SETTLED -> CLOSED
 
-CLOSED is terminal. cancel() may move UPCOMING/BETTING_OPEN -> CLOSED
-(refund path handled by caller via settlement void + wallet compensate).
+CLOSED is terminal. cancel() may move UPCOMING/BETTING_OPEN/BETTING_CLOSED
+-> CLOSED (refund path handled by caller via settlement void + wallet
+compensate). RESULT_PROCESSING marks the server-side result computation
+window (RNG/evaluate); RESULT means the authoritative result is published.
 RESULT -> SETTLED requires a recorded authoritative result.
 Transitions are validated; illegal transitions raise LifecycleError.
 """
@@ -14,6 +17,7 @@ class RoundStatus(str, Enum):
     UPCOMING = "UPCOMING"
     BETTING_OPEN = "BETTING_OPEN"
     BETTING_CLOSED = "BETTING_CLOSED"
+    RESULT_PROCESSING = "RESULT_PROCESSING"
     RESULT = "RESULT"
     SETTLED = "SETTLED"
     CLOSED = "CLOSED"
@@ -22,7 +26,8 @@ class RoundStatus(str, Enum):
 _ALLOWED = {
     RoundStatus.UPCOMING: {RoundStatus.BETTING_OPEN, RoundStatus.CLOSED},
     RoundStatus.BETTING_OPEN: {RoundStatus.BETTING_CLOSED, RoundStatus.CLOSED},
-    RoundStatus.BETTING_CLOSED: {RoundStatus.RESULT, RoundStatus.CLOSED},
+    RoundStatus.BETTING_CLOSED: {RoundStatus.RESULT_PROCESSING, RoundStatus.CLOSED},
+    RoundStatus.RESULT_PROCESSING: {RoundStatus.RESULT, RoundStatus.CLOSED},
     RoundStatus.RESULT: {RoundStatus.SETTLED, RoundStatus.CLOSED},
     RoundStatus.SETTLED: {RoundStatus.CLOSED},
     RoundStatus.CLOSED: set(),

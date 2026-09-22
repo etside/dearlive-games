@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Wheel Game</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0a1220;
+    font-family:system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+  #err{position:fixed;top:8px;left:8px;right:8px;color:#ffd54a;font-size:13px;display:none;
+    background:rgba(0,0,0,.6);padding:8px;border-radius:8px;z-index:10}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="err"></div>
+<script>
+/* Shared wheel client (Greedy Monkey + Baby King) — server-authoritative.
+ * Launch: /greedy-monkey/?session=<id>&room=<room> (or /baby-king/).
+ * Query overrides: ?api= &room=. Renders ONLY server snapshot + totals.
+ */
+(function () {
+  'use strict';
+  const q = new URLSearchParams(location.search);
+  const GAME = (location.pathname.split('/')[1] || 'greedy-monkey').replace(/\/$/, '');
+  const API = (q.get('api') || 'http://127.0.0.1:5002').replace(/\/$/, '');
+  const SESSION = q.get('session') || '';
+  const ROOM = q.get('room') || 'default';
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const errBox = document.getElementById('err');
+  let W = 0, H = 0;
+  function resize() {
+    const DPR = Math.min(3, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize); resize();
+  const S = { snap: null, selDenom: 100, selOpt: null, connected: false,
+    msg: '', panel: null, hist: [], recent: [], earn: null, auto: null };
+  try { S.sound = localStorage.getItem('wheel_sound') !== 'off'; } catch (e) { S.sound = true; }
+  function showErr(t) { errBox.style.display = t ? 'block' : 'none'; errBox.textContent = t || ''; }
+  async function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION }, opts.headers || {});
+    const r = await fetch(API + path, opts);
+    const j = await r.json();
+    if (!j.success) throw new Error(j.code + ': ' + j.message);
+    return j.data;
+  }
+  const G = s => '/api/v1/games/' + GAME;
+  function uuid() {
+    return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g,
+      c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+  }
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function draw(now) {
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0a1220'); g.addColorStop(1, '#16243f');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const s = S.snap;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // header
+    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
+    ctx.fillText(GAME.toUpperCase().replace(/-/g, ' ') + ' · ' + ROOM, W / 2, 22);
+    ctx.fillStyle = S.connected ? '#7CFC98' : '#ff7b7b'; ctx.font = '13px system-ui';
+    ctx.fillText(SESSION ? (S.connected ? '● LIVE' : '○ OFFLINE') : '○ DEMO (no session)', W / 2, 42);
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '12px system-ui';
+    ctx.fillText(s && s.round_id ? ('ROUND ' + (s.round_no || s.round_id)) : '—', W / 2, 58);
+    // controls
+    S._ctl = [];
+    const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
+    ctl.forEach((c, i) => {
+      const x = 26 + i * 44, y = 26;
+      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(x - 17, y - 15, 34, 30, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.fillText(c[0], x, y + 1); ctx.restore();
+      S._ctl.push({ act: c[1], x, y, r: 22 });
+    });
+    [['HIST', 'history', W - 96], ['AUTO', 'auto', W - 30]].forEach(a => {
+      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(a[2] - 24, 11, 48, 30, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText(a[0], a[2], 27); ctx.restore();
+      S._ctl.push({ act: a[1], x: a[2], y: 26, r: 26 });
+    });
+    // countdown
+    let secs = null;
+    if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
+      const skew = (S.srvNow || Date.now()) - (S.locNow || Date.now());
+      secs = Math.max(0, (s.betting_end_at - (Date.now() + skew)) / 1000);
+    }
+    const cx = W / 2, cy = H * 0.40, R = Math.min(W * 0.34, 150);
+    if (secs !== null) {
+      ctx.save(); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,.25)';
+      ctx.beginPath(); ctx.arc(cx, cy, 24, 0, 7); ctx.stroke();
+      ctx.strokeStyle = secs < 5 ? '#ff5252' : '#ffd54a';
+      ctx.beginPath(); ctx.arc(cx, cy, 24, -Math.PI / 2, -Math.PI / 2 + Math.min(1, secs / 20) * Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui'; ctx.fillText(secs.toFixed(0), cx, cy);
+      ctx.restore();
+    }
+    // wheel: central character + surrounding options
+    const opts = (s && s.options) || [];
+    ctx.font = '34px system-ui';
+    ctx.fillText(GAME.startsWith('greedy') ? '🐵' : '👑', cx, cy + (secs !== null ? 0 : 0));
+    S._opts = [];
+    opts.forEach((o, i) => {
+      const a = -Math.PI / 2 + i * Math.PI * 2 / Math.max(1, opts.length);
+      const ox = cx + Math.cos(a) * (R + 44), oy = cy + Math.Sin(a) * (R + 44);
+      const win = s && s.winner && s.winner.winning_option_id === o.option_id;
+      const sel = S.selOpt === o.option_id;
+      ctx.save();
+      if (win) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22; }
+      ctx.fillStyle = sel ? '#ffd54a' : 'rgba(255,255,255,.08)';
+      ctx.beginPath(); ctx.arc(ox, oy, 34, 0, 7); ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.lineWidth = win || sel ? 3 : 1.5; ctx.strokeStyle = win || sel ? '#ffd54a' : o.color_hex || '#fff'; ctx.stroke();
+      ctx.font = '24px system-ui'; ctx.fillText(o.icon || '🎡', ox, oy - 8);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui';
+      const tot = (s && s.totals && s.totals[o.option_id]) || 0;
+      ctx.fillText(o.name + ' ×' + o.multiplier, ox, oy + 14);
+      ctx.fillStyle = '#ffe9a8'; ctx.font = '10px system-ui';
+      ctx.fillText('' + tot, ox, oy + 26);
+      if (o.hot) { ctx.fillStyle = '#ff5252'; ctx.font = 'bold 10px system-ui'; ctx.fillText('HOT', ox + 26, oy - 24); }
+      ctx.restore();
+      S._opts.push({ id: o.option_id, x: ox, y: oy, r: 36 });
+    });
+    // totals + earnings + recent strip
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 14px system-ui';
+    ctx.fillText('TOTAL ' + ((s && s.total_bet) || 0) + ' · MY ' + ((s && s.my_total_bet) || 0), W / 2, H * 0.115);
+    ctx.fillStyle = '#8fa3c8'; ctx.font = '11px system-ui';
+    if (S.earn) ctx.fillText("Today's earnings: " + S.earn.net, W / 2, H * 0.115 + 16);
+    const rec = S.recent.slice(0, 8);
+    ctx.font = '15px system-ui';
+    rec.forEach((r2, i) => ctx.fillText(r2.winning_label ? (r2.winning_label[0] || '?') : '?', W / 2 - rec.length * 12 + i * 24, H * 0.66));
+    // bottom: balance + denoms
+    const by = H - Math.max(120, H * 0.17);
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14);
+    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
+    ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
+    S._chips = [];
+    const denoms = (s && s.denoms) || [20, 100, 500, 1000];
+    const cw2 = Math.min(64, W / (denoms.length + 0.6));
+    denoms.forEach((d, i) => {
+      const x = W / 2 - (denoms.length - 1) * cw2 / 2 + i * cw2, y = by + 44;
+      const sel = S.selDenom === d;
+      ctx.save(); ctx.fillStyle = sel ? '#ffd54a' : '#1c2a4a';
+      ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
+      ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#8fa3c8'; ctx.stroke();
+      ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold 12px system-ui';
+      ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y); ctx.restore();
+      S._chips.push({ d, x, y, r: 26 });
+    });
+    if (S.msg) { ctx.fillStyle = '#ffd54a'; ctx.font = '13px system-ui'; ctx.fillText(S.msg, W / 2, by + 84); }
+    if (S.panel) drawPanel();
+    requestAnimationFrame(draw);
+  }
+  function drawPanel() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.72)'; ctx.fillRect(0, 0, W, H);
+    const pw = Math.min(W - 40, 420), ph = Math.min(H - 120, 380);
+    const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    ctx.fillStyle = '#101c33'; rr(px, py, pw, ph, 14); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#ffd54a'; ctx.stroke();
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 16px system-ui';
+    ctx.fillText(S.panel.toUpperCase(), W / 2, py + 28);
+    ctx.fillStyle = '#fff'; ctx.font = '13px system-ui';
+    let lines = [];
+    if (S.panel === 'help') lines = ['Tap an option, tap again to bet.', 'Chips from server denoms.', 'AUTO configures Auto Bet/Play.', 'Tap outside to close.'];
+    else if (S.panel === 'menu') lines = ['Sound: ' + (S.sound ? 'ON' : 'OFF'), 'Session: ' + (SESSION || 'none'), 'Room: ' + ROOM];
+    else if (S.panel === 'auto') lines = S.auto ? ['option=' + S.auto.option_id, 'amount=' + S.auto.amount, 'rounds_left=' + S.auto.rounds_left] : ['No Auto Bet set. Use the API:', 'POST ' + G() + '/autobet'];
+    else lines = S.hist.length ? S.hist.slice(-10).map(h => (h.round_id || '').slice(-6) + ' · ' + h.option_id + ' · ' + h.amount) : ['No bets yet.'];
+    lines.forEach((t, i) => ctx.fillText(t, W / 2, py + 58 + i * 22));
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 13px system-ui';
+    ctx.fillText('tap outside to close', W / 2, py + ph - 16);
+    ctx.restore();
+    S._panelBox = { x: px, y: py, w: pw, h: ph };
+  }
+  cv.addEventListener('pointerdown', async e => {
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (S.panel) {
+      const b = S._panelBox;
+      if (!b || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) S.panel = null;
+      return;
+    }
+    for (const c of (S._ctl || [])) {
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
+        if (c.act === 'back') { try { history.back(); } catch (e2) { S.msg = 'Back: no history'; } return; }
+        if (c.act === 'sound') { S.sound = !S.sound; try { localStorage.setItem('wheel_sound', S.sound ? 'on' : 'off'); } catch (e2) {} return; }
+        S.panel = c.act; if (c.act === 'history') openHistory();
+        return;
+      }
+    }
+    for (const c of (S._chips || [])) {
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) { S.selDenom = c.d; S.msg = ''; return; }
+    }
+    for (const o of (S._opts || [])) {
+      if ((x - o.x) ** 2 + (y - o.y) ** 2 < o.r * o.r) {
+        if (S.selOpt === o.id) { placeBet(o.id); S.selOpt = null; }
+        else { S.selOpt = o.id; S.msg = o.id + ' selected — tap again to bet ' + S.selDenom; }
+        return;
+      }
+    }
+  });
+  async function placeBet(opt) {
+    S.msg = 'Placing ' + S.selDenom + ' on ' + opt + '…';
+    try {
+      const cur = S.snap && S.snap.round_id ? S.snap.round_id : 'current';
+      const d = await api(G() + '/rounds/' + encodeURIComponent(cur) + '/bets?room=' + encodeURIComponent(ROOM), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
+        body: JSON.stringify({ option_id: opt, amount: S.selDenom })
+      });
+      S.msg = 'Accepted ' + d.bet_id;
+    } catch (e) { S.msg = String(e.message || e); }
+    refresh();
+  }
+  async function openHistory() {
+    S.panel = 'history';
+    try {
+      const h = await api(G() + '/history?room=' + encodeURIComponent(ROOM));
+      S.hist = h.bets || []; S.earn = h.earnings_today || null;
+    } catch (e) { S.hist = []; }
+  }
+  async function refresh() {
+    try {
+      S.snap = await api(G() + '/rounds/current?room=' + encodeURIComponent(ROOM));
+      S.recent = (S.snap && S.snap.recent) || [];
+      if (S.snap && S.snap.denoms && !S.snap.denoms.includes(S.selDenom)) S.selDenom = S.snap.denoms[0];
+      S.srvNow = Date.now(); S.locNow = Date.now();
+      showErr('');
+    } catch (e) { if (SESSION) showErr('API: ' + e.message); }
+  }
+  function connect() {
+    if (!SESSION) { refresh(); setInterval(refresh, 3000); return; }
+    refresh(); setInterval(refresh, 2000);
+    S.connected = true;
+  }
+  refresh(); connect(); requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

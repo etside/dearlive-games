@@ -25,6 +25,26 @@
   const S = { snap: null, selDenom: 100, selPos: null, lastSeq: 0, connected: false, msg: '' };
   const DENOMS = [20, 100, 500, 1000];
   const POS = ['A', 'B', 'C'];
+  // Common HUD state (BRD common UI): panel overlay, sound/music toggle.
+  S.panel = null; // null | 'help' | 'menu' | 'history'
+  try { S.sound = localStorage.getItem('tpp_sound') !== 'off'; } catch (e) { S.sound = true; }
+  S.hist = [];
+  function beep(win) {
+    if (!S.sound) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ac = beep._ac || (beep._ac = new AC());
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.connect(g); g.connect(ac.destination);
+      o.frequency.value = win ? 880 : 440; g.gain.value = 0.06;
+      o.start(); o.stop(ac.currentTime + 0.12);
+    } catch (e) { /* audio optional */ }
+  }
+  function toggleSound() {
+    S.sound = !S.sound;
+    try { localStorage.setItem('tpp_sound', S.sound ? 'on' : 'off'); } catch (e) {}
+  }
 
   function showErr(t) { errBox.style.display = t ? 'block' : 'none'; errBox.textContent = t || ''; }
   async function api(path, opts) {
@@ -99,6 +119,27 @@
     ctx.fillText('TEEN PATTI PRO · ' + ROOM, W / 2, 22);
     ctx.fillStyle = S.connected ? '#7CFC98' : '#ff7b7b'; ctx.font = '13px system-ui';
     ctx.fillText(S.connected ? '● LIVE' : '○ OFFLINE', W / 2, 42);
+    // round number (server-authoritative)
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '12px system-ui';
+    const rnd = s ? (s.round_no ? ('ROUND ' + s.round_no) : (s.round_id || '')) : '—';
+    ctx.fillText(rnd, W / 2, 58);
+    // top-left controls: Back | Help | Sound | Menu ; top-right: History
+    S._ctl = [];
+    const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
+    ctl.forEach((c, i) => {
+      const x = 26 + i * 44, y = 26;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(x - 17, y - 15, 34, 30, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui';
+      ctx.fillText(c[0], x, y + 1); ctx.restore();
+      S._ctl.push({ act: c[1], x, y, r: 22 });
+    });
+    const hx = W - 30;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(hx - 24, 11, 48, 30, 8); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('HIST', hx, 27);
+    ctx.restore();
+    S._ctl.push({ act: 'history', x: hx, y: 26, r: 26 });
     let secs = null;
     if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
       // serverTime-anchored: estimate server now from last snapshot skew
@@ -187,11 +228,68 @@
     if (S.msg) { ctx.fillStyle = '#ffd54a'; ctx.font = '13px system-ui'; ctx.fillText(S.msg, W / 2, by + 84); }
     ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '11px system-ui';
     ctx.fillText('tap a seat, then tap again to bet · server-authoritative', W / 2, H - 12);
+    if (S.panel) drawPanel();
     requestAnimationFrame(draw);
+  }
+
+  function drawPanel() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.72)'; ctx.fillRect(0, 0, W, H);
+    const pw = Math.min(W - 40, 420), ph = Math.min(H - 120, 380);
+    const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    ctx.fillStyle = '#123f31'; rr(px, py, pw, ph, 14); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#ffd54a'; ctx.stroke();
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 16px system-ui';
+    const title = S.panel === 'help' ? 'HELP' : S.panel === 'menu' ? 'MENU' : 'HISTORY / RESULT';
+    ctx.fillText(title, W / 2, py + 28);
+    ctx.fillStyle = '#fff'; ctx.font = '13px system-ui';
+    let lines = [];
+    if (S.panel === 'help') lines = [
+      'Tap a seat (A/B/C), tap again to bet.',
+      'Chips: 20 / 100 / 500 / 1K.',
+      'RPT repeats your last bets.',
+      'Timer is server time. Results are',
+      'server-dealt and auditable.',
+      'Tap ✕ panel or anywhere outside to close.'];
+    else if (S.panel === 'menu') lines = [
+      'Sound: ' + (S.sound ? 'ON (tap ♪ to mute)' : 'OFF (tap ✕ to unmute)'),
+      'Session: ' + (SESSION ? SESSION.slice(0, 18) + '…' : 'none (demo mode)'),
+      'Room: ' + ROOM,
+      'Tap RECONNECT below to resync state.'];
+    else lines = S.hist.length ? S.hist.slice(-10).map(
+      h => (h.round_id || '').slice(-6) + ' · ' + h.position + ' · ' + h.amount + ' · ' + h.status)
+      : ['No bets yet this round.'];
+    lines.forEach((t, i) => ctx.fillText(t, W / 2, py + 58 + i * 22));
+    // close + (menu) reconnect hints
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 13px system-ui';
+    ctx.fillText(S.panel === 'menu' ? 'tap RECONNECT in console · tap outside to close' : 'tap outside to close', W / 2, py + ph - 16);
+    ctx.restore();
+    S._panelBox = { x: px, y: py, w: pw, h: ph };
+  }
+  async function openHistory() {
+    S.panel = 'history';
+    try {
+      const h = await api('/api/v1/games/teen-patti-pro/history?room=' + encodeURIComponent(ROOM));
+      S.hist = h.bets || [];
+    } catch (e) { S.hist = []; }
   }
 
   cv.addEventListener('pointerdown', async e => {
     const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (S.panel) {  // tap outside panel closes it
+      const b = S._panelBox;
+      if (!b || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) S.panel = null;
+      return;
+    }
+    for (const c of (S._ctl || [])) {
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
+        if (c.act === 'back') { try { history.back(); } catch (e2) { S.msg = 'Back: no history'; } return; }
+        if (c.act === 'sound') { toggleSound(); return; }
+        if (c.act === 'help') { S.panel = 'help'; return; }
+        if (c.act === 'menu') { S.panel = 'menu'; return; }
+        if (c.act === 'history') { openHistory(); return; }
+      }
+    }
     for (const c of (S._chips || [])) {
       if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) { S.selDenom = c.d; S.msg = ''; return; }
     }
@@ -240,6 +338,9 @@
   async function refresh() {
     try {
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
+      const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
+      if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) beep(true);
+      S._lastWinKey = key;
       S.srvNow = Date.now(); S.locNow = Date.now();
       try {
         const w = await api('/api/v1/games/teen-patti-pro/rooms/' + encodeURIComponent(ROOM) + '/wallet');

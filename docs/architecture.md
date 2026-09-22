@@ -24,7 +24,9 @@ DearLive auth/player/room/wallet APIs  [CLIENT API REQUIRED]
   **table** (precomputed 22,100-hand O(1) lookup, parity-guaranteed), service (money
   order, TBC gate, sweep, skill emits), api (REST+static client+catalog), ws (RFC6455
   push), client (Canvas WebView), plugin (live 1.1.0).
-- `games/greedy`, `games/animal_wheel/` — registered plugins, status=planned.
+- `games/greedy` (Greedy Monkey), `games/animal_wheel/` (Baby King) —
+  wheel outcome engines at DearLive parity (`common/wheel.py`), plugins
+  status=planned (no money paths until rules confirmed). Old ids kept as aliases.
 - `admin/api.py` — RBAC matrix + audited() wrapper. `tools/jev_review.py` — review harness.
 
 ## Key decisions (all JEV-reviewed)

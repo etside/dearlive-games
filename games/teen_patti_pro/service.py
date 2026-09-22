@@ -239,10 +239,8 @@ class TeenPattiService:
                 room.close_betting(now)
                 rep["actions"].append("closed")
                 self._fire("betting.closed", {"round_id": r.round_id})
-                room.calculate_result(now)
+                self.publish_result(room_id)  # audited + webhooked result path
                 rep["actions"].append("result")
-                self._fire("result.published", {"round_id": r.round_id,
-                                                "winners": r.winner_positions})
                 self.settle(room_id, r.round_id)
                 rep["actions"].append("settled")
             except (LifecycleError, ServiceError, WalletError) as exc:

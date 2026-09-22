@@ -1,0 +1,17 @@
+{"info": {"name": "DearLive Games — Teen Patti Pro", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json", "description": "Set {{base}} to developer GAMES_BASE_URL, {{session}} after launch, {{admin_key}} for operator routes."}, "variable": [{"key": "base", "value": "http://127.0.0.1:5002"}, {"key": "session", "value": ""}, {"key": "admin_key", "value": "dev-admin-key"}, {"key": "room", "value": "default"}],
+"item": [
+{"name": "health", "request": {"method": "GET", "url": "{{base}}/health"}},
+{"name": "catalog", "request": {"method": "GET", "url": "{{base}}/api/v1/games"}},
+{"name": "rules", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro"}},
+{"name": "open session (launch token)", "request": {"method": "POST", "url": "{{base}}/api/v1/sessions", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"launch_token\": \"dl_teen-patti-pro_REPLACE\"}"}}},
+{"name": "current round", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/rounds/current?room={{room}}", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
+{"name": "place bet", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/bets", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{session}}"}, {"key": "Idempotency-Key", "value": "bet-{{$guid}}"}], "body": {"mode": "raw", "raw": "{\"position\": \"A\", \"amount\": 100}"}}},
+{"name": "result", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/rounds/ROUND_ID/result?room={{room}}", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
+{"name": "history", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/history?room={{room}}", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
+{"name": "wallet", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/wallet", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
+{"name": "reconnect", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/reconnect", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"session_id\": \"{{session}}\", \"last_seen_seq\": 0}"}}},
+{"name": "admin start", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/start", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}},
+{"name": "admin close", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/close", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}},
+{"name": "admin result", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/result", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}},
+{"name": "admin settle", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/settle", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}}
+]}
