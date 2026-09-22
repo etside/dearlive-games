@@ -1,0 +1,7 @@
+[
+  {"key": "mode_switch_midgame_risk", "type": "noul", "instructions": "Does switching ace_low_rank between rounds (same room, config change) risk inconsistent settlements or disputes?"},
+  {"key": "tiebreak_encoding_bug", "type": "noul", "instructions": "Does the tuple tiebreak encoding risk mis-ordering any straight pair (e.g. length-1 vs length-3 tuple comparison)?"},
+  {"key": "default_choice_wrong", "type": "noul", "instructions": "Is keeping 'lowest' as the default (vs the reference's 'second') the wrong choice for an Indian Teen Patti audience?"},
+  {"key": "change_soundness", "type": "score", "instructions": "Rule-change soundness?",
+   "criteria": ["unsafe, rework needed", "acceptable with noted caveats", "sound"]}
+]

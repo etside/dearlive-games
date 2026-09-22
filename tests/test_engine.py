@@ -30,8 +30,33 @@ class TestRanking(unittest.TestCase):
         self.assertTrue(trail > pure > seq > color > pair > high)
 
     def test_ace_low_straight(self):
-        ok, high = __import__("games.teen_patti_pro.engine", fromlist=["x"])._is_sequence([14, 2, 3])
-        self.assertTrue(ok and high == 3)
+        eng = __import__("games.teen_patti_pro.engine", fromlist=["x"])
+        ok, tb = eng._is_sequence([14, 2, 3], "lowest")
+        self.assertTrue(ok and tb == (3,))
+        # Reference-algorithm modes (compare report §4):
+        ok, tb = eng._is_sequence([14, 2, 3], "second")  # esrrhs: just below A-K-Q
+        self.assertTrue(ok and tb == (14, 3, 2))
+        self.assertTrue(eng.evaluate_hand([(14, "S"), (2, "H"), (3, "D")], "second")
+                        < eng.evaluate_hand([(14, "S"), (13, "H"), (12, "D")], "second"))
+        self.assertTrue(eng.evaluate_hand([(14, "S"), (2, "H"), (3, "D")], "second")
+                        > eng.evaluate_hand([(13, "S"), (12, "H"), (11, "D")], "second"))
+        ok, tb = eng._is_sequence([14, 2, 3], "highest")  # traditional: above A-K-Q
+        self.assertTrue(ok and tb == (15,))
+        # Default mode keeps A-2-3 the lowest straight.
+        self.assertTrue(eng.evaluate_hand([(14, "S"), (2, "H"), (3, "D")])
+                        < eng.evaluate_hand([(4, "S"), (3, "H"), (2, "D")]))
+
+    def test_deal_uniqueness(self):
+        """9 dealt cards are always distinct (single 52-deck, no replacement)."""
+        room = Room("deal", CONF)
+        for seed in ("00" * 16, "ff" * 16, "ab" * 16):
+            r = room.start_round(T0, seed_hex=seed)
+            all_cards = [c for h in r.hands.values() for c in h]
+            self.assertEqual(len(all_cards), 9)
+            self.assertEqual(len(set(all_cards)), 9)
+            room.close_betting(T0 + 1)
+            room.calculate_result(T0 + 2)
+            room.settle(T0 + 3)
 
     def test_pair_kicker(self):
         a = evaluate_hand([(13, "S"), (13, "H"), (14, "D")])

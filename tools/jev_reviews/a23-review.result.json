@@ -1,0 +1,46 @@
+{
+  "title": "a23-review",
+  "elapsed_ms": 90075.13616399956,
+  "result": {
+    "model": "opencode/muse-spark-1.2-contributor-free",
+    "answers": {
+      "mode_switch_midgame_risk": {
+        "type": "noul",
+        "noul": 0.16000000000000003
+      },
+      "tiebreak_encoding_bug": {
+        "type": "noul",
+        "noul": 0.06999999999999995
+      },
+      "default_choice_wrong": {
+        "type": "noul",
+        "noul": 0.29000000000000004
+      },
+      "change_soundness": {
+        "type": "score",
+        "score": 1.79,
+        "legend": {
+          "0": "unsafe, rework needed",
+          "1": "acceptable with noted caveats",
+          "2": "sound"
+        },
+        "probabilities": {
+          "0": 0.07,
+          "1": 0.07,
+          "2": 0.86
+        },
+        "confidence": 0.5430561850432878
+      }
+    },
+    "usage": {
+      "input_tokens": 563,
+      "output_tokens": 64
+    }
+  },
+  "flags": [
+    [
+      "change_soundness",
+      1.79
+    ]
+  ]
+}

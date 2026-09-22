@@ -27,6 +27,7 @@ class TeenPattiConfig:
         "DENOMS",    # 20/100/500/1K reference only
         "SEATS",     # fixed A/B/C
         "TIE-REMAINDER",  # carry-over default (JEV design fix)
+        "A23-RANK",  # A-2-3 straight placement: lowest/highest/ace-high-14
     )
     seats: Tuple[str, ...] = ("A", "B", "C")
     cards_per_hand: int = 3
@@ -38,6 +39,11 @@ class TeenPattiConfig:
     # Ranking (standard): trail > pure_seq > seq > color > pair > high.
     # Ace high (A-K-Q) and Ace-low (A-2-3) straights admitted. TBC G3-BR-01.
     ranking_order: Tuple[str, ...] = ("high", "pair", "color", "seq", "pure_seq", "trail")
+    # A-2-3 placement (reference algo compare §4; three live variants):
+    #   "lowest"  : A-2-3 is the lowest straight (modern casino default; current).
+    #   "second"  : Ace always 14 -> A-2-3 sits just below A-K-Q (esrrhs ref behavior).
+    #   "highest" : A-2-3 beats A-K-Q (traditional / Teen Patti Gold style).
+    ace_low_rank: str = "lowest"
     tie_policy: str = "carry_over"  # or "house" / "round_robin" (business choice)
     rake_bps: int = 0  # basis points taken from pot; 0 default (TBC)
     event_log_cap: int = 500

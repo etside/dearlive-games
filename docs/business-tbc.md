@@ -3,6 +3,10 @@
 From BRD/SRS §§3,11–12,14 (Game 3 + platform), all live as flags in
 `games/teen_patti_pro/config.py` (`tbc` tuple, stamped per settlement):
 1. G3-BR-01 variant/ranking (default: standard trail>pure-seq>seq>color>pair>high).
+   A-2-3 placement is config-driven (`ace_low_rank`, TBC A23-RANK): `lowest` (default,
+   modern-casino) | `second` (matches esrrhs/teenpatti_algorithm — proven 0 ordering
+   divergences over all 22,100 hands) | `highest` (traditional/TeenPatti-Gold style).
+   See compare report 2026-09-22 (exhaustive differential proof in commit).
 2. G3-BR-02 3 cards/position (default: 3, single 52-deck).
 3. G3-BR-03 pot/payout/tie (default: dead-heat pro-rata, dust carried, rake 0).
 4. G3-BR-04 timer (default: guess_ms 20000).

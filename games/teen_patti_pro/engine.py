@@ -42,30 +42,41 @@ def deck_commitment(deck: List[Card]) -> str:
     return hashlib.sha256(repr(deck).encode()).hexdigest()
 
 
-def _is_sequence(ranks: List[int]) -> Tuple[bool, int]:
-    """Returns (is_seq, high). Admits A-K-Q (high 14) and A-2-3 (high 3)."""
+def _is_sequence(ranks: List[int], ace_low_rank: str = "lowest") -> Tuple[bool, Tuple]:
+    """Returns (is_seq, tiebreak_tuple). Admits A-K-Q and A-2-3.
+    A-2-3 placement follows config (reference compare §4):
+      lowest -> tiebreak (3,) i.e. below 2-3-4;
+      second -> tiebreak (14, 3, 2), just below A-K-Q (esrrhs behavior);
+      highest -> tiebreak (15,) i.e. above A-K-Q (traditional style)."""
     s = sorted(ranks)
     if s == [2, 3, 14]:
-        return True, 3
+        if ace_low_rank == "highest":
+            return True, (15,)
+        if ace_low_rank == "second":
+            return True, (14, 3, 2)
+        return True, (3,)
     if s[2] - s[0] == 2 and len(set(s)) == 3:
-        return True, s[2]
-    return False, 0
+        # Full descending ranks (not just high): required so A-K-Q (14,13,12)
+        # beats A-2-3-as-(14,3,2) in "second" mode. Order-identical to (high,)
+        # for all normal straights since their highs always differ.
+        return True, (s[2], s[1], s[0])
+    return False, ()
 
 
-def evaluate_hand(hand: List[Card]) -> Tuple[int, Tuple]:
+def evaluate_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:
     """-> (category_rank, tiebreak). Higher wins. Standard Teen Patti
     (TBC G3-BR-01 default): trail 6 > pure_seq 5 > seq 4 > color 3 > pair 2 > high 1.
     """
     ranks = sorted(c[0] for c in hand)
     suits = [c[1] for c in hand]
     flush = len(set(suits)) == 1
-    seq, seq_high = _is_sequence(ranks)
+    seq, seq_tb = _is_sequence(ranks, ace_low_rank)
     if ranks[0] == ranks[2]:
         return 6, (ranks[0],)
     if flush and seq:
-        return 5, (seq_high,)
+        return 5, seq_tb
     if seq:
-        return 4, (seq_high,)
+        return 4, seq_tb
     if flush:
         return 3, tuple(sorted(ranks, reverse=True))
     if ranks[0] == ranks[1]:
@@ -225,7 +236,8 @@ class Room:
                 raise LifecycleError("No active round")
             if r.status != RoundStatus.BETTING_CLOSED:
                 raise LifecycleError(f"Result requires BETTING_CLOSED, have {r.status}")
-            scored = {p: evaluate_hand(h) for p, h in r.hands.items()}
+            scored = {p: evaluate_hand(h, self.config.ace_low_rank)
+                      for p, h in r.hands.items()}
             best = max(scored.values())
             r.winner_positions = sorted(p for p, s in scored.items() if s == best)
             transition(r.status, RoundStatus.RESULT)
