@@ -249,7 +249,11 @@
     } catch (e) { showErr('API: ' + e.message); }
   }
   function connect() {
-    if (!SESSION) { showErr('No session — open via ?session=<id>&room=<room> (launch token redeem first).'); return; }
+    if (!SESSION) {
+      showErr('No session — open via ?session=<id>&room=<room> (launch token redeem first), or watch the offline demo: demo.html');
+      S.msg = 'No live session — see demo.html for an offline engine replay';
+      return;
+    }
     let ws;
     try { ws = new WebSocket(WS); } catch (e) { showErr('WS: ' + e.message); return; }
     ws.onopen = () => {

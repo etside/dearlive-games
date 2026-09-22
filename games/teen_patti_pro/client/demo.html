@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Teen Patti Pro — Offline Replay Demo</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#0b3d2e;overflow:hidden;
+    font-family:system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
+  #c{position:fixed;inset:0 0 118px 0;width:100%;display:block}
+  #bar{position:fixed;left:0;right:0;bottom:0;height:118px;background:rgba(0,0,0,.55);
+    color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  #bar .row{display:flex;gap:8px;align-items:center}
+  button{background:#ffd54a;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
+  button.ghost{background:#155e43;color:#fff}
+  #note{font-size:11px;color:#ffe9a8;max-width:92%;text-align:center}
+  #live{font-size:12px;color:#c8e6c9}
+  #live a{color:#ffd54a}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar">
+  <div class="row">
+    <button id="prev">◀ Prev</button>
+    <button id="play">▶ Autoplay</button>
+    <button id="next">Next ▶</button>
+  </div>
+  <div class="row"><span id="phase"></span></div>
+  <div id="note">OFFLINE REPLAY — real authoritative engine output (fixed seed). Not live, no wallet.</div>
+  <div id="live">For a live game, open <a href="index.html">index.html</a> with ?api=&amp;ws=&amp;session= params.</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const phaseEl = document.getElementById('phase');
+  let W = 0, H = 0;
+  function resize() {
+    const DPR = Math.min(3, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight - 118;
+    cv.width = W * DPR; cv.height = H * DPR;
+    cv.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  let D = null, idx = 0, timer = null;
+  fetch('demo_round.json').then(r => r.json()).then(j => {
+    D = j; resize(); draw();
+  }).catch(e => { phaseEl.textContent = 'Failed to load demo_round.json: ' + e; });
+  function rr(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function card(x, y, w, h, face) {
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+    rr(x, y, w, h, 7); ctx.fillStyle = '#f7f4ec'; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 2; ctx.strokeStyle = '#8b0000'; ctx.stroke();
+    ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (!face || face === '**') {
+      ctx.fillStyle = '#0b5fa5'; rr(x + 6, y + 6, w - 12, h - 12, 5); ctx.fill();
+      ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + (w * 0.32) + 'px system-ui';
+      ctx.fillText('TP', x + w / 2, y + h / 2);
+    } else {
+      ctx.font = 'bold ' + (w * 0.30) + 'px system-ui';
+      ctx.fillStyle = /[HD]$/.test(face) ? '#b71c1c' : '#212121';
+      ctx.fillText(face, x + w / 2, y + h / 2);
+    }
+    ctx.restore();
+  }
+  function draw() {
+    if (!D) return;
+    const f = D.frames[idx], s = f.snapshot;
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createRadialGradient(W / 2, H * 0.4, 60, W / 2, H * 0.4, Math.max(W, H) * 0.75);
+    g.addColorStop(0, '#147a52'); g.addColorStop(1, '#083a28');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
+    ctx.fillText('TEEN PATTI PRO · OFFLINE REPLAY', W / 2, 22);
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 14px system-ui';
+    ctx.fillText('POT ' + s.pot_total + '   ·   WINNER: ' + ((s.winners && s.winners.join(' & ')) || '—'), W / 2, 46);
+    const cx = W / 2, top = H * 0.30, rx = Math.min(W * 0.36, 300);
+    const pts = { A: { x: cx - rx, y: top }, B: { x: cx + rx, y: top }, C: { x: cx, y: top - H * 0.20 } };
+    const cw = Math.min(W * 0.13, 64), ch = cw * 1.42;
+    ['A', 'B', 'C'].forEach(p => {
+      const pt = pts[p], win = (s.winners || []).indexOf(p) >= 0;
+      if (win) {
+        ctx.save(); ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 26;
+        ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, 66, 0, 7); ctx.stroke(); ctx.restore();
+      }
+      ctx.fillStyle = '#123f31';
+      ctx.beginPath(); ctx.arc(pt.x, pt.y - 62, 22, 0, 7); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#ffd54a'; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui'; ctx.fillText(p, pt.x, pt.y - 62);
+      const hands = (s.hands && s.hands[p]) || ['**', '**', '**'];
+      hands.forEach((fc, i) => card(pt.x - cw * 1.15 + i * (cw + 5), pt.y - ch / 2, cw, ch, fc));
+      ctx.fillStyle = '#c8e6c9'; ctx.font = '13px system-ui';
+      ctx.fillText(p + ' · ' + ((s.pots && s.pots[p]) || 0), pt.x, pt.y + ch / 2 + 16);
+    });
+    ctx.fillStyle = '#fff'; ctx.font = '13px system-ui';
+    const bals = Object.keys(f.balances).map(k => k + ':' + f.balances[k]).join('  ');
+    ctx.fillText(bals, W / 2, H - 56);
+    ctx.fillStyle = '#c8e6c9'; ctx.font = '12px system-ui';
+    ctx.fillText('seed ' + D.meta.seed.slice(0, 12) + '… · commit ' + D.meta.deck_commit.slice(0, 12) + '… · ' + D.meta.config_version, W / 2, H - 34);
+    phaseEl.textContent = 'Phase ' + (idx + 1) + '/' + D.frames.length + ': ' + f.label + ' · status ' + s.status;
+  }
+  document.getElementById('prev').onclick = () => { stop(); idx = (idx + D.frames.length - 1) % D.frames.length; draw(); };
+  document.getElementById('next').onclick = () => { stop(); idx = (idx + 1) % D.frames.length; draw(); };
+  function stop() { if (timer) { clearInterval(timer); timer = null; document.getElementById('play').textContent = '▶ Autoplay'; } }
+  document.getElementById('play').onclick = e => {
+    if (timer) { stop(); return; }
+    e.target.textContent = '⏸ Pause';
+    timer = setInterval(() => { idx = (idx + 1) % D.frames.length; draw(); }, 2500);
+  };
+  resize();
+})();
+</script>
+</body>
+</html>

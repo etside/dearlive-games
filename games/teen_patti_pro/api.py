@@ -94,6 +94,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.serve_client("index.html", "text/html; charset=utf-8")
             if path == "/teen-patti-pro/game.js":
                 return self.serve_client("game.js", "application/javascript; charset=utf-8")
+            if path == "/teen-patti-pro/demo.html":
+                return self.serve_client("demo.html", "text/html; charset=utf-8")
+            if path == "/teen-patti-pro/demo_round.json":
+                return self.serve_client("demo_round.json", "application/json; charset=utf-8")
             if path == "/health":
                 return self.ok({"game": "teen-patti-pro", "config": self.svc.config.version,
                                  "confirmed": self.svc.config.confirmed})

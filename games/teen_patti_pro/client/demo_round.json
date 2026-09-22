@@ -1,0 +1,290 @@
+{
+  "meta": {
+    "note": "OFFLINE REPLAY of real authoritative engine output (seed dededededededededededededededede, config tpp-1.0.0-tbc). Not live.",
+    "config_version": "tpp-1.0.0-tbc",
+    "seed": "dededededededededededededededede",
+    "deck_commit": "f260b8dc37ed880c8eb2123266a13192496faa2580c337048f09ad2262c19db1",
+    "winners": [
+      "B"
+    ]
+  },
+  "frames": [
+    {
+      "label": "betting-open-empty",
+      "serverTime": 1750000000000,
+      "snapshot": {
+        "room_id": "demo-room",
+        "round_id": "demo-room-r1",
+        "round_no": 1,
+        "status": "BETTING_OPEN",
+        "serverTime": 1750000000000,
+        "betting_end_at": 1750000020000,
+        "pots": {},
+        "pot_total": 0,
+        "my_bet": 0,
+        "carry_in": 0,
+        "hands": {
+          "A": [
+            "**",
+            "**",
+            "**"
+          ],
+          "B": [
+            "**",
+            "**",
+            "**"
+          ],
+          "C": [
+            "**",
+            "**",
+            "**"
+          ]
+        },
+        "raw_hands": {},
+        "winners": [],
+        "config_version": "tpp-1.0.0-tbc"
+      },
+      "balances": {
+        "Ravi": 10000,
+        "Priya": 10000,
+        "Aman": 10000
+      }
+    },
+    {
+      "label": "betting-open-bets",
+      "serverTime": 1750000003000,
+      "snapshot": {
+        "room_id": "demo-room",
+        "round_id": "demo-room-r1",
+        "round_no": 1,
+        "status": "BETTING_OPEN",
+        "serverTime": 1750000003000,
+        "betting_end_at": 1750000020000,
+        "pots": {
+          "A": 600,
+          "B": 1000
+        },
+        "pot_total": 1600,
+        "my_bet": 500,
+        "carry_in": 0,
+        "hands": {
+          "A": [
+            "**",
+            "**",
+            "**"
+          ],
+          "B": [
+            "**",
+            "**",
+            "**"
+          ],
+          "C": [
+            "**",
+            "**",
+            "**"
+          ]
+        },
+        "raw_hands": {},
+        "winners": [],
+        "config_version": "tpp-1.0.0-tbc"
+      },
+      "balances": {
+        "Ravi": 9500,
+        "Priya": 9000,
+        "Aman": 9900
+      }
+    },
+    {
+      "label": "betting-closed",
+      "serverTime": 1750000020001,
+      "snapshot": {
+        "room_id": "demo-room",
+        "round_id": "demo-room-r1",
+        "round_no": 1,
+        "status": "BETTING_CLOSED",
+        "serverTime": 1750000020001,
+        "betting_end_at": 1750000020000,
+        "pots": {
+          "A": 600,
+          "B": 1000
+        },
+        "pot_total": 1600,
+        "my_bet": 500,
+        "carry_in": 0,
+        "hands": {
+          "A": [
+            "**",
+            "**",
+            "**"
+          ],
+          "B": [
+            "**",
+            "**",
+            "**"
+          ],
+          "C": [
+            "**",
+            "**",
+            "**"
+          ]
+        },
+        "raw_hands": {},
+        "winners": [],
+        "config_version": "tpp-1.0.0-tbc"
+      },
+      "balances": {
+        "Ravi": 9500,
+        "Priya": 9000,
+        "Aman": 9900
+      }
+    },
+    {
+      "label": "result",
+      "serverTime": 1750000020001,
+      "snapshot": {
+        "room_id": "demo-room",
+        "round_id": "demo-room-r1",
+        "round_no": 1,
+        "status": "RESULT",
+        "serverTime": 1750000020001,
+        "betting_end_at": 1750000020000,
+        "pots": {
+          "A": 600,
+          "B": 1000
+        },
+        "pot_total": 1600,
+        "my_bet": 500,
+        "carry_in": 0,
+        "hands": {
+          "A": [
+            "2S",
+            "6D",
+            "13D"
+          ],
+          "B": [
+            "11C",
+            "14H",
+            "12D"
+          ],
+          "C": [
+            "13H",
+            "10D",
+            "2C"
+          ]
+        },
+        "raw_hands": {},
+        "winners": [
+          "B"
+        ],
+        "config_version": "tpp-1.0.0-tbc"
+      },
+      "balances": {
+        "Ravi": 9500,
+        "Priya": 9000,
+        "Aman": 9900
+      }
+    },
+    {
+      "label": "settled",
+      "serverTime": 1750000020001,
+      "snapshot": {
+        "room_id": "demo-room",
+        "round_id": "demo-room-r1",
+        "round_no": 1,
+        "status": "CLOSED",
+        "serverTime": 1750000020001,
+        "betting_end_at": 1750000020000,
+        "pots": {
+          "B": 1000
+        },
+        "pot_total": 1000,
+        "my_bet": 0,
+        "carry_in": 0,
+        "hands": {
+          "A": [
+            "2S",
+            "6D",
+            "13D"
+          ],
+          "B": [
+            "11C",
+            "14H",
+            "12D"
+          ],
+          "C": [
+            "13H",
+            "10D",
+            "2C"
+          ]
+        },
+        "raw_hands": {},
+        "winners": [
+          "B"
+        ],
+        "config_version": "tpp-1.0.0-tbc"
+      },
+      "balances": {
+        "Ravi": 9500,
+        "Priya": 10600,
+        "Aman": 9900
+      }
+    }
+  ],
+  "events": [
+    {
+      "seq": 1,
+      "kind": "round.started"
+    },
+    {
+      "seq": 2,
+      "kind": "bet.accepted"
+    },
+    {
+      "seq": 3,
+      "kind": "bet.accepted"
+    },
+    {
+      "seq": 4,
+      "kind": "bet.accepted"
+    },
+    {
+      "seq": 5,
+      "kind": "betting.closed"
+    },
+    {
+      "seq": 6,
+      "kind": "result.published"
+    },
+    {
+      "seq": 7,
+      "kind": "settlement.completed"
+    },
+    {
+      "seq": 8,
+      "kind": "session.completed"
+    }
+  ],
+  "settlements": [
+    {
+      "settlement_id": "stl-demo-room-r1-b1",
+      "bet_id": "demo-room-r1-b1",
+      "player_id": "Ravi",
+      "payout": 0,
+      "config_version": "tpp-1.0.0-tbc"
+    },
+    {
+      "settlement_id": "stl-demo-room-r1-b3",
+      "bet_id": "demo-room-r1-b3",
+      "player_id": "Aman",
+      "payout": 0,
+      "config_version": "tpp-1.0.0-tbc"
+    },
+    {
+      "settlement_id": "stl-demo-room-r1-b2",
+      "bet_id": "demo-room-r1-b2",
+      "player_id": "Priya",
+      "payout": 1600,
+      "config_version": "tpp-1.0.0-tbc"
+    }
+  ]
+}
