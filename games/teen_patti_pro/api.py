@@ -62,7 +62,10 @@ class Handler(BaseHTTPRequestHandler):
 
     TEEN_IDS = {"teen-patti-pro", "teen_patti"}
     WHEEL_ALIAS = {"greedy-monkey": "greedy-monkey", "greedy": "greedy-monkey",
-                   "greedy_monkey": "greedy-monkey", "baby-king": "baby-king",
+                   "greedy_monkey": "greedy-monkey", "monkey-wheel": "greedy-monkey",
+                   "monkey_wheel": "greedy-monkey",
+                   "greedy-lion": "greedy-lion", "greedy_lion": "greedy-lion",
+                   "baby-king": "baby-king",
                    "baby_king": "baby-king", "animal-food-wheel": "baby-king",
                    "food-wheel": "baby-king", "food_wheel": "baby-king"}
 
@@ -78,7 +81,7 @@ class Handler(BaseHTTPRequestHandler):
         kind = self.game_kind(game_id)
         if kind == "teen":
             return self.svc
-        if kind in ("greedy-monkey", "baby-king"):
+        if kind is not None:
             return self.wheels.get(kind)
         return None
 
@@ -451,6 +454,33 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(404, E.err("Recent results not supported here",
                                                 E.E_NOT_FOUND))
                 return self.ok(svc.recent_results(room, limit))
+            m = re.fullmatch(r"/api/v1/games/(\S+)/assets", path)
+            if m:
+                game_id = m.group(1)
+                kind = self.game_kind(game_id)
+                if kind is None:
+                    return self.send(404, E.err(f"Unknown game {game_id}", E.E_NOT_FOUND))
+                if kind == "teen":
+                    try:
+                        manifest = json.loads((self.CLIENT_DIR / "assets.json").read_bytes())
+                        theme = json.loads((self.CLIENT_DIR / "theme.json").read_bytes())
+                    except OSError:
+                        return self.send(404, E.err("Asset manifest not bundled",
+                                                    E.E_NOT_FOUND))
+                    return self.ok({"game_id": "teen-patti-pro", "manifest": manifest,
+                                    "theme": theme})
+                svc = self.game_check(game_id)
+                if svc is None:
+                    return
+                cfg = svc.config
+                return self.ok({"game_id": getattr(svc, "game_id", game_id),
+                                "options": [{"option_id": o.option_id, "name": o.name,
+                                             "icon": o.icon, "color_hex": o.color_hex,
+                                             "hot": o.hot, "is_active": o.is_active,
+                                             "multiplier": o.multiplier}
+                                            for o in cfg.options],
+                                "theme": {"denoms": list(cfg.denoms),
+                                          "min_bet": cfg.min_bet, "max_bet": cfg.max_bet}})
             # G3 tables state view (GET variant; tableId == room)
             m = re.fullmatch(r"/api/v1/games/(\S+)/tables/(\S+)/state", path)
             if m:
@@ -775,10 +805,10 @@ def main():
     Handler.svc.admin_keys_note = note
     # Wheel games (G1 Greedy Monkey, G2 Baby King): same adapter selection,
     # independent service state per game.
-    from games.wheel_common.configs import baby_king_config, greedy_config
+    from games.wheel_common.configs import baby_king_config, greedy_config, greedy_lion_config
     from games.wheel_common.service import WheelService
     Handler.wheels = {}
-    for _mkcfg in (greedy_config, baby_king_config):
+    for _mkcfg in (greedy_config, baby_king_config, greedy_lion_config):
         _wc = _mkcfg()
         if args.confirmed:
             _wc.confirmed = True

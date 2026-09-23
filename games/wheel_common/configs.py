@@ -32,6 +32,19 @@ BABY_KING_DEFAULT_OPTIONS = (
                 color_hex="#facc15", hot=True),
 )
 
+GREEDY_LION_DEFAULT_OPTIONS = (
+    WheelOption("cub", "Lion Cub", weight=30, multiplier=2.0, icon="🦁",
+                color_hex="#fde68a"),
+    WheelOption("mane", "Golden Mane", weight=25, multiplier=2.5, icon="🦁",
+                color_hex="#f59e0b"),
+    WheelOption("pride", "Pride", weight=20, multiplier=3.0, icon="🐾",
+                color_hex="#f97316", hot=True),
+    WheelOption("savanna", "Savanna King", weight=15, multiplier=5.0, icon="🌅",
+                color_hex="#ef4444"),
+    WheelOption("crown", "Lion Crown", weight=5, multiplier=20.0, icon="👑",
+                color_hex="#facc15", hot=True),
+)
+
 
 def greedy_config() -> WheelConfig:
     return WheelConfig(game_id="greedy-monkey", version="greedy-1.0.0-tbc",
@@ -41,3 +54,8 @@ def greedy_config() -> WheelConfig:
 def baby_king_config() -> WheelConfig:
     return WheelConfig(game_id="baby-king", version="baby-king-1.0.0-tbc",
                        options=BABY_KING_DEFAULT_OPTIONS)
+
+
+def greedy_lion_config() -> WheelConfig:
+    return WheelConfig(game_id="greedy-lion", version="greedy-lion-1.0.0-tbc",
+                       options=GREEDY_LION_DEFAULT_OPTIONS)

@@ -21,3 +21,6 @@ def make_room(*args, **kwargs):
 # Back-compat + DearLive-code aliases.
 plugins.alias("greedy", "greedy-monkey")
 plugins.alias("greedy_monkey", "greedy-monkey")
+# Delivery name for the Monkey Wheel plugin (same authoritative engine).
+plugins.alias("monkey-wheel", "greedy-monkey")
+plugins.alias("monkey_wheel", "greedy-monkey")

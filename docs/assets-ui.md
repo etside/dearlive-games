@@ -9,8 +9,8 @@ The game package mirrors them; nothing is redesigned.
 | # | Catalog (`GET /api/v1/games`) | DearLive code | Engine | Status |
 |---|---|---|---|---|
 | 1 | Teen Patti Pro (`teen-patti-pro`) | `teen_patti` (alias) | `games/teen_patti_pro/engine.py` | live |
-| 2 | Greedy Monkey (`greedy-monkey`) | `greedy_monkey` (alias; legacy `greedy` too) | `games/greedy/engine.py:spin` | planned |
-| 3 | Baby King (`baby-king`) | `food_wheel` (alias; legacy `animal-food-wheel`, `food-wheel` too) | `games/animal_wheel/engine.py:spin` | planned |
+| 2 | Greedy Lion (`greedy-lion`) | `greedy_lion` (alias) | `games/greedy_lion/engine.py:spin` + `wheel_common/service.py` | live (TBC-gated) |
+| 3 | Monkey Wheel (`monkey-wheel`, alias `monkey_wheel`) | `greedy_monkey` engine (alias) | `games/greedy/engine.py:spin` + `wheel_common/service.py` | live (TBC-gated) |
 
 Old ids still resolve (aliases) so existing tokens/links keep working.
 `entry` + `dearlive_code` are in the catalog response so the DearLive

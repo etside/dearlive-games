@@ -258,6 +258,14 @@ paths:
       security: [{ bearer: [] }]
       responses:
         '200': { description: table snapshot }
+  /api/v1/games/{gameId}/assets:
+    get:
+      summary: Canonical asset manifest (teen-patti-pro SVG manifest + theme; wheel option icons/colors/HOT)
+      parameters:
+        - { name: gameId, in: path, required: true, schema: { type: string } }
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: asset manifest for the game client }
   /api/v1/admin/games:
     get:
       summary: Game inventory (admin)

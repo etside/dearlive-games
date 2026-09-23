@@ -1,7 +1,17 @@
 # Handover: load Teen Patti Pro into the DearLive Games section
 
-For the DearLive app team. Game 1 (Teen Patti Pro) is live; Games 2–3 are
-interface stubs. No host-app layout change is needed: the game is a static
+For the DearLive app team. All three delivery plugins are live
+(TBC-gated on money paths until business confirms rules):
+
+| # | Catalog (`GET /api/v1/games`) | Engine |
+|---|---|---|
+| 1 | Teen Patti Pro (`teen-patti-pro`, alias `teen_patti`) | `games/teen_patti_pro/` |
+| 2 | Greedy Lion (`greedy-lion`, alias `greedy_lion`) | `games/greedy_lion/` outcome + generic `WheelService` |
+| 3 | Monkey Wheel (`monkey-wheel`, alias `monkey_wheel` → `greedy-monkey` engine) | `games/greedy/` outcome + generic `WheelService` |
+
+Legacy IDs (`greedy-monkey`, `baby-king`, `food-wheel`, …) keep resolving
+as aliases so existing tokens/links keep working. Per-game asset manifests:
+`GET /api/v1/games/{gameId}/assets`. No host-app layout change is needed: the game is a static
 WebView client + a Python game server that plugs into DearLive's existing
 `GAMES_BASE_URL` + Redis launch-token + wallet pattern (proven by your
 `DearLive.apk` `.env`: `GAMES_BASE_URL=https://games.dearlive.pro`).
