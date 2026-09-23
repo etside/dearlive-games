@@ -11,6 +11,31 @@
   const SESSION = q.get('session') || '';
   const ROOM = q.get('room') || 'default';
 
+  // Live skin tokens: theme.json (same directory) overrides these at boot;
+  // compiled defaults keep the BRD casino look when the file is absent
+  // (e.g. file:// or CDN without the manifest).
+  const THEME = {
+    feltA: '#147a52', feltB: '#083a28',
+    gold: '#ffd54a', goldDeep: '#f59e0b',
+    seatA: '#ef4444', seatB: '#3b82f6', seatC: '#22c55e',
+    text: '#ffffff', potText: '#ffe9a8',
+  };
+  fetch('theme.json').then(r => r.json()).then(t => {
+    try {
+      const c = t.canvas || {}, th = t.theme || {};
+      if (c.feltA) THEME.feltA = c.feltA;
+      if (c.feltB) THEME.feltB = c.feltB;
+      if (c.gold || th.accent) THEME.gold = c.gold || th.accent;
+      if (c.goldDeep) THEME.goldDeep = c.goldDeep;
+      if (Array.isArray(th.seats)) {
+        if (th.seats[0]) THEME.seatA = th.seats[0];
+        if (th.seats[1]) THEME.seatB = th.seats[1];
+        if (th.seats[2]) THEME.seatC = th.seats[2];
+      }
+      if (th.text) THEME.text = th.text;
+    } catch (e) { /* keep defaults */ }
+  }).catch(() => {});
+
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
   const errBox = document.getElementById('err');
   let W = 0, H = 0, DPR = 1;
@@ -109,7 +134,7 @@
     ctx.clearRect(0, 0, W, H);
     // felt
     const g = ctx.createRadialGradient(W / 2, H * 0.42, 60, W / 2, H * 0.42, Math.max(W, H) * 0.75);
-    g.addColorStop(0, '#147a52'); g.addColorStop(1, '#083a28');
+    g.addColorStop(0, THEME.feltA); g.addColorStop(1, THEME.feltB);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     const L = layout(), s = S.snap;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

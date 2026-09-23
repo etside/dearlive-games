@@ -16,18 +16,29 @@ Old ids still resolve (aliases) so existing tokens/links keep working.
 `entry` + `dearlive_code` are in the catalog response so the DearLive
 developer maps Games-section tiles 1:1.
 
-## Assets (Teen Patti Pro — exact copies)
+## Assets (Teen Patti Pro — casino-red/gold, DearLive-verified)
 
-Copied verbatim from `platform/assets/games/teen-patti/` into
+Verified 2026-09-23 against `DearLive.apk` (gold/pink-romance brand,
+cyan-gold games icon) and BRD G3 (A/B/C, cards, Guessing timer, pots,
+chips 20/100/500/1K, Repeat, balance, Back/Help/Sound/Menu, round #,
+connection, history — all render in the Canvas client).
+
+Copied from `platform/assets/games/teen-patti/` into
 `games/teen_patti_pro/client/assets/` (+ `assets.json` manifest with the
-DearLive catalog keys). Served at `/teen-patti-pro/assets/*`:
-
-cards back/face, chips blue/cyan/gold/violet, winner-glow effect,
-seats p1/p2/p3, table bg. Theme + palette in `client/theme.json`
+DearLive catalog keys), then re-skinned from navy-tech to the casino
+language the Canvas client actually renders — geometry untouched:
+seats p1/p2/p3 → casino badges A(red)/B(blue)/C(green) with gold trim;
+table bg → green felt + gold rail + gold title; card back → DearLive red
+with gold TP monogram. Chips (blue/cyan/gold/violet) and winner-glow were
+already casino-gold and are unchanged. Served at
+`/teen-patti-pro/assets/*`. Theme + palette in `client/theme.json`
 (served at `/teen-patti-pro/theme.json`): teen_patti seed theme
 (red gradient bg, gold accent, seat colors) + catalog palette
-(deepNavy/electricBlue/violet/cyan). `client/index.html` uses these
-as CSS variables; Canvas logic untouched.
+(deepNavy/electricBlue/violet/cyan) + DearLive gold/rose + live `canvas`
+skin section. `client/index.html` uses these as CSS variables;
+`client/game.js` fetches `theme.json` at boot and applies `canvas.*`
+over compiled defaults — re-skin without touching game logic.
+Handover guide for the DearLive team: `docs/handover-dearlive.md`.
 
 Greedy Monkey / Baby King have NO bundled art in DearLive current —
 wheel segments are operator-configured per option (`icon` emoji +
