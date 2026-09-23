@@ -16,13 +16,15 @@ from typing import Dict, List, Optional, Tuple
 
 from common import envelope as E
 from provider import auth as PA
+from provider.games import (BINDINGS, LION_CODE, MONKEY_CODE, TEEN_CODE,
+                             binding_for_code, binding_for_slug, canonical_code)
 from provider.ledger import WalletError_
 from provider.sessions import SessionTokenError, resolve as resolve_token
 from provider.tables import (Table, TableCatalog, list_tables, room_status,
                              select_table, table_detail, seat_count)
 
 PROVIDER_PREFIX = "/api/v1/provider"
-GAME_CODE = "teen_patti_pro"
+GAME_CODE = TEEN_CODE  # default game when a request omits one
 GAME_ID = "teen-patti-pro"
 GAME_ALIASES = {"teen_patti_pro", "teen-patti-pro", "teenpatti", "teen_patti"}
 PLAYER_ID_RE = re.compile(r"^[A-Za-z0-9._:@-]{1,128}$")
@@ -57,6 +59,50 @@ class ProviderContext:
     session_ttl_s: int = DEFAULT_SESSION_TTL
     client_path: str = DEFAULT_CLIENT_URL
     redis: bool = False
+    catalogs: Dict[str, TableCatalog] = field(default_factory=dict)
+    wheels: Dict[str, object] = field(default_factory=dict)
+
+    def attach_games(self, teen_service, wheels: Dict[str, object]):
+        """Bind the wheel engines so one API can serve every game."""
+        self.service = teen_service
+        self.wheels = dict(wheels or {})
+        return self
+
+    def teen_service(self):
+        return self.service
+
+    def wheel_services(self):
+        return self.wheels
+
+    def session_stores(self):
+        """Every session store this deployment serves.
+
+        Each engine owns its own store, so a session id issued by a wheel must
+        resolve there rather than in the Teen Patti store.
+        """
+        stores = []
+        for service in [self.service] + list(self.wheels.values()):
+            store = getattr(service, "sessions", None)
+            if store is not None:
+                stores.append(store)
+        return stores
+
+    def find_session(self, session_id: str):
+        for store in self.session_stores():
+            session = store.get(session_id)
+            if session is not None:
+                return session
+        return None
+
+    def catalog_for(self, code: str) -> TableCatalog:
+        return self.catalogs.get(code) or self.catalog
+
+    def client_path_for(self, code: str) -> str:
+        try:
+            from provider.context import client_path_for
+            return client_path_for(code)
+        except Exception:
+            return self.client_path
 
     def audit(self, actor, action, entity, entity_id, after=None):
         log = getattr(self.service, "audit", None)
@@ -159,30 +205,48 @@ def h_health(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
 
 
 def h_games(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
-    tables = list_tables(ctx.catalog, ctx.service)
-    limits = [t["min_bet"] for t in tables] or [0]
-    caps = [t["max_bet"] for t in tables] or [0]
-    seats = [t["max_players"] for t in tables] or [0]
-    return 200, {"games": [{
-        "game_code": GAME_CODE,
-        "name": "Teen Patti Pro",
-        "status": "live",
-        "engine": "existing-teen-patti-pro-engine",
-        "currencies": sorted({t["currency"] for t in tables}) or [ctx.currency],
-        "min_bet": min(limits), "max_bet": max(caps), "max_players": max(seats),
-        "tables": [t["table_id"] for t in tables],
-        "actions": ["bet"],
-        "realtime": {"protocol": "websocket", "path": "/ws/game",
-                     "auth": "session_token"},
-    }]}
+    games = []
+    for code in BINDINGS:
+        binding = BINDINGS[code]
+        catalog = ctx.catalog_for(code)
+        service = None
+        try:
+            service = binding.resolve(ctx)
+        except Exception:
+            service = None
+        if service is None:
+            continue  # game not enabled in this deployment
+        tables = list_tables(catalog, service)
+        if not tables:
+            continue
+        limits = [t["min_bet"] for t in tables]
+        caps = [t["max_bet"] for t in tables]
+        seats = [t["max_players"] for t in tables]
+        games.append({
+            "game_code": code,
+            "name": binding.label,
+            "status": "live",
+            "kind": binding.kind,
+            "engine_id": binding.engine_id,
+            "currencies": sorted({t["currency"] for t in tables}) or [ctx.currency],
+            "min_bet": min(limits), "max_bet": max(caps), "max_players": max(seats),
+            "tables": [t["table_id"] for t in tables],
+            "actions": ["bet"],
+            "choice_field": binding.action_field,
+            "choices_url": f"/api/v1/{binding.slug}/tables/{{tableId}}/choices",
+            "launch_path": ctx.client_path_for(code).split("?")[0],
+            "realtime": {"protocol": "websocket", "path": "/ws/game",
+                         "auth": "session_token"},
+        })
+    return 200, {"games": games}
 
 
 def _normalize_game_code(raw: str) -> str:
-    code = str(raw or GAME_CODE).strip()
-    if code.lower() not in GAME_ALIASES:
+    code = canonical_code(raw or GAME_CODE)
+    if code is None:
         raise ProviderError(E.E_VALIDATION,
-                            f"game_code must be {GAME_CODE} in V1")
-    return GAME_CODE
+                            "game_code must be one of: " + ", ".join(BINDINGS))
+    return code
 
 
 def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
@@ -194,6 +258,8 @@ def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
                             "signed operator request or launch_token is required", 401)
     player_id = _text(body.get("player_id"), "player_id", 128, pattern=PLAYER_ID_RE)
     game_code = _normalize_game_code(body.get("game_code", GAME_CODE))
+    binding = BINDINGS[game_code]
+    catalog = ctx.catalog_for(game_code)
     currency = _text(body.get("currency", ctx.currency), "currency", 12,
                      pattern=CURRENCY_RE).upper()
     language = _text(body.get("language", "en"), "language", 16,
@@ -210,7 +276,7 @@ def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
     amount = body.get("amount")
     bet_amount = _int(amount, "amount", 1) if amount is not None else None
     if requested_table:
-        table = ctx.catalog.require(requested_table)
+        table = catalog.require(requested_table)
         if table is None:
             raise ProviderError(E.E_NOT_FOUND,
                                 f"unknown table {requested_table}", 404)
@@ -218,16 +284,16 @@ def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
             raise ProviderError(E.E_VALIDATION,
                                 f"table {table.table_id} is not {currency}")
     else:
-        table = select_table(ctx.catalog, ctx.service, bet_amount, currency)
+        table = select_table(catalog, binding.resolve(ctx), bet_amount, currency)
     if bet_amount is not None and not (table.min_bet <= bet_amount <= table.max_bet):
         raise ProviderError(
             E.E_VALIDATION,
             f"amount must be between {table.min_bet} and {table.max_bet} for "
             f"{table.table_id}")
 
-    session = ctx.service.sessions.create(player_id, table.table_id, GAME_ID)
-    room = ctx.service._room(table.table_id)
-    room.create_session(player_id)
+    service = binding.resolve(ctx)
+    session = service.sessions.create(player_id, table.table_id, binding.engine_id)
+    binding.join(ctx, table.table_id, player_id)
     record = ctx.tokens.mint(session.session_id, {
         "player_id": player_id, "game_code": game_code,
         "table_id": table.table_id, "currency": currency,
@@ -237,7 +303,7 @@ def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
     ctx.audit(player_id, "provider.session.create", "session", session.session_id,
               after={"table_id": table.table_id, "game_code": game_code})
     try:
-        ctx.service._fire("game.session.created", {
+        service._fire("game.session.created", {
             "session_id": session.session_id, "player_id": player_id,
             "room_id": table.table_id, "game_code": game_code})
     except Exception:
@@ -272,12 +338,12 @@ def _legacy_redeem(ctx: ProviderContext, body: dict) -> Tuple[int, dict]:
 
 
 def _load_session(ctx: ProviderContext, session_id: str):
-    session = ctx.service.sessions.get(session_id)
+    session = ctx.find_session(session_id)
     if session is None:
         record = resolve_token(ctx.tokens, session_id)
         if record is None:
             raise ProviderError("INVALID_SESSION_TOKEN", "unknown session", 401)
-        session = ctx.service.sessions.get(record["session_id"])
+        session = ctx.find_session(record["session_id"])
         if session is None:
             raise ProviderError("INVALID_SESSION_TOKEN", "session expired", 401)
     return session
@@ -303,11 +369,17 @@ def h_delete_session(ctx: ProviderContext, req: Request, session_id: str) -> Tup
         revoked = ctx.tokens.revoke_session(session.session_id)
     except Exception:
         revoked = 0
+    for store in ctx.session_stores():
+        try:
+            if store.get(session.session_id) is not None:
+                store.end(session.session_id)
+                break
+        except Exception:
+            continue
     try:
         ctx.service.leave_table(session.room_id, session.player_id)
     except Exception:
         pass
-    ctx.service.sessions.end(session.session_id)
     ctx.audit(session.player_id, "provider.session.delete", "session",
               session.session_id, after={"revoked_tokens": revoked})
     return 200, {"session_id": session.session_id, "ended": True,
@@ -329,19 +401,38 @@ def _require_owner(ctx: ProviderContext, req: Request, session_id: str) -> None:
         raise ProviderError(E.E_FORBIDDEN, "session belongs to another player", 403)
 
 
-def h_list_tables(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
-    return 200, {"tables": list_tables(ctx.catalog, ctx.service)}
+def h_list_tables(ctx: ProviderContext, req: Request, game: str) -> Tuple[int, dict]:
+    binding = _binding_or_404(game)
+    return 200, {"game_code": binding.game_code, "slug": binding.slug,
+                 "tables": list_tables(ctx.catalog_for(binding.game_code),
+                                       binding.resolve(ctx))}
 
 
-def h_table_detail(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict]:
-    view = table_detail(ctx.catalog, ctx.service, table_id)
+def h_table_detail(ctx: ProviderContext, req: Request, game: str,
+                   table_id: str) -> Tuple[int, dict]:
+    binding = _binding_or_404(game)
+    view = table_detail(ctx.catalog_for(binding.game_code), binding.resolve(ctx),
+                        table_id)
     if view is None:
         raise ProviderError(E.E_NOT_FOUND, f"unknown table {table_id}", 404)
+    view["game_code"] = binding.game_code
+    view["choices"] = binding.choices(ctx, view["table_id"])
     return 200, view
 
 
+def h_choices(ctx: ProviderContext, req: Request, game: str,
+              table_id: str) -> Tuple[int, dict]:
+    binding = _binding_or_404(game)
+    catalog = ctx.catalog_for(binding.game_code)
+    if catalog.require(table_id) is None:
+        raise ProviderError(E.E_NOT_FOUND, f"unknown table {table_id}", 404)
+    return 200, {"game_code": binding.game_code, "table_id": table_id,
+                 "choice_field": binding.action_field,
+                 "choices": binding.choices(ctx, table_id)}
+
+
 def _player_from(ctx: ProviderContext, req: Request, body: dict,
-                 query_player: str = "") -> Tuple[str, str]:
+                 query_player: str = "", optional: bool = False) -> Tuple[str, str]:
     """Resolve the acting player. A session token always wins over a
     caller-supplied player_id so a client can never act as another player."""
     bearer = req.header("Authorization")
@@ -355,18 +446,29 @@ def _player_from(ctx: ProviderContext, req: Request, body: dict,
         record = resolve_token(ctx.tokens, supplied)
         if record is not None:
             return str(record["player_id"]), str(record["session_id"])
-        session = ctx.service.sessions.get(supplied)
+        session = ctx.find_session(supplied)
         if session is None:
             raise ProviderError("INVALID_SESSION_TOKEN",
                                 "session is unknown or expired", 401)
         return session.player_id, session.session_id
     player_id = str(body.get("player_id") or query_player or "").strip()
+    if not player_id and optional:
+        return "", ""
     return _text(player_id, "player_id", 128, pattern=PLAYER_ID_RE), ""
 
 
-def h_join(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict]:
+def _binding_or_404(game: str):
+    binding = binding_for_slug(game)
+    if binding is None:
+        raise ProviderError(E.E_NOT_FOUND, f"unknown game {game}", 404)
+    return binding
+
+
+def h_join(ctx: ProviderContext, req: Request, game: str, table_id: str) -> Tuple[int, dict]:
     body = req.json_body()
-    table = ctx.catalog.require(table_id)
+    binding = _binding_or_404(game)
+    catalog = ctx.catalog_for(binding.game_code)
+    table = catalog.require(table_id)
     if table is None:
         raise ProviderError(E.E_NOT_FOUND, f"unknown table {table_id}", 404)
     player_id, session_id = _player_from(ctx, req, body)
@@ -380,74 +482,92 @@ def h_join(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict
             raise ProviderError(
                 E.E_VALIDATION,
                 f"amount must be between {table.min_bet} and {table.max_bet}")
-    seated = seat_count(ctx.service, table.table_id)
-    already = player_id in (getattr(ctx.service._room(table.table_id), "members", {}) or {})
-    if not already and seated >= table.max_players:
+    seated = seat_count(binding.resolve(ctx), table.table_id)
+    result = binding.join(ctx, table.table_id, player_id)
+    if not result["already_seated"] and seated >= table.max_players:
+        binding.leave(ctx, table.table_id, player_id)
         raise ProviderError(E.E_CONFLICT, "table is full", 409)
-    room = ctx.service._room(table.table_id)
-    room.create_session(player_id)
     ctx.audit(player_id, "player.joined", "room", table.table_id,
-              after={"session_id": session_id, "seats": len(room.members)})
+              after={"session_id": session_id, "game_code": binding.game_code})
     try:
-        ctx.service._fire("player.joined", {"room_id": table.table_id,
-                                            "player_id": player_id})
-        ctx.service.ensure_round(table.table_id)
+        binding.resolve(ctx)._fire("player.joined", {"room_id": table.table_id,
+                                                     "player_id": player_id})
+        binding.ensure_round(ctx, table.table_id)
     except Exception:
         pass
-    return 200, {"table_id": table.table_id, "player_id": player_id,
-                 "seats": sorted(room.members), "players": len(room.members),
+    _, room = binding.room(ctx, table.table_id)
+    return 200, {"game_code": binding.game_code, "table_id": table.table_id,
+                 "player_id": player_id, "seats": result["seats"],
+                 "players": len(result["seats"]),
                  "max_players": table.max_players,
                  "status": room_status(room)["status"],
-                 "joined": True, "already_seated": already}
+                 "joined": True, "already_seated": result["already_seated"]}
 
 
-def h_leave(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict]:
+def h_leave(ctx: ProviderContext, req: Request, game: str, table_id: str) -> Tuple[int, dict]:
     body = req.json_body(required=False)
+    binding = _binding_or_404(game)
     player_id, _ = _player_from(ctx, req, body)
-    result = ctx.service.leave_table(table_id, player_id)
-    return 200, {"table_id": table_id, "player_id": player_id,
-                 "seats": result["seats"], "removed": result["removed"]}
+    result = binding.leave(ctx, table_id, player_id)
+    try:
+        binding.resolve(ctx)._fire("player.left", {"room_id": table_id,
+                                                   "player_id": player_id})
+    except Exception:
+        pass
+    return 200, {"game_code": binding.game_code, "table_id": table_id,
+                 "player_id": player_id, "seats": result["seats"],
+                 "removed": result["removed"]}
 
 
-def h_action(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict]:
+def h_action(ctx: ProviderContext, req: Request, game: str, table_id: str) -> Tuple[int, dict]:
     body = req.json_body()
+    binding = _binding_or_404(game)
     action = str(body.get("action") or "").strip().lower()
     player_id, _ = _player_from(ctx, req, body)
     if action in ("fold", "show"):
         raise ProviderError(
             E.E_VALIDATION,
-            f"action '{action}' is not part of the V1 Teen Patti Pro engine")
+            f"action '{action}' is not part of the {binding.label} engine")
     if action != "bet":
         raise ProviderError(
             E.E_VALIDATION,
             "action must be 'bet' in V1 (the engine has no turn/fold/show phase)")
-    position = _text(body.get("position"), "position", 8)
+    choice = _text(body.get(binding.action_field), binding.action_field, 32)
     amount = _int(body.get("amount"), "amount", 1)
     key = str(req.header("Idempotency-Key") or body.get("idempotency_key") or "").strip()
     if not key:
         raise ProviderError(E.E_VALIDATION, "Idempotency-Key header is required")
     try:
-        ctx.service.ensure_round(table_id)
-        result = ctx.service.place_bet(table_id, player_id, position, amount, key)
+        binding.ensure_round(ctx, table_id)
+        result = binding.act(ctx, table_id, player_id, choice, amount, key)
     except Exception as exc:
         raise _service_error(exc)
-    return 200, {"table_id": table_id, "player_id": player_id,
-                 "action": "bet", "accepted": True, **result}
+    return 200, {"game_code": binding.game_code, "table_id": table_id,
+                 "player_id": player_id, "action": "bet", "accepted": True,
+                 binding.choice_field: result.get(binding.choice_field, choice),
+                 **result}
 
 
-def h_state(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict]:
+def h_state(ctx: ProviderContext, req: Request, game: str, table_id: str) -> Tuple[int, dict]:
+    binding = _binding_or_404(game)
     player_id, _ = _player_from(ctx, req, {}, req.q("player_id"))
     try:
-        state = ctx.service.state(table_id, player_id)
+        state = binding.state(ctx, table_id, player_id)
     except Exception as exc:
         raise _service_error(exc)
-    return 200, {"table_id": table_id, "player_id": player_id, "state": state}
+    return 200, {"game_code": binding.game_code, "table_id": table_id,
+                 "player_id": player_id, "state": state}
 
 
-def h_history(ctx: ProviderContext, req: Request, table_id: str) -> Tuple[int, dict]:
+def h_history(ctx: ProviderContext, req: Request, game: str, table_id: str) -> Tuple[int, dict]:
+    binding = _binding_or_404(game)
     limit = _int(req.q("limit", "50"), "limit", 1, 200)
-    rows = ctx.service.history(table_id, limit)
-    return 200, {"table_id": table_id, "rounds": rows, "count": len(rows)}
+    player_id, _ = _player_from(ctx, req, {}, req.q("player_id"), optional=True)
+    data = binding.history(ctx, table_id, player_id, limit)
+    rounds = data.get("rounds", [])
+    return 200, {"game_code": binding.game_code, "table_id": table_id,
+                 "rounds": rounds, "count": len(rounds),
+                 "bets": data.get("bets", [])}
 
 
 def h_balance(ctx: ProviderContext, req: Request, player_id: str) -> Tuple[int, dict]:
@@ -509,9 +629,15 @@ def h_launch(ctx: ProviderContext, req: Request, token: str) -> Tuple[int, dict]
     if record is None:
         raise ProviderError("INVALID_SESSION_TOKEN",
                             "launch token is unknown or expired", 401)
-    location = f"{ctx.client_path}{urllib.parse.quote(record['token'], safe='')}"
+    code = canonical_code(record.get("game_code")) or GAME_CODE
+    path = ctx.client_path_for(code)
+    location = f"{path}{urllib.parse.quote(record['token'], safe='')}"
+    if record.get("table_id"):
+        location += f"&room={urllib.parse.quote(record['table_id'], safe='')}"
     return 302, {"__redirect__": location}
 
+
+GAME_SLUG = r"(teen-patti|greedy-lion|monkey-wheel)"
 
 # ------------------------------------------------------------------ routes
 AUTH_HMAC = "hmac"
@@ -524,13 +650,14 @@ ROUTES: List[Tuple[str, re.Pattern, object, str]] = [
     ("POST", re.compile(r"^/api/v1/sessions$"), h_create_session, AUTH_HMAC_OR_TOKEN),
     ("GET", re.compile(r"^/api/v1/sessions/([^/]+)$"), h_get_session, AUTH_HMAC_OR_TOKEN),
     ("DELETE", re.compile(r"^/api/v1/sessions/([^/]+)$"), h_delete_session, AUTH_HMAC),
-    ("GET", re.compile(r"^/api/v1/teen-patti/tables$"), h_list_tables, AUTH_HMAC),
-    ("GET", re.compile(r"^/api/v1/teen-patti/tables/([^/]+)$"), h_table_detail, AUTH_HMAC),
-    ("POST", re.compile(r"^/api/v1/teen-patti/tables/([^/]+)/join$"), h_join, AUTH_HMAC),
-    ("POST", re.compile(r"^/api/v1/teen-patti/tables/([^/]+)/leave$"), h_leave, AUTH_HMAC),
-    ("POST", re.compile(r"^/api/v1/teen-patti/tables/([^/]+)/action$"), h_action, AUTH_HMAC),
-    ("GET", re.compile(r"^/api/v1/teen-patti/tables/([^/]+)/state$"), h_state, AUTH_HMAC),
-    ("GET", re.compile(r"^/api/v1/teen-patti/tables/([^/]+)/history$"), h_history, AUTH_HMAC),
+    ("GET", re.compile(rf"^/api/v1/{GAME_SLUG}/tables$"), h_list_tables, AUTH_HMAC),
+    ("GET", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)$"), h_table_detail, AUTH_HMAC),
+    ("GET", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)/choices$"), h_choices, AUTH_HMAC),
+    ("POST", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)/join$"), h_join, AUTH_HMAC),
+    ("POST", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)/leave$"), h_leave, AUTH_HMAC),
+    ("POST", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)/action$"), h_action, AUTH_HMAC),
+    ("GET", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)/state$"), h_state, AUTH_HMAC),
+    ("GET", re.compile(rf"^/api/v1/{GAME_SLUG}/tables/([^/]+)/history$"), h_history, AUTH_HMAC),
     ("GET", re.compile(r"^/api/v1/players/([^/]+)/balance$"), h_balance, AUTH_HMAC),
     ("POST", re.compile(r"^/api/v1/wallet/debit$"), h_debit, AUTH_HMAC),
     ("POST", re.compile(r"^/api/v1/wallet/credit$"), h_credit, AUTH_HMAC),
@@ -554,7 +681,9 @@ def resolve_route(method: str, path: str):
 def is_provider_path(path: str) -> bool:
     if path in ("/docs", "/docs/", "/openapi.json"):
         return True
-    if path.startswith("/api/v1/teen-patti/") or path.startswith("/api/v1/wallet/"):
+    if re.fullmatch(rf"/api/v1/{GAME_SLUG}/tables(/.*)?", path):
+        return True
+    if path.startswith("/api/v1/wallet/"):
         return True
     if path.startswith("/api/v1/players/"):
         return True
@@ -563,8 +692,6 @@ def is_provider_path(path: str) -> bool:
     if path == "/api/v1/games":
         return True
     if path.startswith(PROVIDER_PREFIX + "/"):
-        return True
-    if path in ("/api/v1/sessions",):
         return True
     return False
 

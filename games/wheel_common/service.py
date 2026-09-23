@@ -224,6 +224,23 @@ class WheelService:
         return {"round_id": r.round_id, "round_no": r.round_no,
                 "status": r.status.value, "betting_end_at": r.betting_end_at_ms}
 
+    def ensure_round(self, room_id: str) -> dict:
+        """Start a round when the table has seated players and none is active.
+
+        Keeps a wheel playable without an external operator ticker; it never
+        changes an in-flight round and never influences the drawn result.
+        """
+        room = self._room(room_id)
+        current = room.round
+        if current is not None and current.status not in (RoundStatus.SETTLED,
+                                                          RoundStatus.CLOSED):
+            return {"round_id": current.round_id, "status": current.status.value,
+                    "started": False}
+        if not room.members:
+            return {"round_id": "", "status": "WAITING", "started": False}
+        started = self.start_round(room_id)
+        return {**started, "started": True}
+
     def close_betting(self, room_id: str) -> dict:
         room = self._room(room_id)
         with room.lock:

@@ -25,7 +25,6 @@ from .service import TeenPattiService, ServiceError
 def _load_admin_keys():
     """ADMIN_KEYS from env GAME_ADMIN_KEYS=key:role,... (+ legacy GAME_ADMIN_KEY).
     Sandbox fallback keeps the previous dev keys; production requires env keys."""
-    import os
     keys = {}
     raw = os.environ.get("GAME_ADMIN_KEYS", "")
     for part in raw.split(","):
@@ -42,7 +41,27 @@ def _load_admin_keys():
     return keys
 
 
+def _load_admin_scopes(raw: str = ""):
+    """Optional per-game grants: GAME_ADMIN_SCOPES=key:game1|game2,key2:game3.
+
+    A key absent from this map, or an entry with an empty game list, is not
+    restricted and may act on every game. Keys listed here may only act on the
+    named games, whatever their role level.
+    """
+    scopes = {}
+    for part in (raw or os.environ.get("GAME_ADMIN_SCOPES", "")).split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        key, games = part.split(":", 1)
+        wanted = {g.strip().lower() for g in games.replace(";", "|").split("|") if g.strip()}
+        if key.strip() and wanted:
+            scopes[key.strip()] = wanted
+    return scopes
+
+
 ADMIN_KEYS = _load_admin_keys()
+ADMIN_SCOPES = _load_admin_scopes()
 
 
 def parse_body(handler, max_bytes=1 << 20):
@@ -229,11 +248,29 @@ class Handler(BaseHTTPRequestHandler):
     # operator+, config writes need superadmin (do_PUT).
     ROLE_LEVEL = {"auditor": 1, "operator": 2, "admin": 3, "superadmin": 4}
 
-    def require_role(self, minimum: str):
-        """Return (status, payload) denial, or None when authorized."""
+    def admin_scopes(self):
+        """Games this key may act on, or None when unrestricted."""
+        key = self.headers.get("X-Admin-Key", "")
+        return ADMIN_SCOPES.get(key)
+
+    def require_role(self, minimum: str, game_id: str = ""):
+        """Return (status, payload) denial, or None when authorized.
+
+        When game_id is supplied and the key carries a per-game grant, the key
+        must include that game (or one of its aliases) or it is denied.
+        """
         role = self.admin_role()
         if role is None or self.ROLE_LEVEL.get(role, 0) < self.ROLE_LEVEL[minimum]:
             return (403, E.err(f"{minimum} role or higher required", E.E_FORBIDDEN))
+        scopes = self.admin_scopes()
+        if scopes and game_id:
+            wanted = {str(game_id).lower()}
+            for alias in self.WHEEL_ALIAS:
+                if self.WHEEL_ALIAS[alias] == str(game_id).lower():
+                    wanted.add(alias.lower())
+            if not (wanted & scopes):
+                return (403, E.err(
+                    f"key is not scoped to game {game_id}", E.E_FORBIDDEN))
         return None
 
     # -- admin game-configuration views (all games) --
@@ -697,25 +734,25 @@ class Handler(BaseHTTPRequestHandler):
                     return self.fail(exc)
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/start", path)
             if m:
-                denied = self.require_role("operator")
+                denied = self.require_role("operator", "teen-patti-pro")
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.start_round(m.group(1), self.admin_role()), "Round started")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/close", path)
             if m:
-                denied = self.require_role("operator")
+                denied = self.require_role("operator", "teen-patti-pro")
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.close_betting(m.group(1)), "Betting closed")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/result", path)
             if m:
-                denied = self.require_role("operator")
+                denied = self.require_role("operator", "teen-patti-pro")
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.publish_result(m.group(1)), "Result published")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/settle", path)
             if m:
-                denied = self.require_role("operator")
+                denied = self.require_role("operator", "teen-patti-pro")
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.settle(m.group(1)), "Settled")
@@ -881,7 +918,7 @@ class Handler(BaseHTTPRequestHandler):
                 svc = self.game_check(m.group(1))
                 if svc is None:
                     return
-                denied = self.require_role("operator")
+                denied = self.require_role("operator", m.group(1))
                 if denied:
                     return self.send(*denied)
                 op = m.group(3)
@@ -910,6 +947,9 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "superadmin":
                     return self.send(403, E.err("superadmin key required",
                                                 E.E_FORBIDDEN))
+                denied = self.require_role("superadmin", m.group(1))
+                if denied:
+                    return self.send(*denied)
                 svc = self.game_service(m.group(1))
                 if svc is None:
                     return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))

@@ -11,11 +11,31 @@ from typing import Optional
 
 from provider.auth import (MemoryNonceStore, NonceStore, RateLimiter,
                            RedisNonceStore, load_api_keys)
+from provider.games import BINDINGS, TEEN_CODE
 from provider.ledger import (MemoryLedger, MemoryResultStore, ProviderWallet,
                              RedisLedger, RedisResultStore)
 from provider.router import DEFAULT_CLIENT_URL, DEFAULT_SESSION_TTL, ProviderContext
 from provider.sessions import (MemorySessionTokenStore, RedisSessionTokenStore)
 from provider.tables import TableCatalog
+
+# Default table profile per game. A table id is a room id in every engine.
+# Operators can override any of these with PROVIDER_TABLES_<GAME_CODE>.
+DEFAULT_TABLES = {
+    TEEN_CODE: ("teen-patti-low:Low Stakes:10:100:6:COIN,"
+                "teen-patti-mid:Mid Stakes:100:1000:6:COIN,"
+                "teen-patti-high:High Stakes:1000:10000:6:COIN"),
+    "greedy_lion": ("greedy-lion-low:Low Stakes:10:100:6:COIN,"
+                    "greedy-lion-mid:Mid Stakes:100:1000:6:COIN,"
+                    "greedy-lion-high:High Stakes:1000:10000:6:COIN"),
+    "monkey_wheel": ("monkey-wheel-low:Low Stakes:10:100:6:COIN,"
+                     "monkey-wheel-mid:Mid Stakes:100:1000:6:COIN,"
+                     "monkey-wheel-high:High Stakes:1000:10000:6:COIN"),
+}
+DEFAULT_CLIENT_PATHS = {
+    TEEN_CODE: "/teen-patti-pro/?session=",
+    "greedy_lion": "/greedy-lion/?session=",
+    "monkey_wheel": "/monkey-wheel/?session=",
+}
 
 
 def _env(name, default=""):
@@ -62,6 +82,7 @@ def build_context(service, wallet_adapter, redis=None, catalog: Optional[TableCa
     return ProviderContext(
         service=service, wallet=wallet, tokens=tokens,
         catalog=catalog or TableCatalog.from_env(),
+        catalogs=build_catalogs(catalog),
         nonces=nonces, limiter=limiter,
         keys=load_api_keys() if keys is None else keys,
         base_url=base_url or public_base_url(),
@@ -72,10 +93,30 @@ def build_context(service, wallet_adapter, redis=None, catalog: Optional[TableCa
         redis=redis is not None)
 
 
-def staging_context(redis, teen_service):
+def build_catalogs(shared: Optional[TableCatalog] = None) -> dict:
+    """One table catalog per game, env-overridable per game code."""
+    catalogs = {}
+    for code in BINDINGS:
+        raw = _env("PROVIDER_TABLES_" + code.upper(), DEFAULT_TABLES.get(code, ""))
+        if shared is not None and code == TEEN_CODE and not raw:
+            catalogs[code] = shared
+        else:
+            catalogs[code] = TableCatalog.from_env(raw) if raw else shared
+    return catalogs
+
+
+def client_path_for(code: str) -> str:
+    return _env("PROVIDER_CLIENT_PATH_" + code.upper(),
+                DEFAULT_CLIENT_PATHS.get(code, DEFAULT_CLIENT_URL))
+
+
+def staging_context(redis, teen_service, wheels=None):
     """Staging keeps TEST-coin balances in the existing Redis wallet."""
     from staging.redis_wallet import RedisWallet
-    return build_context(teen_service, RedisWallet(redis), redis=redis)
+    ctx = build_context(teen_service, RedisWallet(redis), redis=redis)
+    if wheels:
+        ctx.attach_games(teen_service, wheels)
+    return ctx
 
 
 def production_context(service, wallet_adapter=None):
