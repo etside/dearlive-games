@@ -303,10 +303,53 @@ def _staging_grant(r, wheels, teen, body):
               "currency": "TEST", "test_coins": True})).encode()
 
 
+DOC_PATHS = ("/docs", "/docs/", "/openapi.json")
+
+
+def _serve_static_spec(path):
+    """Docs and the OpenAPI document never need Redis or game state."""
+    from urllib.parse import urlparse
+    clean = urlparse(path).path
+    if clean == "/openapi.json":
+        from provider.spec import openapi_json
+        return 200, "application/json", openapi_json().encode()
+    if clean in ("/docs", "/docs/"):
+        from provider.docs_page import render
+        from provider.spec import SPEC
+        return 200, "text/html; charset=utf-8", render(SPEC).encode()
+    return None
+
+
+def _degraded_health(reason):
+    import json as _j
+    import time as _t
+    from common import envelope as E
+    from provider.router import GAME_CODE
+    return 200, {"Content-Type": "application/json"}, _j.dumps(E.ok({
+        "status": "degraded",
+        "game_code": GAME_CODE,
+        "engine": "TeenPattiPro/1.0",
+        "provider_api": "v1",
+        "provider_auth_configured": bool(os.environ.get("PROVIDER_API_KEYS")),
+        "wallet_backend": "unavailable",
+        "currency": os.environ.get("COIN_CURRENCY", "COIN"),
+        "tables": 0,
+        "live_tables": 0,
+        "redis": False,
+        "reason": str(reason)[:200],
+        "serverTime": int(_t.time() * 1000),
+    })).encode()
+
+
 def app(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET")
     path = environ.get("PATH_INFO", "/") or "/"
     query = environ.get("QUERY_STRING", "")
+    static = _serve_static_spec(path) if method == "GET" else None
+    if static is not None:
+        status, content_type, payload = static
+        start_response(f"{status} 200", [("Content-Type", content_type)])
+        return [payload]
     headers = {}
     for k, v in environ.items():
         if k.startswith("HTTP_"):
@@ -327,8 +370,12 @@ def app(environ, start_response):
         from integrations.redis_store import RedisConnectionError
         if isinstance(exc, (RedisConnectionError, TimeoutError, RuntimeError)):
             # Staging without Redis (or prod boot attempt): fail loudly, never fake.
-            status, resp_headers = 503, {"Content-Type": "application/json"}
-            payload = _j.dumps(E.err(f"staging backend unavailable: {exc}", "UNAVAILABLE")).encode()
+            if path == "/api/v1/provider/health":
+                # Liveness must still answer so a probe can see the degradation.
+                status, resp_headers, payload = _degraded_health(exc)
+            else:
+                status, resp_headers = 503, {"Content-Type": "application/json"}
+                payload = _j.dumps(E.err(f"staging backend unavailable: {exc}", "UNAVAILABLE")).encode()
         else:
             status, resp_headers = 500, {"Content-Type": "application/json"}
             payload = _j.dumps(E.err("internal error", E.E_INTERNAL)).encode()
