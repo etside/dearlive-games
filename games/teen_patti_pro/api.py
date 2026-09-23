@@ -333,6 +333,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/greedy-monkey", "/greedy-monkey/"):
                 return self.serve_wheel()
+            if path in ("/greedy-lion", "/greedy-lion/"):
+                return self.serve_wheel()
+            if path in ("/monkey-wheel", "/monkey-wheel/"):
+                return self.serve_wheel()
             if path in ("/baby-king", "/baby-king/"):
                 return self.serve_wheel()
             if path in ("/teen-patti-pro", "/teen-patti-pro/"):

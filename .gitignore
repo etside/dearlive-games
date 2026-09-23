@@ -3,3 +3,7 @@ __pycache__/
 .env.local
 .env.staging
 .env
+.vercel
+tools/browser-qa/evidence/*.log
+tools/browser-qa/evidence/*.pid
+uv.lock

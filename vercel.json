@@ -1,0 +1,34 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index.py" },
+    { "source": "/teen-patti-pro/master/:path*", "destination": "/assets/dearlive-master/teen-patti-pro/:path*" },
+    { "source": "/teen-patti-pro/assets/:path*", "destination": "/games/teen_patti_pro/client/assets/:path*" },
+    { "source": "/teen-patti-pro/game.js", "destination": "/games/teen_patti_pro/client/game.js" },
+    { "source": "/teen-patti-pro/theme.json", "destination": "/games/teen_patti_pro/client/theme.json" },
+    { "source": "/teen-patti-pro/assets.json", "destination": "/games/teen_patti_pro/client/assets.json" },
+    { "source": "/teen-patti-pro/demo.html", "destination": "/games/teen_patti_pro/client/demo.html" },
+    { "source": "/teen-patti-pro/demo_round.json", "destination": "/games/teen_patti_pro/client/demo_round.json" },
+    { "source": "/teen-patti-pro/asset-manifest.json", "destination": "/assets/dearlive-master/asset-manifest.json" },
+    { "source": "/teen-patti-pro/", "destination": "/games/teen_patti_pro/client/index.html" },
+    { "source": "/greedy-monkey/", "destination": "/games/wheel_common/client.html" },
+    { "source": "/greedy-lion/", "destination": "/games/wheel_common/client.html" },
+    { "source": "/monkey-wheel/", "destination": "/games/wheel_common/client.html" },
+    { "source": "/baby-king/", "destination": "/games/wheel_common/client.html" }
+  ],
+  "headers": [
+    {
+      "source": "/teen-patti-pro/master/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
+}

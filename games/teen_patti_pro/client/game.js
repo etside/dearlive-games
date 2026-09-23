@@ -6,8 +6,8 @@
 (function () {
   'use strict';
   const q = new URLSearchParams(location.search);
-  const API = (q.get('api') || 'http://127.0.0.1:5002').replace(/\/$/, '');
-  const WS = (q.get('ws') || 'ws://127.0.0.1:5003').replace(/\/$/, '');
+  const API = (q.get('api') || window.location.origin).replace(/\/$/, '');
+  const WS = (q.get('ws') || '').replace(/\/$/, '');
   const SESSION = q.get('session') || '';
   const ROOM = q.get('room') || 'default';
 
@@ -162,7 +162,7 @@
     ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
     ctx.fillText('TEEN PATTI PRO · ' + ROOM, W / 2, 22);
     ctx.fillStyle = S.connected ? '#7CFC98' : '#ff7b7b'; ctx.font = '13px system-ui';
-    ctx.fillText(S.connected ? '● LIVE' : '○ OFFLINE', W / 2, 42);
+    ctx.fillText(S.connected ? (S.polling ? '● POLLING' : '● LIVE') : '○ OFFLINE', W / 2, 42);
     // round number (server-authoritative)
     ctx.fillStyle = '#ffe9a8'; ctx.font = '12px system-ui';
     const rnd = s ? (s.round_no ? ('ROUND ' + s.round_no) : (s.round_id || '')) : '—';
@@ -412,6 +412,14 @@
     if (!SESSION) {
       showErr('No session — open via ?session=<id>&room=<room> (launch token redeem first), or watch the offline demo: demo.html');
       S.msg = 'No live session — see demo.html for an offline engine replay';
+      return;
+    }
+    if (!WS) {
+      // Staging/serverless transport: no WebSocket — authoritative polling.
+      S.connected = true;
+      S.polling = true;
+      refresh();
+      setInterval(refresh, 2000);
       return;
     }
     let ws;

@@ -387,6 +387,14 @@ class WheelService:
                              "config_version": r.config_version})
             r.settlements = rows
             r._settled = True
+            # History must reflect settlement: patch placement snapshots with
+            # final status/payout (player history reads bet_history, not bets).
+            by_id = {row["bet_id"]: row for row in rows}
+            for h in room.bet_history:
+                if h["round_id"] == r.round_id and h["bet_id"] in by_id:
+                    row = by_id[h["bet_id"]]
+                    h["status"] = "won" if row["payout"] > 0 else "lost"
+                    h["payout"] = row["payout"]
             transition(r.status, RoundStatus.SETTLED)
             r.status = RoundStatus.SETTLED
             r.emit("settlement.completed", {"round_id": r.round_id,

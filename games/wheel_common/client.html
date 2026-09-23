@@ -24,7 +24,7 @@
   'use strict';
   const q = new URLSearchParams(location.search);
   const GAME = (location.pathname.split('/')[1] || 'greedy-monkey').replace(/\/$/, '');
-  const API = (q.get('api') || 'http://127.0.0.1:5002').replace(/\/$/, '');
+  const API = (q.get('api') || window.location.origin).replace(/\/$/, '');
   const SESSION = q.get('session') || '';
   const ROOM = q.get('room') || 'default';
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -107,11 +107,11 @@
     // wheel: central character + surrounding options
     const opts = (s && s.options) || [];
     ctx.font = '34px system-ui';
-    ctx.fillText(GAME.startsWith('greedy') ? '🐵' : '👑', cx, cy + (secs !== null ? 0 : 0));
+    ctx.fillText(GAME === 'greedy-lion' ? '🦁' : GAME.startsWith('greedy') || GAME.startsWith('monkey') ? '🐵' : '👑', cx, cy + (secs !== null ? 0 : 0));
     S._opts = [];
     opts.forEach((o, i) => {
       const a = -Math.PI / 2 + i * Math.PI * 2 / Math.max(1, opts.length);
-      const ox = cx + Math.cos(a) * (R + 44), oy = cy + Math.Sin(a) * (R + 44);
+      const ox = cx + Math.cos(a) * (R + 44), oy = cy + Math.sin(a) * (R + 44);
       const win = s && s.winner && s.winner.winning_option_id === o.option_id;
       const sel = S.selOpt === o.option_id;
       ctx.save();

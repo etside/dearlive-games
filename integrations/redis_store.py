@@ -99,10 +99,18 @@ class MinimalRedis:
             n = int(payload)
             if n == -1:
                 return None
-            data = b""
-            while len(data) < n + 2:
-                data += self._sock.recv(n + 2 - len(data))
-            self._buf = b""
+            need = n + 2
+            data = self._buf[:need]
+            self._buf = self._buf[need:]
+            while len(data) < need:
+                chunk = self._sock.recv(need - len(data))
+                if not chunk:
+                    raise RedisConnectionError("redis connection closed")
+                if len(data) + len(chunk) > need:
+                    data += chunk[:need - len(data)]
+                    self._buf = chunk[need - len(data):] + self._buf
+                else:
+                    data += chunk
             return data[:n].decode()
         if typ == b"*":
             n = int(payload)

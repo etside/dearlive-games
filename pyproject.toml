@@ -1,0 +1,6 @@
+[project]
+name = "dearlive-games-staging"
+version = "1.0.0"
+description = "DearLive Games staging/UAT (stdlib-only Python serverless functions + static clients)"
+requires-python = ">=3.12"
+dependencies = []

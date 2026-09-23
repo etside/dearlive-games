@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DearLive Games — Staging (TEST)</title>
+<style>
+  :root{--gold:#fbbf24;--bg:#0a1220;--card:#16243f;--txt:#eef2ff;--mut:#8fa3c8;--test:#e11d48}
+  *{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,sans-serif;min-height:100%}
+  #testbar{background:var(--test);color:#fff;text-align:center;font-weight:800;
+    padding:10px;letter-spacing:1px;font-size:14px}
+  main{max-width:560px;margin:0 auto;padding:20px 16px 48px}
+  h1{font-size:22px;margin:6px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid #2b3f63;border-radius:14px;
+    padding:16px;margin-bottom:12px}
+  .card h2{margin:0 0 4px;font-size:17px}.card p{margin:0 0 12px;color:var(--mut);font-size:13px}
+  button{background:var(--gold);border:0;border-radius:10px;padding:12px 16px;
+    font-weight:800;font-size:15px;cursor:pointer;width:100%;color:#3a2f00}
+  button.ghost{background:#22314f;color:var(--txt);margin-top:8px}
+  input,select{width:100%;background:#0f1c33;border:1px solid #2b3f63;color:var(--txt);
+    border-radius:10px;padding:11px;margin:4px 0 8px;font-size:15px}
+  label{font-size:12px;color:var(--mut)}
+  #bal{font-size:15px;font-weight:700;margin-top:8px}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  #log{font-size:12px;color:var(--mut);white-space:pre-wrap;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="testbar">STAGING — TEST COINS ONLY, NO REAL MONEY</div>
+<main>
+  <h1>DearLive Games · Staging</h1>
+  <div class="sub">UAT build. Engines, contracts and settlement are the DearLive integration implementation; auth + wallet are staging adapters.</div>
+  <div class="card">
+    <h2>1 · Test player</h2>
+    <label>Player</label>
+    <select id="player">
+      <option value="qa-player">qa-player</option>
+      <option value="qa-player-2">qa-player-2</option>
+      <option value="qa-player-3">qa-player-3</option>
+    </select>
+    <label>Room</label>
+    <input id="room" value="staging-room">
+    <div class="row">
+      <button id="login">Login + 20K test coins</button>
+    </div>
+    <button id="grant" class="ghost">Grant +5K test coins</button>
+    <div id="bal">Balance: —</div>
+  </div>
+  <div class="card"><h2>Teen Patti Pro</h2><p>A/B/C positions · server timer · pot · 20/100/500/1K chips.</p><button data-game="teen-patti-pro" data-entry="/teen-patti-pro/">Play Teen Patti Pro</button></div>
+  <div class="card"><h2>Greedy Lion</h2><p>Lion wheel · multipliers · HOT options · auto-bet where approved.</p><button data-game="greedy-lion" data-entry="/greedy-lion/">Play Greedy Lion</button></div>
+  <div class="card"><h2>Monkey Wheel</h2><p>Monkey wheel · multipliers · recent-results strip.</p><button data-game="monkey-wheel" data-entry="/monkey-wheel/">Play Monkey Wheel</button></div>
+  <div id="log"></div>
+</main>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const S = { launch: null, game: 'teen-patti-pro' };
+  const log = t => { $('log').textContent += t + '\n'; };
+  async function call(path, body) {
+    const r = await fetch(path, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return r.json();
+  }
+  $('login').onclick = async () => {
+    const player = $('player').value, room = $('room').value.trim() || 'staging-room';
+    const l = await call('/api/v1/staging/test-login', { player, room, game: S.game });
+    if (!l.success) { log('login failed: ' + l.code + ' ' + l.message); return; }
+    S.launch = l.data;
+    const s = await call('/api/v1/sessions', { launch_token: l.data.launch_token });
+    if (!s.success) { log('session failed: ' + s.code); return; }
+    S.session = s.data.session_id;
+    S.room = room;
+    const w = await fetch('/api/v1/games/teen-patti-pro/rooms/' + encodeURIComponent(room) + '/wallet',
+      { headers: { Authorization: 'Bearer ' + S.session } }).then(r => r.json()).catch(() => null);
+    $('bal').textContent = 'Balance: ' + ((w && w.data && w.data.available) ?? '—') + ' TEST';
+    log('login ok: ' + player + ' @ ' + room);
+  };
+  $('grant').onclick = async () => {
+    const g = await call('/api/v1/staging/test-wallet/grant',
+      { player: $('player').value, amount: 5000, idempotency_key: 'ui-' + Date.now() });
+    log(g.success ? 'granted, balance ' + g.data.available + ' TEST' : 'grant failed: ' + g.code);
+    if (g.success) $('bal').textContent = 'Balance: ' + g.data.available + ' TEST';
+  };
+  document.querySelectorAll('button[data-game]').forEach(b => {
+    b.onclick = () => {
+      S.game = b.dataset.game;
+      if (!S.session) { log('login first (button 1)'); return; }
+      location.href = b.dataset.entry + '?session=' + encodeURIComponent(S.session) +
+        '&room=' + encodeURIComponent(S.room || 'staging-room');
+    };
+  });
+})();
+</script>
+</body>
+</html>
