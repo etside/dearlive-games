@@ -306,17 +306,17 @@ def app(environ, start_response):
     body = environ["wsgi.input"].read(length) if length > 0 else b""
     try:
         status, resp_headers, payload = _run_handler(method, path, query, headers, body)
-    except RuntimeError as exc:
-        # Staging without Redis (or prod boot attempt): fail loudly, never fake.
+    except Exception as exc:  # noqa: BLE001 - classify, then envelope
         import json as _j
         from common import envelope as E
-        status, resp_headers = 503, {"Content-Type": "application/json"}
-        payload = _j.dumps(E.err(f"staging backend unavailable: {exc}", "UNAVAILABLE")).encode()
-    except Exception as exc:  # noqa: BLE001 - envelope, never stack trace
-        import json as _j
-        from common import envelope as E
-        status, resp_headers = 500, {"Content-Type": "application/json"}
-        payload = _j.dumps(E.err("internal error", E.E_INTERNAL)).encode()
+        from integrations.redis_store import RedisConnectionError
+        if isinstance(exc, (RedisConnectionError, TimeoutError, RuntimeError)):
+            # Staging without Redis (or prod boot attempt): fail loudly, never fake.
+            status, resp_headers = 503, {"Content-Type": "application/json"}
+            payload = _j.dumps(E.err(f"staging backend unavailable: {exc}", "UNAVAILABLE")).encode()
+        else:
+            status, resp_headers = 500, {"Content-Type": "application/json"}
+            payload = _j.dumps(E.err("internal error", E.E_INTERNAL)).encode()
     phrases = {200: "OK", 201: "Created", 401: "Unauthorized", 403: "Forbidden",
                404: "Not Found", 405: "Method Not Allowed", 409: "Conflict",
                422: "Unprocessable Entity", 429: "Too Many Requests",
