@@ -2,19 +2,49 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wheel Game</title>
 <style>
-  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0a1220;
-    font-family:system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
+  :root{
+    --dl-navy:#0a1220;--dl-blue:#16243f;--dl-text:#ffffff;--dl-muted:#b8c6e2;
+    --dl-gold:#ffd54a;--dl-success:#86efac;--dl-error:#fecaca;--dl-focus:#fbbf24;
+    --sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);
+    --sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px);
+  }
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--dl-navy);
+    color:var(--dl-text);font-family:system-ui,-apple-system,sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
   #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
-  #err{position:fixed;top:8px;left:8px;right:8px;color:#ffd54a;font-size:13px;display:none;
-    background:rgba(0,0,0,.6);padding:8px;border-radius:8px;z-index:10}
+  #c:focus-visible{outline:3px solid var(--dl-focus);outline-offset:-3px}
+  #err{position:fixed;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);
+    top:calc(var(--sat) + 8px);z-index:10;display:none;align-items:center;gap:10px;
+    padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.4;
+    background:rgba(5,9,20,.96);color:#fff;border:1px solid rgba(255,255,255,.28);
+    box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
+  #err[data-kind="error"]{border-color:#f87171;background:rgba(69,10,10,.97);color:var(--dl-error)}
+  #err[data-kind="success"]{border-color:#4ade80;background:rgba(5,46,22,.97);color:#dcfce7}
+  #err[data-kind="info"]{border-color:#93c5fd}
+  #err button{all:unset;flex:0 0 44px;width:44px;height:44px;margin:-8px -8px -8px auto;pointer-events:auto;
+    display:grid;place-items:center;border-radius:8px;color:#fff;font-size:22px;line-height:1;cursor:pointer}
+  #err button:hover{background:rgba(255,255,255,.14)}
+  #err button:focus-visible{outline:3px solid var(--dl-focus);outline-offset:1px}
+  .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+  #kbhint{position:fixed;left:calc(var(--sal) + 8px);right:calc(var(--sar) + 8px);
+    bottom:calc(var(--sab) + 4px);z-index:9;display:none;padding:7px 10px;
+    border-radius:8px;font-size:12px;line-height:1.35;text-align:center;color:#e2e8f0;
+    background:rgba(5,9,20,.94);border:1px solid rgba(255,255,255,.28)}
+  body.kb #kbhint{display:block}
+  noscript p{margin:0;padding:calc(var(--sat) + 24px) 24px calc(var(--sab) + 24px);
+    font-size:16px;line-height:1.5}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div id="err"></div>
+<canvas id="c" role="img" tabindex="0" aria-label="Wheel game. Select a betting option, choose a chip value, then activate the selected option to place a bet. Keyboard: 1 to 8 select an option, Q W E R select a chip, Enter confirms the bet, S toggles sound, H opens history, question mark opens help, M opens menu, and Escape closes panels."></canvas>
+<div id="err" role="status" aria-live="polite" aria-atomic="true" data-kind="info"><button type="button" aria-label="Dismiss message">&times;</button><span id="errtext"></span></div>
+<div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="kbhint">Keys: 1-8 option &middot; Q/W/E/R chip &middot; Enter bet &middot; H history &middot; ? help &middot; M menu &middot; S sound &middot; Esc close</div>
+<noscript><p>This wheel game needs JavaScript enabled to load the current round and accept bets.</p></noscript>
 <script>
 /* Shared wheel client (Greedy Monkey + Baby King) — server-authoritative.
  * Launch: /greedy-monkey/?session=<id>&room=<room> (or /baby-king/).
@@ -28,19 +58,80 @@
   const SESSION = q.get('session') || '';
   const ROOM = q.get('room') || 'default';
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-  const errBox = document.getElementById('err');
-  let W = 0, H = 0;
-  function resize() {
-    const DPR = Math.min(3, window.devicePixelRatio || 1);
-    W = window.innerWidth; H = window.innerHeight;
-    cv.width = W * DPR; cv.height = H * DPR;
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  }
-  window.addEventListener('resize', resize); resize();
+  const errBox = document.getElementById('err'), errText = document.getElementById('errtext');
+  const liveEl = document.getElementById('live');
+  const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let W = 0, H = 0, DPR = 1, toastTimer = null;
+  let SAFE = { t: 0, b: 0, l: 0, r: 0 };
   const S = { snap: null, selDenom: 100, selOpt: null, connected: false,
-    msg: '', panel: null, hist: [], recent: [], earn: null, auto: null };
-  try { S.sound = localStorage.getItem('wheel_sound') !== 'off'; } catch (e) { S.sound = true; }
-  function showErr(t) { errBox.style.display = t ? 'block' : 'none'; errBox.textContent = t || ''; }
+    msg: '', msgKind: 'info', panel: null, hist: [], recent: [], earn: null, auto: null };
+
+  function readSafeAreas() {
+    try {
+      const cs = getComputedStyle(document.documentElement);
+      const n = k => parseFloat(cs.getPropertyValue(k)) || 0;
+      SAFE = { t: n('--sat'), b: n('--sab'), l: n('--sal'), r: n('--sar') };
+    } catch (e) { SAFE = { t: 0, b: 0, l: 0, r: 0 }; }
+  }
+  function resize() {
+    DPR = Math.min(3, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    readSafeAreas();
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+  resize();
+
+  function U() {
+    const s = Math.max(0.9, Math.min(1.35, Math.min(W, H) / 420));
+    return { s, f: n => Math.max(12, Math.round(n * s)) + 'px' };
+  }
+  function announce(text) {
+    if (!liveEl || !text) return;
+    liveEl.textContent = '';
+    setTimeout(() => { liveEl.textContent = text; }, 30);
+  }
+  function showErr(t) { errBox.style.display = t ? 'flex' : 'none'; }
+  function setToast(text, kind) {
+    if (!text) { showErr(''); return; }
+    errText.textContent = text;
+    errBox.dataset.kind = kind || 'info';
+    showErr('1');
+    if (toastTimer) clearTimeout(toastTimer);
+    if (kind !== 'error') toastTimer = setTimeout(() => showErr(''), 3800);
+    announce(text);
+  }
+  function clearToast() {
+    if (toastTimer) clearTimeout(toastTimer);
+    showErr('');
+  }
+  function status(text, kind) {
+    S.msg = text || '';
+    S.msgKind = kind || 'info';
+    if (text) setToast(text, kind); else clearToast();
+  }
+  errBox.querySelector('button').addEventListener('click', clearToast);
+
+  try { S.sound = localStorage.getItem('wheel_sound') !== 'off'; }
+  catch (e) { S.sound = true; status('Sound is on for this visit; its preference could not be saved.', 'info'); }
+
+  function friendlyError(e) {
+    const m = String((e && e.message) || e || 'error');
+    if (/INSUFFICIENT_BALANCE/i.test(m)) return 'Not enough balance for that chip.';
+    if (/BETTING_CLOSED|BETTING_CLOSED_RACE/i.test(m)) return 'Betting is closed for this round.';
+    if (/DUPLICATE_REQUEST/i.test(m)) return 'That bet was already accepted.';
+    if (/UNAUTHENTICATED|UNAUTHORIZED|UNAUTHORISED|SESSION_EXPIRED|INVALID_SESSION|TOKEN_EXPIRED|Unknown session/i.test(m)) {
+      return 'Your session has expired. Reopen the game to continue.';
+    }
+    if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) {
+      return 'Network problem. Check your connection and try again.';
+    }
+    if (/JSON|SyntaxError|Unexpected token/i.test(m)) return 'The server returned an unreadable response. Try again.';
+    const clean = m.replace(/^[A-Z_]+:\s*/, '').trim();
+    return clean || 'Something went wrong. Please try again.';
+  }
   async function api(path, opts) {
     opts = opts || {};
     opts.headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION }, opts.headers || {});
@@ -54,6 +145,12 @@
     return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g,
       c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
   }
+  function toggleSound() {
+    S.sound = !S.sound;
+    try { localStorage.setItem('wheel_sound', S.sound ? 'on' : 'off'); }
+    catch (e) { status('Sound changed for this visit; the preference could not be saved.', 'info'); return; }
+    status('Sound ' + (S.sound ? 'on' : 'off'), 'info');
+  }
   function rr(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -61,154 +158,221 @@
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
+  function wheel() {
+    return { cx: W / 2 + (SAFE.r - SAFE.l) / 2, cy: H * 0.40 + SAFE.t,
+      R: Math.min(W * 0.34, 150), orbit: Math.min(W * 0.34, 150) + 44 };
+  }
   function draw(now) {
     ctx.clearRect(0, 0, W, H);
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#0a1220'); g.addColorStop(1, '#16243f');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    const s = S.snap;
+    const s = S.snap, u = U(), reduced = !!(motionQuery && motionQuery.matches);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    // header
-    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
-    ctx.fillText(GAME.toUpperCase().replace(/-/g, ' ') + ' · ' + ROOM, W / 2, 22);
-    ctx.fillStyle = S.connected ? '#7CFC98' : '#ff7b7b'; ctx.font = '13px system-ui';
-    ctx.fillText(SESSION ? (S.connected ? '● LIVE' : '○ OFFLINE') : '○ DEMO (no session)', W / 2, 42);
-    ctx.fillStyle = '#ffe9a8'; ctx.font = '12px system-ui';
-    ctx.fillText(s && s.round_id ? ('ROUND ' + (s.round_no || s.round_id)) : '—', W / 2, 58);
-    // controls
+
+    ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
+    ctx.fillText(GAME.toUpperCase().replace(/-/g, ' ') + ' · ' + ROOM,
+      W / 2 + (SAFE.r - SAFE.l) / 2, SAFE.t + 64);
+    ctx.fillStyle = S.connected ? '#86efac' : '#fecaca'; ctx.font = u.f(13);
+    ctx.fillText(SESSION ? (S.connected ? '● CONNECTED' : '○ RECONNECTING') : '○ DEMO (no session)',
+      W / 2 + (SAFE.r - SAFE.l) / 2, SAFE.t + 84);
+    ctx.fillStyle = '#ffe9a8'; ctx.font = u.f(12);
+    ctx.fillText(s && s.round_id ? ('ROUND ' + (s.round_no || s.round_id)) : '—',
+      W / 2 + (SAFE.r - SAFE.l) / 2, SAFE.t + 104);
+
     S._ctl = [];
     const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
+    const step = W < 370 ? 44 : 48;
     ctl.forEach((c, i) => {
-      const x = 26 + i * 44, y = 26;
-      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(x - 17, y - 15, 34, 30, 8); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.fillText(c[0], x, y + 1); ctx.restore();
-      S._ctl.push({ act: c[1], x, y, r: 22 });
+      const x = SAFE.l + 26 + i * step, y = SAFE.t + 26;
+      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(x - 18, y - 16, 36, 32, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(15); ctx.fillText(c[0], x, y + 1); ctx.restore();
+      S._ctl.push({ act: c[1], x, y, r: 24 });
     });
-    [['HIST', 'history', W - 96], ['AUTO', 'auto', W - 30]].forEach(a => {
-      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(a[2] - 24, 11, 48, 30, 8); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText(a[0], a[2], 27); ctx.restore();
-      S._ctl.push({ act: a[1], x: a[2], y: 26, r: 26 });
+    [['HIST', 'history', W - SAFE.r - 96], ['AUTO', 'auto', W - SAFE.r - 30]].forEach(a => {
+      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(a[2] - 24, SAFE.t + 10, 48, 32, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText(a[0], a[2], SAFE.t + 27); ctx.restore();
+      S._ctl.push({ act: a[1], x: a[2], y: SAFE.t + 26, r: 28 });
     });
-    // countdown
+
     let secs = null;
     if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
       const skew = (S.srvNow || Date.now()) - (S.locNow || Date.now());
       secs = Math.max(0, (s.betting_end_at - (Date.now() + skew)) / 1000);
     }
-    const cx = W / 2, cy = H * 0.40, R = Math.min(W * 0.34, 150);
+    const geo = wheel();
     if (secs !== null) {
-      ctx.save(); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,.25)';
-      ctx.beginPath(); ctx.arc(cx, cy, 24, 0, 7); ctx.stroke();
-      ctx.strokeStyle = secs < 5 ? '#ff5252' : '#ffd54a';
-      ctx.beginPath(); ctx.arc(cx, cy, 24, -Math.PI / 2, -Math.PI / 2 + Math.min(1, secs / 20) * Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui'; ctx.fillText(secs.toFixed(0), cx, cy);
+      ctx.save(); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,.3)';
+      ctx.beginPath(); ctx.arc(geo.cx, geo.cy, 24, 0, 7); ctx.stroke();
+      ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffd54a';
+      ctx.beginPath(); ctx.arc(geo.cx, geo.cy, 24, -Math.PI / 2, -Math.PI / 2 + Math.min(1, secs / 20) * Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(16); ctx.fillText(secs.toFixed(0), geo.cx, geo.cy);
       ctx.restore();
     }
-    // wheel: central character + surrounding options
+    const icon = GAME === 'greedy-lion' ? '🦁' : GAME.startsWith('greedy') || GAME.startsWith('monkey') ? '🐵' : '👑';
+    ctx.font = u.f(34); ctx.fillText(icon, geo.cx, geo.cy);
+
     const opts = (s && s.options) || [];
-    ctx.font = '34px system-ui';
-    ctx.fillText(GAME === 'greedy-lion' ? '🦁' : GAME.startsWith('greedy') || GAME.startsWith('monkey') ? '🐵' : '👑', cx, cy + (secs !== null ? 0 : 0));
     S._opts = [];
     opts.forEach((o, i) => {
       const a = -Math.PI / 2 + i * Math.PI * 2 / Math.max(1, opts.length);
-      const ox = cx + Math.cos(a) * (R + 44), oy = cy + Math.sin(a) * (R + 44);
+      const ox = geo.cx + Math.cos(a) * geo.orbit, oy = geo.cy + Math.sin(a) * geo.orbit;
       const win = s && s.winner && s.winner.winning_option_id === o.option_id;
       const sel = S.selOpt === o.option_id;
       ctx.save();
-      if (win) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22; }
-      ctx.fillStyle = sel ? '#ffd54a' : 'rgba(255,255,255,.08)';
+      if (win || sel) {
+        ctx.lineWidth = sel ? 4 : 3; ctx.strokeStyle = '#ffd54a';
+        ctx.beginPath(); ctx.arc(ox, oy, 38 + (reduced ? 0 : Math.sin(now / 260) * 2), 0, 7); ctx.stroke();
+      }
+      if (win && !reduced) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22; }
+      ctx.fillStyle = sel ? '#ffd54a' : 'rgba(255,255,255,.12)';
       ctx.beginPath(); ctx.arc(ox, oy, 34, 0, 7); ctx.fill();
       ctx.shadowColor = 'transparent';
       ctx.lineWidth = win || sel ? 3 : 1.5; ctx.strokeStyle = win || sel ? '#ffd54a' : o.color_hex || '#fff'; ctx.stroke();
-      ctx.font = '24px system-ui'; ctx.fillText(o.icon || '🎡', ox, oy - 8);
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui';
+      ctx.font = u.f(24); ctx.fillStyle = '#fff'; ctx.fillText(o.icon || '🎡', ox, oy - 9);
+      ctx.font = 'bold ' + u.f(12);
+      ctx.fillText(o.name + ' ×' + o.multiplier, ox, oy + 13);
       const tot = (s && s.totals && s.totals[o.option_id]) || 0;
-      ctx.fillText(o.name + ' ×' + o.multiplier, ox, oy + 14);
-      ctx.fillStyle = '#ffe9a8'; ctx.font = '10px system-ui';
-      ctx.fillText('' + tot, ox, oy + 26);
-      if (o.hot) { ctx.fillStyle = '#ff5252'; ctx.font = 'bold 10px system-ui'; ctx.fillText('HOT', ox + 26, oy - 24); }
+      ctx.font = u.f(12); ctx.fillStyle = '#ffe9a8'; ctx.fillText('' + tot, ox, oy + 27);
+      if (o.hot) { ctx.fillStyle = '#ffb4b4'; ctx.font = 'bold ' + u.f(12); ctx.fillText('HOT', ox + 27, oy - 25); }
       ctx.restore();
-      S._opts.push({ id: o.option_id, x: ox, y: oy, r: 36 });
+      S._opts.push({ id: o.option_id, option_id: o.option_id, name: o.name || o.option_id, x: ox, y: oy, r: 40 });
     });
-    // totals + earnings + recent strip
-    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 14px system-ui';
-    ctx.fillText('TOTAL ' + ((s && s.total_bet) || 0) + ' · MY ' + ((s && s.my_total_bet) || 0), W / 2, H * 0.115);
-    ctx.fillStyle = '#8fa3c8'; ctx.font = '11px system-ui';
-    if (S.earn) ctx.fillText("Today's earnings: " + S.earn.net, W / 2, H * 0.115 + 16);
+
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(14);
+    ctx.fillText('TOTAL ' + ((s && s.total_bet) || 0) + ' · MY ' + ((s && s.my_total_bet) || 0),
+      geo.cx, H * 0.115 + SAFE.t);
+    ctx.fillStyle = '#b8c6e2'; ctx.font = u.f(12);
+    if (S.earn) ctx.fillText("Today's earnings: " + S.earn.net, geo.cx, H * 0.115 + SAFE.t + 17);
     const rec = S.recent.slice(0, 8);
-    ctx.font = '15px system-ui';
-    rec.forEach((r2, i) => ctx.fillText(r2.winning_label ? (r2.winning_label[0] || '?') : '?', W / 2 - rec.length * 12 + i * 24, H * 0.66));
-    // bottom: balance + denoms
-    const by = H - Math.max(120, H * 0.17);
-    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14);
-    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
-    ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
+    ctx.font = u.f(15);
+    rec.forEach((r2, i) => ctx.fillText(r2.winning_label ? (r2.winning_label[0] || '?') : '?',
+      geo.cx - rec.length * 12 + i * 24, H * 0.66 + SAFE.t));
+
+    const by = H - Math.max(120, H * 0.17) - SAFE.b;
+    ctx.fillStyle = 'rgba(0,0,0,.52)'; ctx.fillRect(0, by - 14, W, H - by + 14 + SAFE.b);
+    ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
+    ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), geo.cx, by + 4);
     S._chips = [];
     const denoms = (s && s.denoms) || [20, 100, 500, 1000];
     const cw2 = Math.min(64, W / (denoms.length + 0.6));
     denoms.forEach((d, i) => {
-      const x = W / 2 - (denoms.length - 1) * cw2 / 2 + i * cw2, y = by + 44;
+      const x = geo.cx - (denoms.length - 1) * cw2 / 2 + i * cw2, y = by + 44;
       const sel = S.selDenom === d;
       ctx.save(); ctx.fillStyle = sel ? '#ffd54a' : '#1c2a4a';
       ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
-      ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#8fa3c8'; ctx.stroke();
-      ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold 12px system-ui';
+      ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#b8c6e2'; ctx.stroke();
+      ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold ' + u.f(12);
       ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y); ctx.restore();
-      S._chips.push({ d, x, y, r: 26 });
+      S._chips.push({ d, x, y, r: 28 });
     });
-    if (S.msg) { ctx.fillStyle = '#ffd54a'; ctx.font = '13px system-ui'; ctx.fillText(S.msg, W / 2, by + 84); }
-    if (S.panel) drawPanel();
+    if (S.msg) {
+      ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8';
+      ctx.font = u.f(13); ctx.fillText(S.msg, geo.cx, by + 84);
+    } else if (!document.body.classList.contains('kb')) {
+      ctx.fillStyle = '#d8e1f2'; ctx.font = u.f(12);
+      ctx.fillText('select an option, choose a chip, then confirm', geo.cx, H - 12 - SAFE.b);
+    }
+
+    if (!S.snap && !S._everConnected) {
+      ctx.fillStyle = 'rgba(0,0,0,.62)'; rr(W / 2 - 135, H * 0.44, 270, 50, 12); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
+      ctx.fillText('Loading wheel…', W / 2, H * 0.44 + 25);
+    } else if (S._everConnected && !S.connected) {
+      ctx.fillStyle = 'rgba(120,20,20,.94)'; rr(W / 2 - 120, H * 0.44, 240, 44, 10); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(14);
+      ctx.fillText('Reconnecting…', W / 2, H * 0.44 + 22);
+    }
+    if (S.panel) drawPanel(u);
     requestAnimationFrame(draw);
   }
-  function drawPanel() {
+
+  function drawPanel(u) {
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,.72)'; ctx.fillRect(0, 0, W, H);
-    const pw = Math.min(W - 40, 420), ph = Math.min(H - 120, 380);
-    const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    ctx.fillStyle = 'rgba(0,0,0,.78)'; ctx.fillRect(0, 0, W, H);
+    const availableH = Math.max(220, H - SAFE.t - SAFE.b - 48);
+    const pw = Math.min(W - 40 - SAFE.l - SAFE.r, 440), ph = Math.min(availableH, 390);
+    const px = (SAFE.l + (W - SAFE.l - SAFE.r - pw) / 2);
+    const py = SAFE.t + (availableH - ph) / 2;
     ctx.fillStyle = '#101c33'; rr(px, py, pw, ph, 14); ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = '#ffd54a'; ctx.stroke();
-    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 16px system-ui';
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(16);
     ctx.fillText(S.panel.toUpperCase(), W / 2, py + 28);
-    ctx.fillStyle = '#fff'; ctx.font = '13px system-ui';
+    ctx.fillStyle = '#fff'; ctx.font = u.f(13);
     let lines = [];
-    if (S.panel === 'help') lines = ['Tap an option, tap again to bet.', 'Chips from server denoms.', 'AUTO configures Auto Bet/Play.', 'Tap outside to close.'];
-    else if (S.panel === 'menu') lines = ['Sound: ' + (S.sound ? 'ON' : 'OFF'), 'Session: ' + (SESSION || 'none'), 'Room: ' + ROOM];
-    else if (S.panel === 'auto') lines = S.auto ? ['option=' + S.auto.option_id, 'amount=' + S.auto.amount, 'rounds_left=' + S.auto.rounds_left] : ['No Auto Bet set. Use the API:', 'POST ' + G() + '/autobet'];
-    else lines = S.hist.length ? S.hist.slice(-10).map(h => (h.round_id || '').slice(-6) + ' · ' + h.option_id + ' · ' + h.amount) : ['No bets yet.'];
+    if (S.panel === 'help') lines = [
+      'Tap an option, choose a chip, then confirm.',
+      'Chips: Q / W / E / R or tap a chip.',
+      'Keys: 1-8 option, Enter bet.',
+      'H history · ? help · M menu · S sound.',
+      'Auto configures Auto Bet/Play via the API.',
+      'Escape or tap outside closes this panel.'
+    ];
+    else if (S.panel === 'menu') lines = ['Sound: ' + (S.sound ? 'ON' : 'OFF'),
+      'Session: ' + (SESSION ? 'active' : 'none (demo mode)'), 'Room: ' + ROOM];
+    else if (S.panel === 'auto') lines = S.auto ? ['option=' + S.auto.option_id,
+      'amount=' + S.auto.amount, 'rounds_left=' + S.auto.rounds_left] :
+      ['No Auto Bet set. Use the API:', 'POST ' + G() + '/autobet'];
+    else lines = S._historyLoading ? ['Loading history…'] : S.hist.length ?
+      S.hist.slice(-10).map(h => (h.round_id || '').slice(-6) + ' · ' + h.option_id + ' · ' + h.amount) :
+      ['No bets yet.'];
     lines.forEach((t, i) => ctx.fillText(t, W / 2, py + 58 + i * 22));
-    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 13px system-ui';
-    ctx.fillText('tap outside to close', W / 2, py + ph - 16);
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(13);
+    ctx.fillText('Escape or tap outside to close', W / 2, py + ph - 16);
     ctx.restore();
     S._panelBox = { x: px, y: py, w: pw, h: ph };
+  }
+
+  function selectChip(d) {
+    S.selDenom = d;
+    status('Chip ' + d + ' selected', 'info');
+  }
+  function selectOption(o) {
+    if (S.selOpt === o.option_id) {
+      placeBet(o.option_id);
+      S.selOpt = null;
+    } else {
+      S.selOpt = o.option_id;
+      status((o.name || o.option_id) + ' selected — choose a chip and confirm ' + S.selDenom, 'info');
+    }
   }
   cv.addEventListener('pointerdown', async e => {
     const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     if (S.panel) {
       const b = S._panelBox;
-      if (!b || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) S.panel = null;
+      if (!b || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) {
+        S.panel = null;
+        announce('Panel closed');
+      }
       return;
     }
     for (const c of (S._ctl || [])) {
       if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
-        if (c.act === 'back') { try { history.back(); } catch (e2) { S.msg = 'Back: no history'; } return; }
-        if (c.act === 'sound') { S.sound = !S.sound; try { localStorage.setItem('wheel_sound', S.sound ? 'on' : 'off'); } catch (e2) {} return; }
-        S.panel = c.act; if (c.act === 'history') openHistory();
-        return;
+        if (c.act === 'back') { try { history.back(); } catch (e2) { status('There is no previous page to go back to.', 'info'); } return; }
+        if (c.act === 'sound') { toggleSound(); return; }
+        if (c.act === 'history') { openHistory(); return; }
+        S.panel = c.act; announce(c.act + ' panel opened'); return;
       }
     }
+    if (betBusy) { status('Please wait — your bet is still sending.', 'info'); return; }
     for (const c of (S._chips || [])) {
-      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) { S.selDenom = c.d; S.msg = ''; return; }
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) { selectChip(c.d); return; }
     }
     for (const o of (S._opts || [])) {
-      if ((x - o.x) ** 2 + (y - o.y) ** 2 < o.r * o.r) {
-        if (S.selOpt === o.id) { placeBet(o.id); S.selOpt = null; }
-        else { S.selOpt = o.id; S.msg = o.id + ' selected — tap again to bet ' + S.selDenom; }
-        return;
-      }
+      if ((x - o.x) ** 2 + (y - o.y) ** 2 < o.r * o.r) { selectOption(o); return; }
     }
   });
+
+  let betBusy = false;
   async function placeBet(opt) {
-    S.msg = 'Placing ' + S.selDenom + ' on ' + opt + '…';
+    if (betBusy) { status('Please wait — your bet is still sending.', 'info'); return; }
+    if (S.snap && S.snap.status !== 'BETTING_OPEN') {
+      status('Betting is closed for this round.', 'error');
+      return;
+    }
+    if (!S.snap) { status('The wheel is still loading. Try again in a moment.', 'error'); return; }
+    betBusy = true;
+    status('Placing ' + S.selDenom + ' on ' + opt + '…', 'info');
     try {
       const cur = S.snap && S.snap.round_id ? S.snap.round_id : 'current';
       const d = await api(G() + '/rounds/' + encodeURIComponent(cur) + '/bets?room=' + encodeURIComponent(ROOM), {
@@ -216,31 +380,87 @@
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
         body: JSON.stringify({ option_id: opt, amount: S.selDenom })
       });
-      S.msg = 'Accepted ' + d.bet_id;
-    } catch (e) { S.msg = String(e.message || e); }
-    refresh();
+      status('Bet accepted: ' + S.selDenom + ' on ' + opt + '.', 'success');
+    } catch (e) {
+      status(friendlyError(e), 'error');
+    } finally {
+      setTimeout(() => { betBusy = false; }, 400);
+      refresh();
+    }
   }
   async function openHistory() {
     S.panel = 'history';
+    S._historyLoading = true;
+    announce('History panel opened; loading bets');
     try {
       const h = await api(G() + '/history?room=' + encodeURIComponent(ROOM));
       S.hist = h.bets || []; S.earn = h.earnings_today || null;
-    } catch (e) { S.hist = []; }
+    } catch (e) {
+      S.hist = [];
+      status(friendlyError(e), 'error');
+    } finally {
+      S._historyLoading = false;
+    }
   }
   async function refresh() {
+    const wasConnected = S.connected;
     try {
+      const prev = S.snap;
       S.snap = await api(G() + '/rounds/current?room=' + encodeURIComponent(ROOM));
       S.recent = (S.snap && S.snap.recent) || [];
       if (S.snap && S.snap.denoms && !S.snap.denoms.includes(S.selDenom)) S.selDenom = S.snap.denoms[0];
       S.srvNow = Date.now(); S.locNow = Date.now();
-      showErr('');
-    } catch (e) { if (SESSION) showErr('API: ' + e.message); }
+      S.connected = true;
+      if (!S._everConnected) announce('Wheel connected');
+      else if (!wasConnected) announce('Connection restored');
+      S._everConnected = true;
+      if (prev && prev.round_id !== S.snap.round_id) announce('New round ' + (S.snap.round_no || S.snap.round_id));
+      if (prev && prev.status !== S.snap.status) announce('Round status: ' + S.snap.status);
+      const winner = S.snap.winner && (S.snap.winner.winning_option_id || S.snap.winner.winning_label);
+      const prevWinner = prev && prev.winner && (prev.winner.winning_option_id || prev.winner.winning_label);
+      if (winner && winner !== prevWinner) status('Result: ' + (S.snap.winner.winning_label || winner), 'success');
+    } catch (e) {
+      S.connected = false;
+      if (wasConnected || S._everConnected) announce('Connection lost; reconnecting');
+      status(friendlyError(e), 'error');
+    }
   }
   function connect() {
-    if (!SESSION) { refresh(); setInterval(refresh, 3000); return; }
-    refresh(); setInterval(refresh, 2000);
-    S.connected = true;
+    const interval = SESSION ? 2000 : 3000;
+    setInterval(refresh, interval);
   }
+  window.addEventListener('keydown', e => {
+    document.body.classList.add('kb');
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (k === 'Escape') {
+      if (S.panel) { S.panel = null; announce('Panel closed'); }
+      e.preventDefault(); return;
+    }
+    if (S.panel) return;
+    if (/^[1-8]$/.test(k)) {
+      const o = S.snap && S.snap.options && S.snap.options[Number(k) - 1];
+      if (o) selectOption(o); else announce('That betting option is not available');
+      e.preventDefault(); return;
+    }
+    const denomKeys = { q: 0, w: 1, e: 2, r: 3 };
+    if (Object.prototype.hasOwnProperty.call(denomKeys, k.toLowerCase())) {
+      const denoms = (S.snap && S.snap.denoms) || [20, 100, 500, 1000];
+      const d = denoms[denomKeys[k.toLowerCase()]];
+      if (d) selectChip(d);
+      e.preventDefault(); return;
+    }
+    if (k === 'Enter') {
+      if (S.selOpt) { const opt = S.selOpt; S.selOpt = null; placeBet(opt); }
+      else status('Choose a betting option first.', 'info');
+      e.preventDefault(); return;
+    }
+    if (k === 'h' || k === 'H') { openHistory(); e.preventDefault(); return; }
+    if (k === '?') { S.panel = 'help'; announce('Help panel opened'); e.preventDefault(); return; }
+    if (k === 'm' || k === 'M') { S.panel = 'menu'; announce('Menu panel opened'); e.preventDefault(); return; }
+    if (k === 's' || k === 'S') { toggleSound(); e.preventDefault(); }
+  });
+
   refresh(); connect(); requestAnimationFrame(draw);
 })();
 </script>
