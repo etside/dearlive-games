@@ -204,6 +204,13 @@ class Room:
         self.members[player_id] = {"joined_at": int(time.time() * 1000)}
         return {"room_id": self.room_id, "player_id": player_id}
 
+    def leave_session(self, player_id: str) -> dict:
+        with self.lock:
+            removed = player_id in self.members
+            self.members.pop(player_id, None)
+            return {"room_id": self.room_id, "player_id": player_id,
+                    "removed": removed, "seats": sorted(self.members)}
+
     # ---- rounds ----
     def start_round(self, now_ms: int, seed_hex: Optional[str] = None) -> Round:
         import secrets

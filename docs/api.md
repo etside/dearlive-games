@@ -26,6 +26,34 @@ machine spec: `docs/openapi.yaml`, traceability: `docs/traceability.md`.
 | GET | `/api/v1/admin/games` | game inventory (admin) |
 | GET/PUT | `/api/v1/admin/games/{gameId}/config` | game config read (admin) / update (superadmin) |
 
+## Provider API (B2B, HMAC-signed)
+
+Canonical contract: `docs/openapi.yaml` (OpenAPI 3.1) and `docs/provider-integration.md`.
+Runtime reference: `/openapi.json` and `/docs`. Served when a provider context is
+configured; shared legacy paths keep their previous behaviour otherwise.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/v1/provider/health` | – | liveness (public, reveals no secret) |
+| GET | `/api/v1/games` | HMAC | provider catalog (teen_patti_pro) |
+| POST | `/api/v1/sessions` `{player_id,...}` | HMAC | create session + session_token + launch_url |
+| GET | `/api/v1/sessions/{id}` | HMAC or own bearer | read session |
+| DELETE | `/api/v1/sessions/{id}` | HMAC | end session, revoke tokens |
+| GET | `/api/v1/teen-patti/tables` | HMAC | tables + live status |
+| GET | `/api/v1/teen-patti/tables/{tableId}` | HMAC | one table |
+| POST | `/api/v1/teen-patti/tables/{tableId}/join` | HMAC | seat a player |
+| POST | `/api/v1/teen-patti/tables/{tableId}/leave` | HMAC | release a seat |
+| POST | `/api/v1/teen-patti/tables/{tableId}/action` | HMAC + `Idempotency-Key` | bet (`action:"bet"` only in V1) |
+| GET | `/api/v1/teen-patti/tables/{tableId}/state` | HMAC | authoritative state |
+| GET | `/api/v1/teen-patti/tables/{tableId}/history` | HMAC | settled rounds |
+| GET | `/api/v1/players/{playerId}/balance` | HMAC | operator-owned balance |
+| POST | `/api/v1/wallet/debit` | HMAC + `Idempotency-Key` | reserve stake |
+| POST | `/api/v1/wallet/credit` | HMAC + `Idempotency-Key` | payout |
+| POST | `/api/v1/wallet/rollback` | HMAC + `Idempotency-Key` | compensating credit |
+| GET | `/api/v1/wallet/transactions/{playerId}` | HMAC | immutable ledger |
+| GET | `/api/v1/provider/launch/{session_token}` | token | 302 to the game client |
+| WS | `/ws/game` | `{"session_token":"gst_..."}` | snapshot + event push |
+
 ## Teen Patti Pro legacy routes (unchanged, still served)
 
 | Method | Path | Auth | Purpose |

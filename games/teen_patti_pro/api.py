@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Teen Patti Pro REST API (stdlib only). Envelope on all responses.
 
-Auth: Bearer <session_id> (issued by POST /sessions via launch-token redeem).
-Admin: X-Admin-Key header + role check (RBAC stub: roles in ADMIN_KEYS).
+Auth (player): Bearer <session_id|gst_session_token>.
+Admin: X-Admin-Key header + role check (RBAC: roles in GAME_ADMIN_KEYS).
+Provider (B2B): /api/v1/provider/*, /api/v1/teen-patti/*, /api/v1/wallet/*,
+/api/v1/players/* — HMAC-SHA256 signed (X-API-Key, X-Timestamp, X-Nonce,
+X-Signature), handled by provider/router.py.
 """
 import argparse
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -62,6 +66,8 @@ class Handler(BaseHTTPRequestHandler):
     game_enabled: dict = {}  # game_id/alias -> bool (admin enable/disable)
 
     TEEN_IDS = {"teen-patti-pro", "teen_patti"}
+    provider_ctx: object = None
+    provider_tokens: object = None
     WHEEL_ALIAS = {"greedy-monkey": "greedy-monkey", "greedy": "greedy-monkey",
                    "greedy_monkey": "greedy-monkey", "monkey-wheel": "greedy-monkey",
                    "monkey_wheel": "greedy-monkey",
@@ -118,13 +124,86 @@ class Handler(BaseHTTPRequestHandler):
         self.send(table.get(exc.code, 500),
                   E.err(str(exc), exc.code if exc.code in table else E.E_INTERNAL))
 
+    def raw_body(self, max_bytes=1 << 20) -> bytes:
+        """Read the request body verbatim. The provider HMAC is computed over
+        these exact bytes, so the body must never be re-serialized."""
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            return b""
+        if length <= 0:
+            return b""
+        if length > max_bytes:
+            raise ServiceError(E.E_VALIDATION, "Body too large")
+        return self.rfile.read(length)
+
+    def serve_provider(self, method: str, path: str, query: str) -> bool:
+        """Hand the B2B provider contract to provider/router.py. Returns True
+        when the request was a provider route (handled or rejected there).
+
+        When no provider context is configured the legacy routes keep serving
+        /api/v1/games and /api/v1/sessions unchanged.
+        """
+        from provider.router import dispatch, is_provider_path
+        if not is_provider_path(path):
+            return False
+        if self.provider_ctx is None:
+            return False
+        body = b""
+        if method in ("POST", "PUT", "PATCH", "DELETE"):
+            try:
+                body = self.raw_body()
+            except ServiceError as exc:
+                return self.send(413, E.err(str(exc), E.E_VALIDATION))
+        status, headers, payload = dispatch(self.provider_ctx, method, path,
+                                            query, self.headers, body)
+        if "Location" in headers:
+            self.send_response(status)
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        if isinstance(payload, str):
+            raw = payload.encode()
+            self.send_response(status)
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.send_header("Content-Type",
+                             headers.get("Content-Type", "text/plain"))
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return True
+        self.send(status, payload)
+        return True
+
+    def do_DELETE(self):
+        url = urllib.parse.urlparse(self.path)
+        try:
+            if self.serve_provider("DELETE", url.path, url.query):
+                return
+            self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        except ServiceError as exc:
+            return self.fail(exc)
+
+    def _provider_player(self, token: str):
+        """Resolve a gst_ session token to its player (player-facing bearer)."""
+        if self.provider_tokens is None or not token.startswith("gst_"):
+            return None
+        from provider.sessions import resolve as _resolve
+        record = _resolve(self.provider_tokens, token)
+        return record.get("player_id") if record else None
+
     def session_player(self):
         auth = self.headers.get("Authorization", "")
         m = re.fullmatch(r"Bearer (\S+)", auth)
         if not m:
             return None
         sess = self.svc.sessions.get(m.group(1))
-        return sess.player_id if sess else None
+        if sess:
+            return sess.player_id
+        return self._provider_player(m.group(1))
 
     def session_player_any(self):
         """Player lookup across teen + wheel session stores (cross-game auth)."""
@@ -140,7 +219,7 @@ class Handler(BaseHTTPRequestHandler):
             sess = wsf.sessions.get(sid)
             if sess:
                 return sess.player_id
-        return None
+        return self._provider_player(sid)
 
     def admin_role(self):
         return ADMIN_KEYS.get(self.headers.get("X-Admin-Key", ""))
@@ -331,6 +410,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         path, qs = url.path, urllib.parse.parse_qs(url.query)
         try:
+            if self.serve_provider("GET", path, url.query):
+                return
             if path in ("/greedy-monkey", "/greedy-monkey/"):
                 return self.serve_wheel()
             if path in ("/greedy-lion", "/greedy-lion/"):
@@ -603,6 +684,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         path = url.path
         try:
+            if self.serve_provider("POST", path, url.query):
+                return
             if path == "/api/v1/sessions":
                 body, err = parse_body(self)
                 if err:
@@ -847,12 +930,40 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _start_sweeper(interval_s: float = 1.0):
+    """Close -> result -> settle expired betting windows in the background.
+
+    The serverless deployment sweeps lazily per request; a long-lived server
+    needs this so timed rounds settle without an external scheduler.
+    """
+    import threading
+    import time as _time
+
+    def loop():
+        while True:
+            try:
+                Handler.svc.sweep()
+            except Exception:
+                pass
+            _time.sleep(interval_s)
+
+    thread = threading.Thread(target=loop, name="teen-patti-sweeper", daemon=True)
+    thread.start()
+    return thread
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=int(__import__("os").environ.get("GAME_API_PORT", "5002")))
     ap.add_argument("--host", default=__import__("os").environ.get("GAME_API_HOST", "127.0.0.1"))
     ap.add_argument("--confirmed", action="store_true",
                     help="Run with TBC rules confirmed (dev/demo only, NOT real money)")
+    ap.add_argument("--no-sweeper", action="store_true",
+                    help="Disable the background round sweeper")
+    ap.add_argument("--ws-port", type=int, default=int(os.environ.get("GAME_WS_PORT", "5003")),
+                    help="WebSocket port served in-process (shares game state)")
+    ap.add_argument("--no-ws", action="store_true",
+                    help="Do not start the in-process WebSocket listener")
     args = ap.parse_args()
     from common.config import Settings
     from integrations import build_stores
@@ -894,9 +1005,23 @@ def main():
     Handler.game_enabled = {}
     Handler.game_packages = {}
     Handler.game_labels = {}
+    from provider.context import build_context
+    _ctx = build_context(Handler.svc, wallet,
+                         base_url=os.environ.get("PROVIDER_PUBLIC_BASE_URL",
+                                                 f"http://{args.host}:{args.port}"),
+                         client_path=os.environ.get("PROVIDER_CLIENT_PATH",
+                                                    "/teen-patti-pro/?session="))
+    Handler.provider_ctx = _ctx
+    Handler.provider_tokens = _ctx.tokens
+    if not args.no_sweeper:
+        _start_sweeper()
+    if not args.no_ws:
+        from .ws import start_background as _start_ws
+        _start_ws(Handler.svc, Handler.provider_tokens, args.host, args.ws_port)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"TeenPattiPro API: http://{args.host}:{args.port} "
-          f"(config {cfg.version}, confirmed={cfg.confirmed})", flush=True)
+          f"(config {cfg.version}, confirmed={cfg.confirmed}, "
+          f"provider={'on' if _ctx.keys else 'no-keys'})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

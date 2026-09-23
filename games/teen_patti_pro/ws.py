@@ -2,7 +2,8 @@
 """Minimal RFC6455 WebSocket server (stdlib only) for Teen Patti Pro push.
 
 Protocol (JSON text frames):
-  C->S {"action":"subscribe","room":"<room>","session":"<session_id>"}
+  C->S {"action":"subscribe","session":"<session_id>"}
+  C->S {"session_token":"gst_..."}            (provider session token)
   S->C {"kind":"snapshot","data":{...}}              (visibility-safe state)
   S->C {"kind":"event","data":{...round.tick|bet.accepted|...}}  (serverTime + seq)
   S->C {"kind":"error","data":{"code":...,"message":...}}
@@ -10,7 +11,25 @@ Protocol (JSON text frames):
 
 Bets are REST-only (safer: headers + idempotency keys). WS is push + snapshot.
 Ticks: server broadcasts round.tick 1/s per room with an open round.
+The room is always taken from the authenticated session, never from the client.
 """
+
+PROVIDER_EVENTS = {
+    "game.session.created": "game.session.created",
+    "player.joined": "player.joined",
+    "player.left": "player.left",
+    "round.started": "game.started",
+    "bet.accepted": "bet.placed",
+    "bet.rejected": "bet.rejected",
+    "betting.closed": "betting.closed",
+    "result.published": "game.finished",
+    "settlement.completed": "round.settled",
+    "round.cancelled": "round.cancelled",
+    "error": "game.error",
+}
+UNSUPPORTED_PROVIDER_EVENTS = (
+    "turn.started", "player.folded", "show.requested",
+)
 import argparse
 import base64
 import hashlib
@@ -67,10 +86,33 @@ def _recv_frame(conn: socket.socket):
 
 
 class Hub:
-    def __init__(self, svc):
+    def __init__(self, svc, tokens=None):
         self.svc = svc
+        self.tokens = tokens
         self.lock = threading.Lock()
         self.rooms = {}  # room_id -> set[(conn, player_id)]
+
+    def resolve_session(self, payload: dict):
+        """Return (session, player_id) from a session id or provider token.
+
+        The B2B shared secret is never accepted here; only a session id or a
+        short-lived gst_ session token.
+        """
+        token = str(payload.get("session_token") or "").strip()
+        if token and self.tokens is not None:
+            from provider.sessions import resolve as _resolve
+            record = _resolve(self.tokens, token)
+            if record is None:
+                return None, ""
+            session = self.svc.sessions.get(record["session_id"])
+            if session is None:
+                return None, ""
+            return session, session.player_id
+        session_id = str(payload.get("session") or token or "").strip()
+        session = self.svc.sessions.get(session_id) if session_id else None
+        if session is None:
+            return None, ""
+        return session, session.player_id
 
     def join(self, room, conn, player_id):
         with self.lock:
@@ -139,13 +181,14 @@ def handle(conn: socket.socket, hub: Hub):
                 continue
             if m.get("action") == "ping":
                 _send_frame(conn, json.dumps({"kind": "pong"}))
-            elif m.get("action") == "subscribe":
-                sess = hub.svc.sessions.get(m.get("session", ""))
-                if not sess:
+            elif m.get("action") == "subscribe" or m.get("session_token"):
+                sess, player = hub.resolve_session(m)
+                if sess is None:
                     _send_frame(conn, json.dumps({"kind": "error", "data": {
-                        "code": "UNAUTHENTICATED", "message": "Unknown session"}}))
+                        "code": "UNAUTHENTICATED",
+                        "message": "Unknown or expired session"}}))
                     continue
-                room, player = m.get("room", sess.room_id), sess.player_id
+                room = sess.room_id  # server-authoritative, never client-supplied
                 hub.svc.sessions.touch(sess.session_id)
                 hub.join(room, conn, player)
                 _send_frame(conn, json.dumps({
@@ -161,43 +204,63 @@ def handle(conn: socket.socket, hub: Hub):
             pass
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=5003)
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--api-port", type=int, default=5002)
-    args = ap.parse_args()
-    # Share one service with REST via import; standalone dev instance here.
-    from .api import Handler
-    from .config import DEFAULT_CONFIG
-    from .service import TeenPattiService
-    if Handler.svc is None:
-        Handler.svc = TeenPattiService(config=DEFAULT_CONFIG)
-    hub = Hub(Handler.svc)
-    # Fan out service webhook events to WS room channels.
-    orig_fire = Handler.svc._fire
+def start_background(svc, tokens=None, host="127.0.0.1", port=5003):
+    """Serve WebSocket in the current process, sharing the REST service.
+
+    Running the socket in its own process would give it a second in-memory
+    game state, so the API server starts it in-process instead.
+    """
+    hub = Hub(svc, tokens)
+    orig_fire = svc._fire
 
     def fanout(kind, data):
         ev = orig_fire(kind, data)
         room = data.get("room_id") or ""
         if room:
             hub.push(room, {"seq": -1, "kind": kind,
+                            "provider_event": PROVIDER_EVENTS.get(kind, kind),
                             "serverTime": ev["serverTime"], **data})
         return ev
 
-    Handler.svc._fire = fanout
+    svc._fire = fanout
     threading.Thread(target=hub.tick_loop, daemon=True).start()
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind((args.host, args.port))
+    srv.bind((host, port))
     srv.listen(50)
+
+    def accept_loop():
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=handle, args=(conn, hub), daemon=True).start()
+
+    threading.Thread(target=accept_loop, daemon=True).start()
+    return hub, srv
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=5003)
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--api-port", type=int, default=5002)
+    args = ap.parse_args()
+    from .api import Handler
+    from .config import DEFAULT_CONFIG
+    from .service import TeenPattiService
+    if Handler.svc is None:
+        Handler.svc = TeenPattiService(config=DEFAULT_CONFIG)
+    hub, srv = start_background(Handler.svc, getattr(Handler, "provider_tokens", None),
+                                args.host, args.port)
     print(f"TeenPattiPro WS: ws://{args.host}:{args.port} (api :{args.api_port})", flush=True)
     try:
         while True:
-            conn, _ = srv.accept()
-            threading.Thread(target=handle, args=(conn, hub), daemon=True).start()
+            time.sleep(3600)
     except KeyboardInterrupt:
         pass
+        srv.close()
 
 
 if __name__ == "__main__":

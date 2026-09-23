@@ -122,6 +122,19 @@ def _run_handler(method, path, query, headers, body):
     h.game_enabled = dict(hstate.get("game_enabled", {}))
     h.game_packages = dict(hstate.get("game_packages", {}))
     h.game_labels = dict(hstate.get("game_labels", {}))
+    h.provider_ctx = None
+    h.provider_tokens = None
+    try:
+        from provider.context import staging_context
+        _pctx = staging_context(r, teen)
+        if not _pctx.base_url:
+            _host = (headers or {}).get("Host") or ""
+            if _host:
+                _pctx.base_url = f"https://{_host}"
+        h.provider_ctx = _pctx
+        h.provider_tokens = _pctx.tokens
+    except Exception:
+        pass
     locks = []
     locked = True
     # Staging issuance + session-open take no room state; never lock them.
@@ -183,6 +196,8 @@ def _run_handler(method, path, query, headers, body):
                 h.do_POST()
             elif method == "PUT":
                 h.do_PUT()
+            elif method == "DELETE":
+                h.do_DELETE()
             else:
                 return 405, {"Content-Type": "application/json"}, json.dumps(
                     E.err("method not allowed", E.E_VALIDATION)).encode()

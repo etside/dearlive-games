@@ -71,6 +71,9 @@ class Settings:
     webhook_signing_method: str = "HMAC-SHA256"
     # Game-side Postgres (records only, no balances)
     database_url: str = ""
+    # B2B provider API (operator credentials; secret never ships in an app)
+    provider_api_keys: Tuple[Tuple[str, str], ...] = ()
+    provider_public_base_url: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -86,6 +89,15 @@ class Settings:
         single = _get("GAME_ADMIN_KEY", "")
         if single:
             pairs.append((single, "admin"))
+        provider_raw = _get("PROVIDER_API_KEYS", "")  # "key_id:secret,key2:secret2"
+        provider_pairs = []
+        for part in provider_raw.split(","):
+            part = part.strip()
+            if not part or ":" not in part:
+                continue
+            k, s = part.split(":", 1)
+            if k.strip() and s.strip():
+                provider_pairs.append((k.strip(), s.strip()))
         return cls(
             app_env=_get("APP_ENV", "sandbox"),
             games_base_url=_get("GAMES_BASE_URL", ""),
@@ -93,6 +105,8 @@ class Settings:
             api_port=_get_int("GAME_API_PORT", 5002),
             ws_port=_get_int("GAME_WS_PORT", 5003),
             admin_keys=tuple(pairs),
+            provider_api_keys=tuple(provider_pairs),
+            provider_public_base_url=_get("PROVIDER_PUBLIC_BASE_URL", ""),
             dearlive_api_base_url=_get("DEARLIVE_API_BASE_URL", ""),
             dearlive_auth_type=_get("DEARLIVE_AUTH_TYPE", ""),
             dearlive_client_id=_get("DEARLIVE_CLIENT_ID", ""),
@@ -143,4 +157,10 @@ class Settings:
                 errors[k] = "required in production (see .env.example)"
         if not self.admin_keys:
             errors["admin_keys"] = "GAME_ADMIN_KEYS required in production"
+        if not self.provider_api_keys:
+            errors["provider_api_keys"] = ("PROVIDER_API_KEYS required in production "
+                                           "(B2B operator credentials)")
+        if not self.provider_public_base_url:
+            errors["provider_public_base_url"] = ("PROVIDER_PUBLIC_BASE_URL required "
+                                                  "in production (launch_url origin)")
         return errors

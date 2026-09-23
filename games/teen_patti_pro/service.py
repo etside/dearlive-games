@@ -57,6 +57,8 @@ class TeenPattiService:
         self.webhook_secret = webhook_secret
         self.rooms: Dict[str, Room] = {}
         self.settled_bet_ids = set()  # UNIQUE settlement.bet_id guard
+        self.round_history: Dict[str, List[dict]] = {}
+        self.HISTORY_CAP = 200
         self._settle_lock = threading.Lock()  # check-add-credit must be atomic
         self.skills = skills
         self._now = lambda: int(time.time() * 1000)
@@ -114,6 +116,23 @@ class TeenPattiService:
         self._skill("on_round_start", {"room_id": room_id, "round_id": r.round_id})
         return {"round_id": r.round_id, "status": r.status.value,
                 "betting_end_at": r.betting_end_at_ms}
+
+    def ensure_round(self, room_id: str) -> dict:
+        """Start a round when the table has seated players and none is active.
+
+        Keeps a table playable without an external operator ticker; it never
+        changes an in-flight round and never fabricates cards or outcomes.
+        """
+        room = self._room(room_id)
+        current = room.round
+        if current is not None and current.status not in (RoundStatus.SETTLED,
+                                                          RoundStatus.CLOSED):
+            return {"round_id": current.round_id, "status": current.status.value,
+                    "started": False}
+        if not room.members:
+            return {"round_id": "", "status": "WAITING", "started": False}
+        started = self.start_round(room_id)
+        return {**started, "started": True}
 
     def close_betting(self, room_id: str) -> dict:
         r = self._room(room_id).close_betting(self._now())
@@ -218,8 +237,37 @@ class TeenPattiService:
         self._fire("settlement.completed", {"round_id": room.round.round_id,
                                             "settlements": len(rows)})
         self._skill("on_settle", {"room_id": room_id, "round_id": room.round.round_id})
+        self._record_history(room)
         return {"round_id": room.round.round_id, "settlements": rows,
                 "carry_out": room.round.carry_out}
+
+    def _record_history(self, room) -> None:
+        """Append one immutable row per settled round (replay-safe)."""
+        r = room.round
+        log = self.round_history.setdefault(room.room_id, [])
+        if any(row["round_id"] == r.round_id for row in log):
+            return
+        log.append({
+            "round_id": r.round_id,
+            "round_no": r.round_no,
+            "config_version": r.config_version,
+            "winners": list(r.winner_positions),
+            "pot": sum(b.amount for b in r.bets if b.status in ("accepted", "won", "lost")),
+            "settlements": [dict(row) for row in r.settlements],
+            "carry_out": r.carry_out,
+            "settled_at": int(time.time() * 1000),
+        })
+        if len(log) > self.HISTORY_CAP:
+            del log[:len(log) - self.HISTORY_CAP]
+
+    def history(self, room_id: str, limit: int = 50) -> List[dict]:
+        return list(reversed(self.round_history.get(room_id, [])))[:max(1, int(limit))]
+
+    def leave_table(self, room_id: str, player_id: str) -> dict:
+        result = self._room(room_id).leave_session(player_id)
+        self.audit.record(player_id, "player.leave", "room", room_id, after=result)
+        self._fire("player.left", {"room_id": room_id, "player_id": player_id})
+        return result
 
     def sweep(self, now_ms: int = 0) -> List[dict]:
         """Timer-expiry driver (call every second from scheduler/operator loop).

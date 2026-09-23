@@ -7,6 +7,8 @@
   },
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/index.py" },
+    { "source": "/docs", "destination": "/api/index.py" },
+    { "source": "/openapi.json", "destination": "/api/index.py" },
     { "source": "/teen-patti-pro/master/:path*", "destination": "/assets/dearlive-master/teen-patti-pro/:path*" },
     { "source": "/teen-patti-pro/assets/:path*", "destination": "/games/teen_patti_pro/client/assets/:path*" },
     { "source": "/teen-patti-pro/game.js", "destination": "/games/teen_patti_pro/client/game.js" },

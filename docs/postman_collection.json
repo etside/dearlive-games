@@ -1,17 +1,939 @@
-{"info": {"name": "DearLive Games — Teen Patti Pro", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json", "description": "Set {{base}} to developer GAMES_BASE_URL, {{session}} after launch, {{admin_key}} for operator routes."}, "variable": [{"key": "base", "value": "http://127.0.0.1:5002"}, {"key": "session", "value": ""}, {"key": "admin_key", "value": "dev-admin-key"}, {"key": "room", "value": "default"}],
-"item": [
-{"name": "health", "request": {"method": "GET", "url": "{{base}}/health"}},
-{"name": "catalog", "request": {"method": "GET", "url": "{{base}}/api/v1/games"}},
-{"name": "rules", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro"}},
-{"name": "open session (launch token)", "request": {"method": "POST", "url": "{{base}}/api/v1/sessions", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"launch_token\": \"dl_teen-patti-pro_REPLACE\"}"}}},
-{"name": "current round", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/rounds/current?room={{room}}", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
-{"name": "place bet", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/bets", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{session}}"}, {"key": "Idempotency-Key", "value": "bet-{{$guid}}"}], "body": {"mode": "raw", "raw": "{\"position\": \"A\", \"amount\": 100}"}}},
-{"name": "result", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/rounds/ROUND_ID/result?room={{room}}", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
-{"name": "history", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/history?room={{room}}", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
-{"name": "wallet", "request": {"method": "GET", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/wallet", "header": [{"key": "Authorization", "value": "Bearer {{session}}"}]}},
-{"name": "reconnect", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/reconnect", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"session_id\": \"{{session}}\", \"last_seen_seq\": 0}"}}},
-{"name": "admin start", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/start", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}},
-{"name": "admin close", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/close", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}},
-{"name": "admin result", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/result", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}},
-{"name": "admin settle", "request": {"method": "POST", "url": "{{base}}/api/v1/games/teen-patti-pro/rooms/{{room}}/rounds/settle", "header": [{"key": "X-Admin-Key", "value": "{{admin_key}}"}]}}
-]}
+{
+  "info": {
+    "name": "Teen Patti Pro \u2014 B2B Game Provider API",
+    "description": "One API connection and one API key per operator. The operator authenticates every server-to-server call with an HMAC-SHA256 signature, creates a player session, receives a launch URL, and drives wallet operations with idempotent debit/credit/rollback. The engine stays authoritative for cards, pots, timing, winners and settlement. Money of record is held by the operator; the provider keeps an immutable transaction ledger. V1 exposes the existing Teen Patti Pro engine only: the engine has a single betting phase and no player-turn/fold/show phase, so those events are not emitted.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "{{providerApiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{providerApiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:5002"
+    },
+    {
+      "key": "providerApiKey",
+      "value": "tp_live_xxx"
+    },
+    {
+      "key": "providerSecret",
+      "value": "replace-me"
+    },
+    {
+      "key": "timestamp",
+      "value": ""
+    },
+    {
+      "key": "nonce",
+      "value": ""
+    },
+    {
+      "key": "signature",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Populate signed-request headers before each call.",
+          "var base = require('crypto');",
+          "pm.variables.set('timestamp', String(Math.floor(Date.now()/1000)));",
+          "pm.variables.set('nonce', base.randomBytes(8).toString('hex'));",
+          "var method = pm.request.method.toUpperCase();",
+          "var path = pm.request.url.path.join('/');",
+          "var body = pm.request.body ? pm.request.body.raw || '' : '';",
+          "var canonical = [method, path, pm.variables.get('timestamp'),",
+          "  pm.variables.get('nonce'),",
+          "  base.createHash('sha256').update(body).digest('hex')].join('\\n');",
+          "var sig = base.createHmac('sha256',",
+          "  pm.variables.get('providerSecret')).update(canonical).digest('hex');",
+          "pm.variables.set('signature', sig);"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Liveness and readiness",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/provider/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "provider",
+            "health"
+          ]
+        },
+        "description": "Unauthenticated liveness probe. It reports whether provider credentials are configured but never reveals them."
+      },
+      "response": []
+    },
+    {
+      "name": "List games exposed by this provider",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/games",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "games"
+          ]
+        },
+        "description": "List games exposed by this provider"
+      },
+      "response": []
+    },
+    {
+      "name": "Create a player game session (provider launch)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/sessions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "sessions"
+          ]
+        },
+        "description": "The operator supplies player identity; no player registration or password exists in V1. Returns a session id, a short-lived session token, a launch URL and the expiry. The session token is the only credential the player app ever sees.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"player_id\": \"string\",\n  \"game_code\": \"teen_patti_pro\",\n  \"currency\": \"string\",\n  \"table_id\": \"string\",\n  \"amount\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Read a session",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/sessions/:sessionId",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "sessions",
+            ":sessionId"
+          ]
+        },
+        "description": "Read a session"
+      },
+      "response": []
+    },
+    {
+      "name": "End a session and revoke its tokens",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/sessions/:sessionId",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "sessions",
+            ":sessionId"
+          ]
+        },
+        "description": "End a session and revoke its tokens"
+      },
+      "response": []
+    },
+    {
+      "name": "List tables with live status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables"
+          ]
+        },
+        "description": "List tables with live status"
+      },
+      "response": []
+    },
+    {
+      "name": "Read one table",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables",
+            ":tableId"
+          ]
+        },
+        "description": "Read one table"
+      },
+      "response": []
+    },
+    {
+      "name": "Seat a player at a table",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/join",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables",
+            ":tableId",
+            "join"
+          ]
+        },
+        "description": "Identify the player with a session id or session_token. A session token always wins over a caller-supplied player_id.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"string\",\n  \"session_token\": \"string\",\n  \"player_id\": \"string\",\n  \"currency\": \"string\",\n  \"amount\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Release a seat",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/leave",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables",
+            ":tableId",
+            "leave"
+          ]
+        },
+        "description": "Release a seat",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"string\",\n  \"session_token\": \"string\",\n  \"player_id\": \"string\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Submit the V1 player action (bet)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/action",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables",
+            ":tableId",
+            "action"
+          ]
+        },
+        "description": "The V1 engine has one betting phase and no player turn, fold or show action. Amounts are validated against the server-side denomination and table limits; the client is never trusted.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"bet\",\n  \"position\": \"A\",\n  \"amount\": 1,\n  \"session_id\": \"string\",\n  \"session_token\": \"string\",\n  \"player_id\": \"string\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Authoritative table state for one player",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/state",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables",
+            ":tableId",
+            "state"
+          ],
+          "query": [
+            {
+              "key": "player_id",
+              "value": ""
+            }
+          ]
+        },
+        "description": "Authoritative table state for one player"
+      },
+      "response": []
+    },
+    {
+      "name": "Settled round history",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/history",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "teen-patti",
+            "tables",
+            ":tableId",
+            "history"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": ""
+            }
+          ]
+        },
+        "description": "Settled round history"
+      },
+      "response": []
+    },
+    {
+      "name": "Operator-owned player balance",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/players/:playerId/balance",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "players",
+            ":playerId",
+            "balance"
+          ]
+        },
+        "description": "Operator-owned player balance"
+      },
+      "response": []
+    },
+    {
+      "name": "Debit a player (reserve stake)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/wallet/debit",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "wallet",
+            "debit"
+          ]
+        },
+        "description": "Requires a unique Idempotency-Key and reference. A replay returns the original transaction and never debits twice.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"player_id\": \"string\",\n  \"amount\": 1,\n  \"currency\": \"string\",\n  \"game_code\": \"string\",\n  \"round_id\": \"string\",\n  \"reference\": \"string\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Credit a player (payout)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/wallet/credit",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "wallet",
+            "credit"
+          ]
+        },
+        "description": "Credit a player (payout)",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"player_id\": \"string\",\n  \"amount\": 1,\n  \"currency\": \"string\",\n  \"game_code\": \"string\",\n  \"round_id\": \"string\",\n  \"reference\": \"string\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Roll back a previous debit",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/wallet/rollback",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "wallet",
+            "rollback"
+          ]
+        },
+        "description": "Appends a compensating credit bound to original_reference. The original row is never modified or deleted, and a second rollback of the same reference is rejected.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"player_id\": \"string\",\n  \"original_reference\": \"string\",\n  \"reason\": \"string\",\n  \"currency\": \"string\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Immutable transaction ledger for a player",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/wallet/transactions/:playerId",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "wallet",
+            "transactions",
+            ":playerId"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": ""
+            }
+          ]
+        },
+        "description": "Immutable transaction ledger for a player"
+      },
+      "response": []
+    }
+  ]
+}

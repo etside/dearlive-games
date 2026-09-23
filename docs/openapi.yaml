@@ -1,311 +1,1346 @@
-openapi: 3.0.3
-info:
-  title: DearLive Games — Teen Patti Pro
-  version: 1.1.0
-  description: >
-    Server-authoritative game API. DearLive owns users + wallet balances;
-    the game server owns game logic + round records. Auth: player
-    `Authorization: Bearer <session_id>`; admin `X-Admin-Key`. Bets require
-    `Idempotency-Key`. Envelope: {success, code, message, data, serverTime,
-    requestId}. See docs/integration-contract.md.
-servers:
-  - url: '{games_base_url}'
-    variables:
-      games_base_url:
-        default: http://127.0.0.1:5002
-        description: Developer GAMES_BASE_URL (sandbox default; prod is developer domain)
-paths:
-  /health:
-    get:
-      summary: Liveness + config version
-      responses:
-        '200': { description: OK }
-  /api/v1/games:
-    get:
-      summary: Game catalog (Games section tiles)
-      responses:
-        '200': { description: list of games }
-  /api/v1/games/teen-patti-pro:
-    get:
-      summary: Game rules/denoms/limits/TBC
-      responses:
-        '200': { description: rules }
-  /api/v1/sessions:
-    post:
-      summary: Redeem launch token → session (join)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [launch_token]
-              properties:
-                launch_token: { type: string, example: dl_teen-patti-pro_abc }
-      responses:
-        '200': { description: session opened }
-        '401': { description: invalid token }
-  /api/v1/sessions/{id}:
-    get:
-      summary: Session info
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-      responses:
-        '200': { description: session }
-        '404': { description: unknown session }
-  /api/v1/games/teen-patti-pro/rounds/current:
-    get:
-      summary: Visibility-safe round state
-      parameters:
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: snapshot }
-        '401': { description: unauthenticated }
-  /api/v1/games/teen-patti-pro/rooms/{room}/bets:
-    post:
-      summary: Place bet (debit + create, idempotent)
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
-      security: [{ bearer: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [position, amount]
-              properties:
-                position: { type: string, enum: [A, B, C] }
-                amount: { type: integer, example: 100 }
-      responses:
-        '200': { description: bet accepted }
-        '402': { description: insufficient balance }
-        '409': { description: betting closed / duplicate }
-  /api/v1/games/teen-patti-pro/rounds/{id}/result:
-    get:
-      summary: Round result (404 pre-RESULT)
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: winners + hands }
-        '404': { description: not published }
-  /api/v1/games/teen-patti-pro/history:
-    get:
-      summary: Own bets
-      parameters:
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: bets }
-  /api/v1/games/teen-patti-pro/rooms/{room}/wallet:
-    get:
-      summary: Own balance (DearLive-owned)
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: balance }
-  /api/v1/games/teen-patti-pro/rooms/{room}/reconnect:
-    post:
-      summary: Snapshot + missed events
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                session_id: { type: string }
-                last_seen_seq: { type: integer }
-      responses:
-        '200': { description: snapshot + missed events }
-  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/start:
-    post:
-      summary: Start round (admin)
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: round started }
-  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/close:
-    post:
-      summary: Close betting (admin)
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: betting closed }
-  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/result:
-    post:
-      summary: Publish result (admin)
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: result }
-  /api/v1/games/teen-patti-pro/rooms/{room}/rounds/settle:
-    post:
-      summary: Settle (admin, idempotent)
-      parameters:
-        - { name: room, in: path, required: true, schema: { type: string } }
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: settlements }
-  /api/v1/admin/config:
-    get:
-      summary: Versioned config + TBC (admin, teen-patti-pro)
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: config }
-  /api/v1/games/{gameId}/rounds/current:
-    get:
-      summary: Current round state (any game; teen alias teen_patti works)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: snapshot with serverTime/betting_end_at/status/options/totals }
-  /api/v1/games/{gameId}/rounds/{roundId}/bets:
-    post:
-      summary: Place bet (any game; teen uses position, wheels use option_id)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: roundId, in: path, required: true, schema: { type: string } }
-        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
-      security: [{ bearer: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                position: { type: string }
-                option_id: { type: string }
-                amount: { type: integer }
-                idempotencyKey: { type: string }
-      responses:
-        '200': { description: bet accepted with unique bet_id }
-  /api/v1/games/{gameId}/rounds/{roundId}/result:
-    get:
-      summary: Authoritative result (404 pre-RESULT)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: roundId, in: path, required: true, schema: { type: string } }
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: winner + cards/angle + settlement refs }
-  /api/v1/games/{gameId}/history:
-    get:
-      summary: Player history (bets + earnings)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: bets }
-  /api/v1/games/{gameId}/results/recent:
-    get:
-      summary: Recent-result strip (wheel games)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: room, in: query, schema: { type: string, default: default } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: recent results }
-  /api/v1/games/{gameId}/autobet:
-    post:
-      summary: Configure Auto Bet (only where approved; autoplay is an alias)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-      security: [{ bearer: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                option_id: { type: string }
-                amount: { type: integer }
-                rounds: { type: integer }
-      responses:
-        '200': { description: autobet configured }
-        '403': { description: not approved }
-  /api/v1/games/{gameId}/tables/{tableId}/bets:
-    post:
-      summary: G3 tables bet (roundId/position/amount/idempotencyKey)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: tableId, in: path, required: true, schema: { type: string } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: bet accepted }
-  /api/v1/games/{gameId}/tables/{tableId}/state:
-    get:
-      summary: G3 table state (players, pots, timer, card visibility)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-        - { name: tableId, in: path, required: true, schema: { type: string } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: table snapshot }
-  /api/v1/games/{gameId}/assets:
-    get:
-      summary: Canonical asset manifest (teen-patti-pro SVG manifest + theme; wheel option icons/colors/HOT)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-      security: [{ bearer: [] }]
-      responses:
-        '200': { description: asset manifest for the game client }
-  /api/v1/admin/games:
-    get:
-      summary: Game inventory (admin)
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: games with enabled/config_version/confirmed }
-  /api/v1/admin/games/{gameId}/config:
-    get:
-      summary: Game configuration (admin)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: full config incl options/HOT/packages/localization }
-    put:
-      summary: Update game configuration (superadmin; teen frozen except enabled/packages/localization)
-      parameters:
-        - { name: gameId, in: path, required: true, schema: { type: string } }
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: updated config }
-  /api/v1/admin/audit:
-    get:
-      summary: Audit trail (admin)
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: entries }
-  /api/v1/admin/webhooks:
-    get:
-      summary: Delivery log (admin)
-      security: [{ adminKey: [] }]
-      responses:
-        '200': { description: deliveries }
-components:
-  securitySchemes:
-    bearer:
-      type: http
-      scheme: bearer
-      bearerFormat: session_id
-    adminKey:
-      type: apiKey
-      in: header
-      name: X-Admin-Key
+# Generated from provider/spec.py by tools/gen_provider_artifacts.py
+# Edit provider/spec.py, then regenerate. Do not hand-edit.
+"openapi": "3.1.0"
+"info":
+  "title": "Teen Patti Pro — B2B Game Provider API"
+  "version": "1.0.0"
+  "summary": "Single-integration provider API for operators and aggregators."
+  "description": "One API connection and one API key per operator. The operator authenticates every server-to-server call with an HMAC-SHA256 signature, creates a player session, receives a launch URL, and drives wallet operations with idempotent debit/credit/rollback. The engine stays authoritative for cards, pots, timing, winners and settlement. Money of record is held by the operator; the provider keeps an immutable transaction ledger. V1 exposes the existing Teen Patti Pro engine only: the engine has a single betting phase and no player-turn/fold/show phase, so those events are not emitted."
+  "contact":
+    "name": "DearLive Games platform"
+  "license":
+    "name": "Proprietary"
+    "identifier": "LicenseRef-Proprietary"
+"servers":
+  - "url": "https://api.example.com"
+    "description": "Production"
+  - "url": "http://127.0.0.1:5002"
+    "description": "Local / Termux"
+"tags":
+  - "name": "Provider"
+    "description": "Health and catalog"
+  - "name": "Sessions"
+    "description": "Player session lifecycle and launch"
+  - "name": "Tables"
+    "description": "Tables, seats, actions and state"
+  - "name": "Wallet"
+    "description": "Idempotent money operations and ledger"
+  - "name": "Players"
+    "description": "Operator-owned balances"
+"security":
+  - "ProviderHmac":
+      - "X-API-Key"
+      - "X-Timestamp"
+      - "X-Nonce"
+      - "X-Signature"
+"paths":
+  "/api/v1/provider/health":
+    "get":
+      "tags":
+        - "Provider"
+      "summary": "Liveness and readiness"
+      "description": "Unauthenticated liveness probe. It reports whether provider credentials are configured but never reveals them."
+      "security": []
+      "responses":
+        "200":
+          "description": "Service health"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Health"
+  "/api/v1/games":
+    "get":
+      "tags":
+        - "Provider"
+      "summary": "List games exposed by this provider"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/GamesResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/sessions":
+    "post":
+      "tags":
+        - "Sessions"
+      "summary": "Create a player game session (provider launch)"
+      "description": "The operator supplies player identity; no player registration or password exists in V1. Returns a session id, a short-lived session token, a launch URL and the expiry. The session token is the only credential the player app ever sees."
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SessionCreateRequest"
+      "responses":
+        "201":
+          "description": "Session created"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SessionResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/sessions/{sessionId}":
+    "get":
+      "tags":
+        - "Sessions"
+      "summary": "Read a session"
+      "parameters":
+        - "$ref": "#/components/parameters/SessionId"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SessionState"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+    "delete":
+      "tags":
+        - "Sessions"
+      "summary": "End a session and revoke its tokens"
+      "parameters":
+        - "$ref": "#/components/parameters/SessionId"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SessionEnded"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables":
+    "get":
+      "tags":
+        - "Tables"
+      "summary": "List tables with live status"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/TableListResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables/{tableId}":
+    "get":
+      "tags":
+        - "Tables"
+      "summary": "Read one table"
+      "parameters":
+        - "$ref": "#/components/parameters/TableId"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Table"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables/{tableId}/join":
+    "post":
+      "tags":
+        - "Tables"
+      "summary": "Seat a player at a table"
+      "description": "Identify the player with a session id or session_token. A session token always wins over a caller-supplied player_id."
+      "parameters":
+        - "$ref": "#/components/parameters/TableId"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/JoinRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/JoinResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "Invalid state transition or duplicate key (code: STATE_CONFLICT)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables/{tableId}/leave":
+    "post":
+      "tags":
+        - "Tables"
+      "summary": "Release a seat"
+      "parameters":
+        - "$ref": "#/components/parameters/TableId"
+      "requestBody":
+        "required": false
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SessionRefRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/LeaveResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables/{tableId}/action":
+    "post":
+      "tags":
+        - "Tables"
+      "summary": "Submit the V1 player action (bet)"
+      "description": "The V1 engine has one betting phase and no player turn, fold or show action. Amounts are validated against the server-side denomination and table limits; the client is never trusted."
+      "parameters":
+        - "$ref": "#/components/parameters/TableId"
+        - "$ref": "#/components/parameters/IdempotencyKey"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/ActionRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ActionResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "402":
+          "description": "Player balance too low (code: INSUFFICIENT_BALANCE)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "Invalid state transition or duplicate key (code: STATE_CONFLICT)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables/{tableId}/state":
+    "get":
+      "tags":
+        - "Tables"
+      "summary": "Authoritative table state for one player"
+      "parameters":
+        - "$ref": "#/components/parameters/TableId"
+        - "name": "player_id"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "string"
+          "description": "Required unless a session bearer token is sent."
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/StateResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/teen-patti/tables/{tableId}/history":
+    "get":
+      "tags":
+        - "Tables"
+      "summary": "Settled round history"
+      "parameters":
+        - "$ref": "#/components/parameters/TableId"
+        - "name": "limit"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 1
+            "maximum": 200
+            "default": 50
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/HistoryResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/players/{playerId}/balance":
+    "get":
+      "tags":
+        - "Players"
+      "summary": "Operator-owned player balance"
+      "parameters":
+        - "$ref": "#/components/parameters/PlayerId"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/BalanceResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "502":
+          "description": "Upstream wallet or identity error (code: INTERNAL_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/wallet/debit":
+    "post":
+      "tags":
+        - "Wallet"
+      "summary": "Debit a player (reserve stake)"
+      "description": "Requires a unique Idempotency-Key and reference. A replay returns the original transaction and never debits twice."
+      "parameters":
+        - "$ref": "#/components/parameters/IdempotencyKey"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WalletWriteRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Transaction"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "402":
+          "description": "Player balance too low (code: INSUFFICIENT_BALANCE)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "Invalid state transition or duplicate key (code: STATE_CONFLICT)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "502":
+          "description": "Upstream wallet or identity error (code: INTERNAL_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/wallet/credit":
+    "post":
+      "tags":
+        - "Wallet"
+      "summary": "Credit a player (payout)"
+      "parameters":
+        - "$ref": "#/components/parameters/IdempotencyKey"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WalletWriteRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Transaction"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "402":
+          "description": "Player balance too low (code: INSUFFICIENT_BALANCE)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "Invalid state transition or duplicate key (code: STATE_CONFLICT)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "502":
+          "description": "Upstream wallet or identity error (code: INTERNAL_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/wallet/rollback":
+    "post":
+      "tags":
+        - "Wallet"
+      "summary": "Roll back a previous debit"
+      "description": "Appends a compensating credit bound to original_reference. The original row is never modified or deleted, and a second rollback of the same reference is rejected."
+      "parameters":
+        - "$ref": "#/components/parameters/IdempotencyKey"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/WalletRollbackRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Transaction"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "Not permitted for this credential or player (code: FORBIDDEN)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "409":
+          "description": "Invalid state transition or duplicate key (code: STATE_CONFLICT)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "502":
+          "description": "Upstream wallet or identity error (code: INTERNAL_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/wallet/transactions/{playerId}":
+    "get":
+      "tags":
+        - "Wallet"
+      "summary": "Immutable transaction ledger for a player"
+      "parameters":
+        - "$ref": "#/components/parameters/PlayerId"
+        - "name": "limit"
+          "in": "query"
+          "required": false
+          "schema":
+            "type": "integer"
+            "minimum": 1
+            "maximum": 200
+            "default": 50
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/TransactionListResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+"components":
+  "securitySchemes":
+    "ProviderHmac":
+      "type": "apiKey"
+      "in": "header"
+      "name": "X-API-Key"
+      "description": "Signed request authentication. Sign the canonical string 'METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nSHA256(raw_body)' with HMAC-SHA256 using the shared secret and send the lowercase hex digest in X-Signature. Timestamps outside the accepted window and reused nonces are rejected. The secret is never placed in a player app."
+  "parameters":
+    "SessionId":
+      "name": "sessionId"
+      "in": "path"
+      "required": true
+      "schema":
+        "type": "string"
+    "TableId":
+      "name": "tableId"
+      "in": "path"
+      "required": true
+      "schema":
+        "type": "string"
+    "PlayerId":
+      "name": "playerId"
+      "in": "path"
+      "required": true
+      "schema":
+        "type": "string"
+    "IdempotencyKey":
+      "name": "Idempotency-Key"
+      "in": "header"
+      "required": true
+      "schema":
+        "type": "string"
+        "maxLength": 128
+      "description": "Unique per logical transaction. Repeats return the original result; reuse with a different payload is rejected."
+  "schemas":
+    "Envelope":
+      "type": "object"
+      "required":
+        - "success"
+        - "code"
+        - "message"
+        - "serverTime"
+      "properties":
+        "success":
+          "type": "boolean"
+        "code":
+          "type": "string"
+        "message":
+          "type": "string"
+        "data":
+          "type":
+            - "object"
+            - "array"
+            - "null"
+        "serverTime":
+          "type": "integer"
+          "description": "Server clock in ms; client clocks are untrusted."
+        "requestId":
+          "type": "string"
+    "Error":
+      "type": "object"
+      "required":
+        - "success"
+        - "code"
+        - "message"
+      "properties":
+        "success":
+          "const": false
+        "code":
+          "type": "string"
+          "enum":
+            - "OK"
+            - "UNAUTHENTICATED"
+            - "INVALID_SIGNATURE"
+            - "INVALID_TIMESTAMP"
+            - "INVALID_NONCE"
+            - "REPLAYED_REQUEST"
+            - "FORBIDDEN"
+            - "NOT_FOUND"
+            - "VALIDATION_ERROR"
+            - "INSUFFICIENT_BALANCE"
+            - "DUPLICATE_REQUEST"
+            - "STATE_CONFLICT"
+            - "BETTING_CLOSED"
+            - "RATE_LIMITED"
+            - "TBC_RULE_UNCONFIRMED"
+            - "INTERNAL_ERROR"
+            - "UNAVAILABLE"
+        "message":
+          "type": "string"
+        "data":
+          "type":
+            - "object"
+            - "array"
+            - "null"
+        "serverTime":
+          "type": "integer"
+        "requestId":
+          "type": "string"
+    "Health":
+      "type": "object"
+      "properties":
+        "status":
+          "type": "string"
+          "enum":
+            - "ok"
+            - "degraded"
+        "game_code":
+          "type": "string"
+        "engine":
+          "type": "string"
+        "provider_api":
+          "type": "string"
+        "provider_auth_configured":
+          "type": "boolean"
+        "wallet_backend":
+          "type": "string"
+        "currency":
+          "type": "string"
+        "tables":
+          "type": "integer"
+        "live_tables":
+          "type": "integer"
+        "redis":
+          "type": "boolean"
+        "serverTime":
+          "type": "integer"
+    "Game":
+      "type": "object"
+      "properties":
+        "game_code":
+          "type": "string"
+        "name":
+          "type": "string"
+        "status":
+          "type": "string"
+        "engine":
+          "type": "string"
+        "currencies":
+          "type": "array"
+          "items":
+            "type": "string"
+        "min_bet":
+          "type": "integer"
+        "max_bet":
+          "type": "integer"
+        "max_players":
+          "type": "integer"
+        "tables":
+          "type": "array"
+          "items":
+            "type": "string"
+        "actions":
+          "type": "array"
+          "items":
+            "type": "string"
+        "realtime":
+          "type": "object"
+    "GamesResponse":
+      "type": "object"
+      "properties":
+        "games":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Game"
+    "SessionCreateRequest":
+      "type": "object"
+      "required":
+        - "player_id"
+      "properties":
+        "player_id":
+          "type": "string"
+          "maxLength": 128
+          "description": "Operator-owned player identity."
+        "game_code":
+          "type": "string"
+          "default": "teen_patti_pro"
+          "enum":
+            - "teen_patti_pro"
+            - "teen-patti-pro"
+        "currency":
+          "type": "string"
+          "default": "COIN"
+        "language":
+          "type": "string"
+          "default": "en"
+        "platform":
+          "type": "string"
+          "default": "web"
+        "return_url":
+          "type": "string"
+          "format": "uri"
+          "description": "Where the player app returns after play."
+        "table_id":
+          "type": "string"
+          "description": "Optional explicit table; otherwise matchmaking selects one."
+        "amount":
+          "type": "integer"
+          "minimum": 1
+          "description": "Optional intended stake, used by matchmaking and range validation."
+    "SessionResponse":
+      "type": "object"
+      "properties":
+        "success":
+          "const": true
+        "session_id":
+          "type": "string"
+        "session_token":
+          "type": "string"
+          "description": "Short-lived player credential (gst_...)."
+        "token_type":
+          "type": "string"
+          "const": "Bearer"
+        "game_code":
+          "type": "string"
+        "table_id":
+          "type": "string"
+        "currency":
+          "type": "string"
+        "language":
+          "type": "string"
+        "platform":
+          "type": "string"
+        "return_url":
+          "type": "string"
+        "launch_url":
+          "type": "string"
+          "format": "uri"
+        "expires_at":
+          "type": "string"
+          "format": "date-time"
+        "expires_at_ms":
+          "type": "integer"
+        "websocket_url":
+          "type": "string"
+    "SessionState":
+      "type": "object"
+      "properties":
+        "session_id":
+          "type": "string"
+        "player_id":
+          "type": "string"
+        "game_id":
+          "type": "string"
+        "table_id":
+          "type": "string"
+        "created_at":
+          "type": "string"
+          "format": "date-time"
+        "last_seen_at":
+          "type": "string"
+          "format": "date-time"
+        "active":
+          "type": "boolean"
+        "table":
+          "type":
+            - "object"
+            - "null"
+    "SessionEnded":
+      "type": "object"
+      "properties":
+        "session_id":
+          "type": "string"
+        "ended":
+          "const": true
+        "revoked_tokens":
+          "type": "integer"
+    "JoinRequest":
+      "type": "object"
+      "properties":
+        "session_id":
+          "type": "string"
+        "session_token":
+          "type": "string"
+        "player_id":
+          "type": "string"
+          "description": "Server-to-server only; ignored when a session is supplied."
+        "currency":
+          "type": "string"
+        "amount":
+          "type": "integer"
+          "minimum": 1
+    "JoinResponse":
+      "type": "object"
+      "properties":
+        "table_id":
+          "type": "string"
+        "player_id":
+          "type": "string"
+        "seats":
+          "type": "array"
+          "items":
+            "type": "string"
+        "players":
+          "type": "integer"
+        "max_players":
+          "type": "integer"
+        "status":
+          "type": "string"
+        "joined":
+          "const": true
+        "already_seated":
+          "type": "boolean"
+    "LeaveResponse":
+      "type": "object"
+      "properties":
+        "table_id":
+          "type": "string"
+        "player_id":
+          "type": "string"
+        "seats":
+          "type": "array"
+          "items":
+            "type": "string"
+        "removed":
+          "type": "boolean"
+    "SessionRefRequest":
+      "type": "object"
+      "properties":
+        "session_id":
+          "type": "string"
+        "session_token":
+          "type": "string"
+        "player_id":
+          "type": "string"
+    "ActionRequest":
+      "type": "object"
+      "required":
+        - "action"
+        - "position"
+        - "amount"
+      "properties":
+        "action":
+          "type": "string"
+          "enum":
+            - "bet"
+          "description": "V1 supports betting only."
+        "position":
+          "type": "string"
+          "enum":
+            - "A"
+            - "B"
+            - "C"
+        "amount":
+          "type": "integer"
+          "minimum": 1
+        "session_id":
+          "type": "string"
+        "session_token":
+          "type": "string"
+        "player_id":
+          "type": "string"
+    "ActionResponse":
+      "type": "object"
+      "properties":
+        "table_id":
+          "type": "string"
+        "player_id":
+          "type": "string"
+        "action":
+          "type": "string"
+        "accepted":
+          "const": true
+        "bet_id":
+          "type": "string"
+        "round_id":
+          "type": "string"
+        "position":
+          "type": "string"
+        "amount":
+          "type": "integer"
+        "decision_time":
+          "type": "integer"
+    "StateResponse":
+      "type": "object"
+      "properties":
+        "table_id":
+          "type": "string"
+        "player_id":
+          "type": "string"
+        "state":
+          "type": "object"
+          "description": "Authoritative snapshot; unrevealed hands stay masked."
+    "HistoryResponse":
+      "type": "object"
+      "properties":
+        "table_id":
+          "type": "string"
+        "count":
+          "type": "integer"
+        "rounds":
+          "type": "array"
+          "items":
+            "type": "object"
+    "BalanceResponse":
+      "type": "object"
+      "properties":
+        "player_id":
+          "type": "string"
+        "available":
+          "type": "integer"
+        "currency":
+          "type": "string"
+    "WalletWriteRequest":
+      "type": "object"
+      "required":
+        - "player_id"
+        - "amount"
+        - "reference"
+      "properties":
+        "player_id":
+          "type": "string"
+        "amount":
+          "type": "integer"
+          "minimum": 1
+        "currency":
+          "type": "string"
+        "game_code":
+          "type": "string"
+        "round_id":
+          "type": "string"
+        "reference":
+          "type": "string"
+          "maxLength": 128
+    "WalletRollbackRequest":
+      "type": "object"
+      "required":
+        - "player_id"
+        - "original_reference"
+        - "reason"
+      "properties":
+        "player_id":
+          "type": "string"
+        "original_reference":
+          "type": "string"
+        "reason":
+          "type": "string"
+          "maxLength": 128
+        "currency":
+          "type": "string"
+    "Transaction":
+      "type": "object"
+      "properties":
+        "txn_id":
+          "type": "string"
+        "type":
+          "type": "string"
+          "enum":
+            - "debit"
+            - "credit"
+            - "rollback"
+        "status":
+          "type": "string"
+          "enum":
+            - "SUCCESS"
+            - "ROLLED_BACK"
+        "player_id":
+          "type": "string"
+        "amount":
+          "type": "integer"
+        "currency":
+          "type": "string"
+        "reference":
+          "type": "string"
+        "idempotency_key":
+          "type": "string"
+        "game_code":
+          "type": "string"
+        "round_id":
+          "type": "string"
+        "original_reference":
+          "type": "string"
+        "reverses_txn_id":
+          "type": "string"
+        "reason":
+          "type": "string"
+        "actor":
+          "type": "string"
+        "replayed":
+          "type": "boolean"
+          "description": "True when this response is the original result of a repeated key."
+        "created_at":
+          "type": "integer"
+    "TransactionListResponse":
+      "type": "object"
+      "properties":
+        "player_id":
+          "type": "string"
+        "count":
+          "type": "integer"
+        "transactions":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Transaction"
+    "Table":
+      "type": "object"
+      "properties":
+        "table_id":
+          "type": "string"
+        "label":
+          "type": "string"
+        "min_bet":
+          "type": "integer"
+        "max_bet":
+          "type": "integer"
+        "max_players":
+          "type": "integer"
+        "currency":
+          "type": "string"
+        "enabled":
+          "type": "boolean"
+        "seats":
+          "type": "array"
+          "items":
+            "type": "string"
+        "live":
+          "type": "object"
+          "description": "Live round status, seat count and betting deadline."
+    "TableListResponse":
+      "type": "object"
+      "properties":
+        "tables":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Table"
+"x-provider":
+  "authentication":
+    "headers":
+      - "X-API-Key"
+      - "X-Timestamp"
+      - "X-Nonce"
+      - "X-Signature"
+    "algorithm": "HMAC-SHA256"
+    "canonical": "METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nSHA256(raw_body)"
+    "path_note": "PATH excludes the query string; do not append it before signing."
+    "signature_encoding": "lowercase hex"
+    "timestamp_window_seconds": 300
+    "replay": "nonces are single use inside the timestamp window"
+  "websocket":
+    "path": "/ws/game"
+    "auth": "{\"session_token\": \"gst_...\"}"
+    "events":
+      - "room.joined"
+      - "game.waiting"
+      - "game.started"
+      - "card.dealt"
+      - "bet.required"
+      - "bet.placed"
+      - "betting.closed"
+      - "game.finished"
+      - "round.settled"
+      - "game.error"
+    "v1_not_emitted":
+      - "turn.started"
+      - "player.folded"
+      - "show.requested"
+    "v1_note": "The V1 engine has a single betting phase and no player-turn phase, so turn/fold/show events are documented as absent rather than simulated."

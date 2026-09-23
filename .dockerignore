@@ -1,0 +1,16 @@
+.git
+.github
+.vercel
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+tools/browser-qa/evidence
+node_modules
+*.log
+.env
+.env.*
+!.env.example
