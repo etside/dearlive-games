@@ -60,13 +60,13 @@ def _from_url(url: str) -> dict:
 class MinimalRedis:
     """Tiny RESP2 client: GET/SET(NX,PX)/DEL/EXPIRE/EVAL. Enough for the contract."""
 
-    def __init__(self, host: str = "", port: int = 6379, db: int = 0,
-                 username: str = "", password: str = "", use_tls: bool = False,
-                 timeout: float = 5.0):
+    def __init__(self, host: str = "", port: Optional[int] = None,
+                 db: Optional[int] = None, username: str = "", password: str = "",
+                 use_tls: bool = False, timeout: float = 5.0):
         from_url = _from_url(_env("REDIS_URL", ""))
         self.host = host or _env("REDIS_HOST", "") or from_url.get("host", "127.0.0.1")
-        self.port = int(port or _env("REDIS_PORT", "") or from_url.get("port", 6379))
-        self.db = int(db if db is not None else _env("REDIS_DB", from_url.get("db", 0)))
+        self.port = int(port or _env("REDIS_PORT", "") or from_url.get("port") or 6379)
+        self.db = int(db if db is not None else _env("REDIS_DB", "") or from_url.get("db") or 0)
         self.username = username or _env("REDIS_USERNAME", "") or from_url.get("username", "")
         self.password = password or _env("REDIS_PASSWORD", "") or from_url.get("password", "")
         self.use_tls = (use_tls
