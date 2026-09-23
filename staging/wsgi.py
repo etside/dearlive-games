@@ -126,7 +126,7 @@ def _run_handler(method, path, query, headers, body):
     h.provider_tokens = None
     try:
         from provider.context import staging_context
-        _pctx = staging_context(r, teen)
+        _pctx = staging_context(r, teen, wheels)
         if not _pctx.base_url:
             _host = (headers or {}).get("Host") or ""
             if _host:
