@@ -1,0 +1,185 @@
+{
+ "version": "1.0.0",
+ "records": {
+  "tpp-svg-A": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/seat-p1.svg",
+   "sha256": "0305df8e549d17c4856420da2996b9f257663508131c28f52c042cf871fab815",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-B": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/seat-p2.svg",
+   "sha256": "f3bcad32107daa101b6cf22b4d403148a31b84943a4b5891f1d006a15985e046",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-C": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/seat-p3.svg",
+   "sha256": "57d4c7ec9390876d704680b9467a9a2969319f7b03e29ddc5beaf1cc50c225ee",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-blue": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/chip-blue.svg",
+   "sha256": "066a28196b535fb1cc27422b152ad2130b4f2eee31a6c22eaab0dc32d5e2a24e",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-cardBack": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/card-back.svg",
+   "sha256": "3afeeb825aacba464c725928f968d25d34b075c5e68350040186a302926f08ba",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-cardFace": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/card-face.svg",
+   "sha256": "442c07ccca7f5cf91fbbd151e6008f740f4e98419ef5e735211c26c6e66c2ea2",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-cyan": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/chip-cyan.svg",
+   "sha256": "41e4791e166d24a5ab48031a286d1e880896fdcd405453009899c123496cb71c",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-gold": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/chip-gold.svg",
+   "sha256": "5c0f373ccd81326c07596aa255bedf756b3a930f5eb9f0a7ec7ec6320f7afb53",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-tableBg": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/table-bg.svg",
+   "sha256": "d5db8d1a6b22da7fc6a9dc19fc186bf8317edec5099e8ac923c89a74c31e8066",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-violet": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/chip-violet.svg",
+   "sha256": "e594c7e9a6f46ceef9758f24667ecffcddfd632ef2c819363889c14b9c0a7439",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-svg-winnerGlow": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets/winner-glow.svg",
+   "sha256": "4d01d61f24b2d8790f301f5db88705caefda3e6199ad5a7a3f1892220c42c9da",
+   "assetType": "SVG",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-doc-theme.json": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/theme.json",
+   "sha256": "093dd506b63fdfdf06305fb5f663d327a20959da4a645f29ee84a7574e123fa2",
+   "assetType": "JSON",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-doc-assets.json": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/assets.json",
+   "sha256": "ec1de3198d58d92d977a8da9f98ee24e59bdc091eee842d8f01fd29940d1ec22",
+   "assetType": "JSON",
+   "gameId": "teen-patti-pro"
+  },
+  "tpp-doc-demo_round.json": {
+   "filePath": "/root/dearlive-games/games/teen_patti_pro/client/demo_round.json",
+   "sha256": "37b97a5a85f08a7cb0bb135e3062332bce2a347b1a337a2945fd12de148556ad",
+   "assetType": "JSON",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-wav-bet.wav": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/wav/bet.wav",
+   "sha256": "c3740603a3137b964e4fbd8eb6859859032f465a959f5607a64958bd6382aa90",
+   "assetType": "WAV",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-wav-card_flip.wav": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/wav/card_flip.wav",
+   "sha256": "4cae5885ae331ec5f7e3bd0da908af230e87ea1843b00ad9c2037835ef6afbe3",
+   "assetType": "WAV",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-wav-click.wav": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/wav/click.wav",
+   "sha256": "efa1ccedf9275ac1a74297f5476e535264fd9c47a3244f918e4fc6baf1e26cc9",
+   "assetType": "WAV",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-wav-coin.wav": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/wav/coin.wav",
+   "sha256": "76e7ffbe37e2ecadded948c2f3e22ae9cb797c5a457cc99c602dd6cf54737035",
+   "assetType": "WAV",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-wav-lose.wav": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/wav/lose.wav",
+   "sha256": "663f3054a7ce23885f638f9ea7dabf1345064bb6eb20aacf008f7b8a5571e729",
+   "assetType": "WAV",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-wav-win.wav": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/wav/win.wav",
+   "sha256": "307ea3007a7669af21e9decf8732edf2d106fc3ff6970dbd01687be330e38561",
+   "assetType": "WAV",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-lottie-card_deal.json": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/lottie/card_deal.json",
+   "sha256": "5d2c1d37ba1d50d32b02a38ebc44ee01b1cae204d972f86c379adc75ddba5871",
+   "assetType": "LOTTIE",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-lottie-chip_glow.json": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/lottie/chip_glow.json",
+   "sha256": "de03bd57d3170253da031b7737d62cc71c4b063e37fd58f32beae9a6b8c2a2a9",
+   "assetType": "LOTTIE",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-lottie-coin_effect.json": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/lottie/coin_effect.json",
+   "sha256": "01d3d48f7c126f750bb56e12607216a8e9bc2e6215fda9f4b1858a1ad7290d54",
+   "assetType": "LOTTIE",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-lottie-timer_pulse.json": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/lottie/timer_pulse.json",
+   "sha256": "8ad6a040d2fed17e9ed780c07201f5f6b321d8148c24ff7d8e932bb53c7d392b",
+   "assetType": "LOTTIE",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-lottie-win_fireworks.json": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/lottie/win_fireworks.json",
+   "sha256": "6aec85d34e97c8b6769c77fe73180d4516077df45fb79c4d97ad45c28eb957d0",
+   "assetType": "LOTTIE",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-gif-card_deal.gif.gif": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/gif/card_deal.gif.gif",
+   "sha256": "674fcfd01f384d0d4ac99d1d5490c173ba9e2c9d925a61f8fe37d3f159976708",
+   "assetType": "GIF",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-gif-chip_glow.gif.gif": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/gif/chip_glow.gif.gif",
+   "sha256": "76f1f5f596b2abfec63c035a7c809110adfc2c2ce9e3833105965d361a4baff3",
+   "assetType": "GIF",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-gif-coin_effect.gif.gif": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/gif/coin_effect.gif.gif",
+   "sha256": "ce6202431436d546be8ed47b7b3ee71efc172e225f162b6d10452c1fccdced08",
+   "assetType": "GIF",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-gif-timer_pulse.gif.gif": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/gif/timer_pulse.gif.gif",
+   "sha256": "656d2bd0b2810adcc5ee44363e46311bdc3b15487e0db473de2fc969d2c40d23",
+   "assetType": "GIF",
+   "gameId": "teen-patti-pro"
+  },
+  "master-teen-patti-pro-teen-patti-pro-gif-win_fireworks.gif.gif": {
+   "filePath": "/root/dearlive-games/assets/dearlive-master/teen-patti-pro/gif/win_fireworks.gif.gif",
+   "sha256": "f0fe9e0b6ef1adf1b0f9c412447d86786fc22b8b43a28333d80d8988e527d249",
+   "assetType": "GIF",
+   "gameId": "teen-patti-pro"
+  }
+ }
+}

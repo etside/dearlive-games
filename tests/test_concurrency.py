@@ -10,6 +10,11 @@ from common.lifecycle import LifecycleError
 from common.wallet import MemoryWallet
 from games.teen_patti_pro.config import TeenPattiConfig
 from games.teen_patti_pro.engine import Room
+from games.teen_patti_pro.service import TeenPattiService
+from games.wheel_common.configs import greedy_lion_config
+from games.wheel_common.service import WheelService
+from integrations.dearlive_mock import (MockDearLiveSessions, MockDearLiveTokens,
+                                        MockDearLiveWallet)
 
 CONF = TeenPattiConfig(confirmed=True, guess_ms=60_000)
 T0 = 1_700_000_000_000
@@ -68,6 +73,76 @@ class TestCloseRace(unittest.TestCase):
         self.assertEqual(len(bets), 8)
         self.assertEqual(len({b.bet_id for b in bets}), 1)  # one bet, replayed 8x
         self.assertEqual(len(room.round.bets), 1)
+
+
+def _run10(fn):
+    errors, results = [], []
+
+    def worker():
+        try:
+            results.append(fn())
+        except Exception as e:  # noqa: BLE001 - collected, asserted below
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    return results, errors
+
+
+class TestServiceIdempotencyx10(unittest.TestCase):
+    """Deployability §7: same request x10 threads -> one bet/debit, one credit."""
+
+    def test_same_bet_x10_one_debit_one_bet(self):
+        w = MockDearLiveWallet()
+        w.fund("p", 100000)
+        svc = TeenPattiService(config=TeenPattiConfig(confirmed=True), wallet=w)
+        tok = svc.tokens.mint("p", "rc", "teen-patti-pro").token
+        svc.open_session(tok)
+        svc.start_round("rc", "test")
+        results, errors = _run10(lambda: svc.place_bet("rc", "p", "A", 100, "conc-key-1"))
+        self.assertEqual(len(errors), 0, f"errors: {errors[:2]}")
+        self.assertEqual(len(results), 10)
+        self.assertEqual(len({r["bet_id"] for r in results}), 1)
+        self.assertEqual(w.get_balance("p").available, 100000 - 100)
+        debits = [e for e in w.ledger if e["ref"].startswith("bet:rc:conc-key-1")]
+        self.assertEqual(len(debits), 1)
+
+    def test_same_settle_x10_one_credit(self):
+        w = MockDearLiveWallet()
+        w.fund("p", 100000)
+        svc = TeenPattiService(config=TeenPattiConfig(confirmed=True), wallet=w)
+        tok = svc.tokens.mint("p", "rs", "teen-patti-pro").token
+        svc.open_session(tok)
+        svc.start_round("rs", "test")
+        svc.place_bet("rs", "p", "A", 100, "conc-key-2")
+        svc.close_betting("rs")
+        svc.publish_result("rs")
+        before = w.get_balance("p").available
+        results, errors = _run10(lambda: svc.settle("rs"))
+        self.assertEqual(len(errors), 0, f"errors: {errors[:2]}")
+        after = w.get_balance("p").available
+        by_bet = {}
+        for e in [x for x in w.ledger if x["ref"].startswith("settle:")]:
+            by_bet[e["ref"]] = by_bet.get(e["ref"], 0) + 1
+        self.assertTrue(all(n == 1 for n in by_bet.values()), f"credited once: {by_bet}")
+        self.assertGreaterEqual(after, before)
+
+    def test_wheel_bet_x10_one_debit(self):
+        cfg = greedy_lion_config()
+        cfg.confirmed = True
+        w = MockDearLiveWallet()
+        w.fund("p", 50000)
+        svc = WheelService(config=cfg, wallet=w, tokens=MockDearLiveTokens(),
+                           sessions=MockDearLiveSessions())
+        svc.open_session(svc.tokens.mint("p", "rw", "greedy-lion").token)
+        svc.start_round("rw")
+        results, errors = _run10(lambda: svc.place_bet("rw", "p", "cub", 100, "conc-key-3"))
+        self.assertEqual(len(errors), 0, f"errors: {errors[:2]}")
+        self.assertEqual(len({r["bet_id"] for r in results}), 1)
+        self.assertEqual(w.get_balance("p").available, 50000 - 100)
 
 
 if __name__ == "__main__":

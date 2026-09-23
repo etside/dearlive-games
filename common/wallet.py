@@ -67,9 +67,11 @@ class MemoryWallet(WalletAdapter):
     """Dev/test double. NOT for production (no durability, no concurrency)."""
 
     def __init__(self):
+        import threading
         self.balances = {}
         self.txns = {}
         self._seq = 0
+        self._lock = threading.Lock()
 
     def fund(self, player_id: str, amount: int):
         b = self.balances.get(player_id, 0) + amount
@@ -79,11 +81,12 @@ class MemoryWallet(WalletAdapter):
         return Balance(player_id, self.balances.get(player_id, 0))
 
     def _once(self, idempotency_key: str, make):
-        if idempotency_key in self.txns:
-            return self.txns[idempotency_key]
-        ref = make()
-        self.txns[idempotency_key] = ref
-        return ref
+        with self._lock:
+            if idempotency_key in self.txns:
+                return self.txns[idempotency_key]
+            ref = make()
+            self.txns[idempotency_key] = ref
+            return ref
 
     def debit(self, player_id: str, amount: int, ref: str, idempotency_key: str) -> TxnRef:
         if amount <= 0:

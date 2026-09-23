@@ -33,7 +33,8 @@ def _load_admin_keys():
     if single:
         keys.setdefault(single, "admin")
     if not keys and os.environ.get("APP_ENV", "sandbox").lower() != "production":
-        keys = {"dev-admin-key": "admin", "dev-super-key": "superadmin"}
+        keys = {"dev-admin-key": "admin", "dev-super-key": "superadmin",
+                "dev-operator-key": "operator", "dev-auditor-key": "auditor"}
     return keys
 
 
@@ -144,6 +145,18 @@ class Handler(BaseHTTPRequestHandler):
     def admin_role(self):
         return ADMIN_KEYS.get(self.headers.get("X-Admin-Key", ""))
 
+    # RBAC hierarchy: superadmin > admin > operator > auditor. Unknown or
+    # missing roles are denied. Reads need auditor+, round operations need
+    # operator+, config writes need superadmin (do_PUT).
+    ROLE_LEVEL = {"auditor": 1, "operator": 2, "admin": 3, "superadmin": 4}
+
+    def require_role(self, minimum: str):
+        """Return (status, payload) denial, or None when authorized."""
+        role = self.admin_role()
+        if role is None or self.ROLE_LEVEL.get(role, 0) < self.ROLE_LEVEL[minimum]:
+            return (403, E.err(f"{minimum} role or higher required", E.E_FORBIDDEN))
+        return None
+
     # -- admin game-configuration views (all games) --
     def _all_game_ids(self):
         ids = list(self.TEEN_IDS)
@@ -202,10 +215,17 @@ class Handler(BaseHTTPRequestHandler):
         return uniq
 
     def apply_game_config(self, game_id: str, svc, patch: dict,
-                          actor: str) -> dict:
+                           actor: str) -> dict:
         """Validated, audited admin config update. Teen config is frozen
         (only enabled/packages/localization may change); wheel config fields
-        are mutable. Unknown fields -> VALIDATION_ERROR."""
+        are mutable. Unknown fields -> VALIDATION_ERROR. Optional
+        "reason" key is change-reference only (never applied as config) and
+        is stored in the audit trail with before/after values."""
+        import time
+        reason = patch.pop("reason", "")
+        if reason is not None and not isinstance(reason, str):
+            raise ServiceError(E.E_VALIDATION, "reason must be a string")
+        before = self.game_config_view(game_id, svc)
         allowed_common = {"enabled", "packages", "localization"}
         kind = self.game_kind(game_id)
         if kind == "teen":
@@ -268,7 +288,10 @@ class Handler(BaseHTTPRequestHandler):
             self.game_labels = getattr(self, "game_labels", {})
             self.game_labels[getattr(svc, "game_id", game_id)] = patch["localization"]
         svc.audit.record(actor, "config.update", "game",
-                         getattr(svc, "game_id", game_id), after=patch)
+                          getattr(svc, "game_id", game_id), before=before,
+                          after={"patch": patch, "reason": reason or "",
+                                 "updated_by": actor,
+                                 "applied_at_ms": int(time.time() * 1000)})
         return self.game_config_view(game_id, svc)
 
     # -- routing --
@@ -533,32 +556,37 @@ class Handler(BaseHTTPRequestHandler):
                 st = svc.state(table_id, pid)
                 st["players"] = sorted(svc._room(table_id).members.keys())
                 return self.ok(st)
-            # --- admin reads ---
+            # --- admin reads (auditor role or higher) ---
             if path == "/api/v1/admin/config":
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
                 c = self.svc.config
                 return self.ok({"version": c.version, "confirmed": c.confirmed,
                                  "tbc": list(c.tbc), "seats": list(c.seats),
                                  "denoms": list(c.denoms), "guess_ms": c.guess_ms,
                                  "rake_bps": c.rake_bps})
             if path == "/api/v1/admin/audit":
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
                 return self.ok({"entries": self.svc.audit.list(
                     qs.get("entity", [""])[0], int(qs.get("limit", ["100"])[0]))})
             if path == "/api/v1/admin/webhooks":
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
                 return self.ok({"deliveries": self.svc.webhooks.deliveries[-100:]})
             if path == "/api/v1/admin/games":
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
                 return self.ok(self.game_inventory())
             m = re.fullmatch(r"/api/v1/admin/games/(\S+)/config", path)
             if m:
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
                 svc = self.game_service(m.group(1))
                 if svc is None:
                     return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))
@@ -582,23 +610,27 @@ class Handler(BaseHTTPRequestHandler):
                     return self.fail(exc)
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/start", path)
             if m:
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
                 return self.ok(self.svc.start_round(m.group(1), self.admin_role()), "Round started")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/close", path)
             if m:
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
                 return self.ok(self.svc.close_betting(m.group(1)), "Betting closed")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/result", path)
             if m:
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
                 return self.ok(self.svc.publish_result(m.group(1)), "Result published")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/settle", path)
             if m:
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
                 return self.ok(self.svc.settle(m.group(1)), "Settled")
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/(?:rounds/(\S+)/)?bets", path)
             if m:
@@ -762,8 +794,9 @@ class Handler(BaseHTTPRequestHandler):
                 svc = self.game_check(m.group(1))
                 if svc is None:
                     return
-                if not self.admin_role():
-                    return self.send(403, E.err("Admin key required", E.E_FORBIDDEN))
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
                 op = m.group(3)
                 try:
                     if op == "start":
