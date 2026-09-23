@@ -1,0 +1,281 @@
+{
+ "version": "1.0.0",
+ "provenance": "reconstructed-master-equivalent manufactured from DearLive reference images/video (see pack README.md). NOT original proprietary DearLive source masters.",
+ "games": {
+  "teen-patti-pro": {
+   "audio": [
+    {
+     "game": "teen-patti-pro",
+     "category": "audio",
+     "filename": "teen-patti-pro/wav/bet.wav",
+     "type": "wav",
+     "source": "reconstructed-master",
+     "dimensions": null,
+     "animation_duration_s": null,
+     "audio_duration_s": 0.14,
+     "intended_usage": "bet accepted jingle in WebView client (game.js sfx on BET placement ack)",
+     "event_trigger": "BET_ACCEPTED",
+     "fallback_asset": "oscillator beep (game.js beep)",
+     "mobile_notes": "mono 44.1kHz 16-bit; cached Audio element, plays on gesture chain"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "audio",
+     "filename": "teen-patti-pro/wav/card_flip.wav",
+     "type": "wav",
+     "source": "reconstructed-master",
+     "dimensions": null,
+     "animation_duration_s": null,
+     "audio_duration_s": 0.18,
+     "intended_usage": "deal moment when server round_id changes",
+     "event_trigger": "DEALING_CARDS (new round_id)",
+     "fallback_asset": "oscillator beep (game.js beep)",
+     "mobile_notes": "mono 44.1kHz 16-bit; cached Audio element, plays on gesture chain"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "audio",
+     "filename": "teen-patti-pro/wav/click.wav",
+     "type": "wav",
+     "source": "reconstructed-master",
+     "dimensions": null,
+     "animation_duration_s": null,
+     "audio_duration_s": 0.07,
+     "intended_usage": "any canvas control tap (also unlocks mobile audio)",
+     "event_trigger": "BUTTON_CLICK",
+     "fallback_asset": "oscillator beep (game.js beep)",
+     "mobile_notes": "mono 44.1kHz 16-bit; cached Audio element, plays on gesture chain"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "audio",
+     "filename": "teen-patti-pro/wav/coin.wav",
+     "type": "wav",
+     "source": "reconstructed-master",
+     "dimensions": null,
+     "animation_duration_s": null,
+     "audio_duration_s": 0.16,
+     "intended_usage": "coin burst layered with win jingle",
+     "event_trigger": "SETTLED (win)",
+     "fallback_asset": "oscillator beep (game.js beep)",
+     "mobile_notes": "mono 44.1kHz 16-bit; cached Audio element, plays on gesture chain"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "audio",
+     "filename": "teen-patti-pro/wav/lose.wav",
+     "type": "wav",
+     "source": "reconstructed-master",
+     "dimensions": null,
+     "animation_duration_s": null,
+     "audio_duration_s": 0.45,
+     "intended_usage": "result published while player sat out the round",
+     "event_trigger": "RESULT (spectating)",
+     "fallback_asset": "oscillator beep (game.js beep)",
+     "mobile_notes": "mono 44.1kHz 16-bit; cached Audio element, plays on gesture chain"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "audio",
+     "filename": "teen-patti-pro/wav/win.wav",
+     "type": "wav",
+     "source": "reconstructed-master",
+     "dimensions": null,
+     "animation_duration_s": null,
+     "audio_duration_s": 0.75,
+     "intended_usage": "winner jingle when authoritative result publishes and player bet this round",
+     "event_trigger": "RESULT (participated)",
+     "fallback_asset": "oscillator beep (game.js beep)",
+     "mobile_notes": "mono 44.1kHz 16-bit; cached Audio element, plays on gesture chain"
+    }
+   ],
+   "animations": [
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/lottie/card_deal.json",
+     "type": "lottie",
+     "source": "reconstructed-master",
+     "dimensions": [
+      512,
+      512
+     ],
+     "animation_duration_s": 2.0,
+     "audio_duration_s": null,
+     "intended_usage": "card entrance; host app renders via Lottie player, canvas draws procedural deal",
+     "event_trigger": "DEALING_CARDS",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "lottie v5.7.0 30fps 1 layer(s); host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/lottie/chip_glow.json",
+     "type": "lottie",
+     "source": "reconstructed-master",
+     "dimensions": [
+      512,
+      512
+     ],
+     "animation_duration_s": 2.0,
+     "audio_duration_s": null,
+     "intended_usage": "chip emphasis; canvas draws acting-seat glow on same transition",
+     "event_trigger": "BET_ACCEPTED",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "lottie v5.7.0 30fps 1 layer(s); host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/lottie/coin_effect.json",
+     "type": "lottie",
+     "source": "reconstructed-master",
+     "dimensions": [
+      512,
+      512
+     ],
+     "animation_duration_s": 2.0,
+     "audio_duration_s": null,
+     "intended_usage": "reward burst; canvas winner highlight on same transition",
+     "event_trigger": "SETTLED (win)",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "lottie v5.7.0 30fps 1 layer(s); host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/lottie/timer_pulse.json",
+     "type": "lottie",
+     "source": "reconstructed-master",
+     "dimensions": [
+      512,
+      512
+     ],
+     "animation_duration_s": 2.0,
+     "audio_duration_s": null,
+     "intended_usage": "countdown emphasis; canvas ring reddens on same server-time threshold",
+     "event_trigger": "TIMER COUNTDOWN (<=5s)",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "lottie v5.7.0 30fps 1 layer(s); host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/lottie/win_fireworks.json",
+     "type": "lottie",
+     "source": "reconstructed-master",
+     "dimensions": [
+      512,
+      512
+     ],
+     "animation_duration_s": 2.0,
+     "audio_duration_s": null,
+     "intended_usage": "result burst; canvas winner banner on same transition",
+     "event_trigger": "WIN",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "lottie v5.7.0 30fps 1 layer(s); host app renders, not the static client"
+    }
+   ],
+   "gifs": [
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/gif/card_deal.gif.gif",
+     "type": "gif",
+     "source": "reconstructed-master",
+     "dimensions": [
+      360,
+      240
+     ],
+     "animation_duration_s": null,
+     "audio_duration_s": null,
+     "intended_usage": "card entrance; host app renders via Lottie player, canvas draws procedural deal; host-app display alternative to Lottie",
+     "event_trigger": "DEALING_CARDS",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "18 frames; host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/gif/chip_glow.gif.gif",
+     "type": "gif",
+     "source": "reconstructed-master",
+     "dimensions": [
+      360,
+      240
+     ],
+     "animation_duration_s": null,
+     "audio_duration_s": null,
+     "intended_usage": "chip emphasis; canvas draws acting-seat glow on same transition; host-app display alternative to Lottie",
+     "event_trigger": "BET_ACCEPTED",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "18 frames; host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/gif/coin_effect.gif.gif",
+     "type": "gif",
+     "source": "reconstructed-master",
+     "dimensions": [
+      360,
+      240
+     ],
+     "animation_duration_s": null,
+     "audio_duration_s": null,
+     "intended_usage": "reward burst; canvas winner highlight on same transition; host-app display alternative to Lottie",
+     "event_trigger": "SETTLED (win)",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "18 frames; host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/gif/timer_pulse.gif.gif",
+     "type": "gif",
+     "source": "reconstructed-master",
+     "dimensions": [
+      360,
+      240
+     ],
+     "animation_duration_s": null,
+     "audio_duration_s": null,
+     "intended_usage": "countdown emphasis; canvas ring reddens on same server-time threshold; host-app display alternative to Lottie",
+     "event_trigger": "TIMER COUNTDOWN (<=5s)",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "18 frames; host app renders, not the static client"
+    },
+    {
+     "game": "teen-patti-pro",
+     "category": "animation",
+     "filename": "teen-patti-pro/gif/win_fireworks.gif.gif",
+     "type": "gif",
+     "source": "reconstructed-master",
+     "dimensions": [
+      360,
+      240
+     ],
+     "animation_duration_s": null,
+     "audio_duration_s": null,
+     "intended_usage": "result burst; canvas winner banner on same transition; host-app display alternative to Lottie",
+     "event_trigger": "WIN",
+     "fallback_asset": "procedural canvas FX on same transition (game.js)",
+     "mobile_notes": "18 frames; host app renders, not the static client"
+    }
+   ]
+  },
+  "greedy-lion": {
+   "audio": [],
+   "animations": [],
+   "gifs": [],
+   "fallback": "No lion pack supplied. Deterministic fallback: teen-patti-pro generic UI sounds (click/bet/coin WAVs) where the host plays UI audio + procedural canvas FX. Must NOT be labeled as lion-original assets."
+  },
+  "monkey-wheel": {
+   "audio": [],
+   "animations": [],
+   "gifs": [],
+   "fallback": "No monkey pack supplied. Deterministic fallback: teen-patti-pro generic UI sounds (click/bet/coin WAVs) where the host plays UI audio + procedural canvas FX. Must NOT be labeled as monkey-original assets."
+  }
+ },
+ "fallback_policy": "Missing packs reuse only generic UI sounds, never game-specific effects; every fallback row is marked and served from teen-patti-pro paths."
+}

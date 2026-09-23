@@ -1,0 +1,28 @@
+{
+  "type": "reconstructed-master-pack",
+  "files": [
+    "README.md",
+    "source-reference/card_reference.png",
+    "source-reference/chips_reference.png",
+    "source-reference/icons_reference.png",
+    "source-reference/timer_reference.png",
+    "source-reference/winner_reference.png",
+    "source-reference/video_audio_reference.wav",
+    "teen-patti-pro/lottie/card_deal.json",
+    "teen-patti-pro/lottie/win_fireworks.json",
+    "teen-patti-pro/lottie/timer_pulse.json",
+    "teen-patti-pro/lottie/chip_glow.json",
+    "teen-patti-pro/lottie/coin_effect.json",
+    "teen-patti-pro/wav/bet.wav",
+    "teen-patti-pro/wav/win.wav",
+    "teen-patti-pro/wav/lose.wav",
+    "teen-patti-pro/wav/card_flip.wav",
+    "teen-patti-pro/wav/click.wav",
+    "teen-patti-pro/wav/coin.wav",
+    "teen-patti-pro/gif/win_fireworks.gif.gif",
+    "teen-patti-pro/gif/chip_glow.gif.gif",
+    "teen-patti-pro/gif/card_deal.gif.gif",
+    "teen-patti-pro/gif/timer_pulse.gif.gif",
+    "teen-patti-pro/gif/coin_effect.gif.gif"
+  ]
+}

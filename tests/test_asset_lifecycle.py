@@ -65,8 +65,12 @@ class AssetLifecycleTest(CountedCase):
         cls.server.server_close()
 
     def get(self, path):
-        with urllib.request.urlopen(self.base + path, timeout=10) as r:
-            return r.status, r.headers.get("Content-Type", ""), r.read()
+        import urllib.error
+        try:
+            with urllib.request.urlopen(self.base + path, timeout=10) as r:
+                return r.status, r.headers.get("Content-Type", ""), r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Content-Type", ""), e.read()
 
     def test_every_manifest_asset_is_served_and_well_formed(self):
         files = dict(self.manifest["files"])
@@ -97,6 +101,36 @@ class AssetLifecycleTest(CountedCase):
             self.counted(token in src, f"game.js references {token}")
         for key in ("seats", "accent"):
             self.counted(key in doc.get("theme", {}), f"theme.{key} present")
+
+    def test_master_pack_served_with_event_manifest(self):
+        status, _, body = self.get("/teen-patti-pro/asset-manifest.json")
+        self.counted(status == 200, "asset-manifest.json served")
+        manifest = json.loads(body)
+        self.counted("reconstructed" in manifest.get("provenance", ""),
+                     "provenance labeled reconstructed, not original")
+        teen = manifest["games"]["teen-patti-pro"]
+        rows = teen["audio"] + teen["animations"] + teen["gifs"]
+        self.counted(len(rows) == 16, f"16 teen rows, got {len(rows)}")
+        for row in rows:
+            for key in ("event_trigger", "fallback_asset", "intended_usage"):
+                self.counted(bool(row.get(key)), f"{row['filename']} documents {key}")
+            kind = row["filename"].split("/")[1]
+            status, ctype, _ = self.get(f"/teen-patti-pro/master/{kind}/{row['filename'].split('/')[-1]}")
+            self.counted(status == 200, f"master file served: {row['filename']}")
+            want = {"wav": "audio", "gif": "image", "lottie": "json"}[kind]
+            self.counted(want in ctype, f"{row['filename']} content-type {ctype}")
+        for game in ("greedy-lion", "monkey-wheel"):
+            self.counted("fallback" in manifest["games"][game], f"{game} fallback documented")
+            self.counted(len(manifest["games"][game].get("audio", [])) == 0,
+                         f"{game} claims no originals")
+        status, _, _ = self.get("/teen-patti-pro/master/evil/x.wav")
+        self.counted(status == 404, "unknown master kind rejected")
+        status, _, _ = self.get("/teen-patti-pro/master/wav/bet.mp3")
+        self.counted(status == 404, "wrong extension rejected")
+        src = (CLIENT_DIR / "game.js").read_text()
+        for token in ("master/teen-patti-pro/wav/", "sfx('bet')", "sfx('win')",
+                      "sfx('flip')", "sfx('click')", "sfx('lose')"):
+            self.counted(token in src, f"game.js wires {token} to real transitions")
 
     def test_demo_bundle_intact(self):
         status, _, body = self.get("/teen-patti-pro/demo.html")

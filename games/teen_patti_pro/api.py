@@ -274,6 +274,10 @@ class Handler(BaseHTTPRequestHandler):
     # -- routing --
     CLIENT_DIR = Path(__file__).parent / "client"
     WHEEL_DIR = Path(__file__).parent.parent / "wheel_common"
+    MASTER_DIR = Path(__file__).parent.parent.parent / "assets" / "dearlive-master"
+    MASTER_KINDS = {"lottie": ("application/json; charset=utf-8", ".json"),
+                    "gif": ("image/gif", ".gif"),
+                    "wav": ("audio/wav", ".wav")}
 
     def serve_client(self, name: str, ctype: str):
         try:
@@ -320,12 +324,40 @@ class Handler(BaseHTTPRequestHandler):
                 return self.serve_client("theme.json", "application/json; charset=utf-8")
             if path == "/teen-patti-pro/assets.json":
                 return self.serve_client("assets.json", "application/json; charset=utf-8")
+            if path == "/teen-patti-pro/asset-manifest.json":
+                try:
+                    body = (self.MASTER_DIR / "asset-manifest.json").read_bytes()
+                except OSError:
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return self.wfile.write(body)
             m = re.fullmatch(r"/teen-patti-pro/assets/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 name = m.group(1)
                 if not name.endswith(".svg"):
                     return self.send(404, E.err("Not found", E.E_NOT_FOUND))
                 return self.serve_client(f"assets/{name}", "image/svg+xml")
+            m = re.fullmatch(r"/teen-patti-pro/master/([a-z]+)/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
+            if m:
+                kind, name = m.group(1), m.group(2)
+                spec = self.MASTER_KINDS.get(kind)
+                if spec is None or not name.endswith(spec[1]):
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+                ctype = spec[0]
+                try:
+                    body = (self.MASTER_DIR / "teen-patti-pro" / kind / name).read_bytes()
+                except OSError:
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                return self.wfile.write(body)
             if path == "/health":
                 return self.ok({"game": "teen-patti-pro", "config": self.svc.config.version,
                                  "confirmed": self.svc.config.confirmed})
@@ -467,8 +499,12 @@ class Handler(BaseHTTPRequestHandler):
                     except OSError:
                         return self.send(404, E.err("Asset manifest not bundled",
                                                     E.E_NOT_FOUND))
+                    try:
+                        master = json.loads((self.MASTER_DIR / "asset-manifest.json").read_bytes())
+                    except OSError:
+                        master = {"version": "missing"}
                     return self.ok({"game_id": "teen-patti-pro", "manifest": manifest,
-                                    "theme": theme})
+                                    "theme": theme, "master": master})
                 svc = self.game_check(game_id)
                 if svc is None:
                     return

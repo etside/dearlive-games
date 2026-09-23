@@ -54,6 +54,25 @@
   S.panel = null; // null | 'help' | 'menu' | 'history'
   try { S.sound = localStorage.getItem('tpp_sound') !== 'off'; } catch (e) { S.sound = true; }
   S.hist = [];
+  // Supplied master audio (assets/dearlive-master, served under
+  // master/teen-patti-pro/wav/): played on REAL server state transitions
+  // only — never on render. Oscillator fallback if a file is absent.
+  const SFX_FILES = { bet: 'bet.wav', win: 'win.wav', coin: 'coin.wav', lose: 'lose.wav',
+                      flip: 'card_flip.wav', click: 'click.wav' };
+  const sfxCache = {};
+  function sfx(name) {
+    if (!S.sound) return;
+    try {
+      let a = sfxCache[name];
+      if (!a) {
+        a = new Audio('master/teen-patti-pro/wav/' + (SFX_FILES[name] || name));
+        sfxCache[name] = a;
+      }
+      a.currentTime = 0;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => beep(name === 'win'));
+    } catch (e) { beep(name === 'win'); }
+  }
   function beep(win) {
     if (!S.sound) return;
     try {
@@ -236,8 +255,10 @@
     DENOMS.forEach((d, i) => {
       const x = W / 2 - (DENOMS.length - 1) * cw2 / 2 + i * cw2, y = by + 44;
       const sel = S.selDenom === d;
+      // DearLive reference chip colors: 20 green, 100 blue, 500 purple, 1K red.
+      const face = d === 20 ? '#22c55e' : d === 100 ? '#3b82f6' : d === 500 ? '#8b5cf6' : '#ef4444';
       ctx.save();
-      ctx.fillStyle = sel ? '#ffd54a' : '#155e43';
+      ctx.fillStyle = sel ? '#ffd54a' : face;
       ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
       ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#c8e6c9'; ctx.stroke();
       ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold 12px system-ui';
@@ -300,6 +321,7 @@
   }
 
   cv.addEventListener('pointerdown', async e => {
+    sfx('click');
     const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     if (S.panel) {  // tap outside panel closes it
       const b = S._panelBox;
@@ -341,6 +363,8 @@
         body: JSON.stringify({ position: pos, amount: S.selDenom })
       });
       S.msg = 'Accepted ' + d.bet_id;
+      S._placedThisRound = true;
+      sfx('bet');
     } catch (e) { S.msg = String(e.message || e); showErr(''); }
     refresh();
   }
@@ -364,7 +388,17 @@
     try {
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
-      if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) beep(true);
+      if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
+        // New server round -> deal moment: flip sound, reset participation.
+        sfx('flip');
+        S._placedThisRound = false;
+      }
+      if (S.snap) S._roundId = S.snap.round_id;
+      if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
+        // Authoritative result published: win jingle only if we took part.
+        if (S._placedThisRound) { sfx('win'); sfx('coin'); }
+        else sfx('lose');
+      }
       S._lastWinKey = key;
       S.srvNow = Date.now(); S.locNow = Date.now();
       try {

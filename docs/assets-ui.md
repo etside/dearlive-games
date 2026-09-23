@@ -40,6 +40,29 @@ skin section. `client/index.html` uses these as CSS variables;
 over compiled defaults — re-skin without touching game logic.
 Handover guide for the DearLive team: `docs/handover-dearlive.md`.
 
+## Master animation/audio pack (reconstructed, verified)
+
+Supplied pack `DearLive_Reconstructed_Lottie_GIF_WAV_Master_Pack.zip`
+(11labd) is unpacked to `assets/dearlive-master/` and served live:
+`/teen-patti-pro/master/{lottie,gif,wav}/<file>`,
+`/teen-patti-pro/asset-manifest.json` (+ embedded in
+`GET /api/v1/games/teen-patti-pro/assets` as `master`).
+Provenance: **reconstructed-master-equivalent**, NOT original proprietary
+masters — labeled as such in `asset-manifest.json:provenance`.
+Validated: 5 Lottie v5.7 (30fps/2s), 6 PCM WAV (44.1kHz/16-bit mono),
+5 multi-frame GIF89a; source-reference PNGs confirm DearLive casino
+styling (chip colors 20 green/100 blue/500 purple/1K red — applied to the
+Canvas chip rendering; gold alarm-clock timer; red/gold result banner).
+
+Event wiring (server transitions only, never render-driven):
+BET_ACCEPTED→`bet.wav`+chip glow · new round→`card_flip.wav` ·
+RESULT(participated)→`win.wav`+`coin.wav` · RESULT(spectating)→`lose.wav` ·
+tap→`click.wav` (sound toggle respected, oscillator fallback).
+Lottie/GIF are exposed for the host app's player; the static client keeps
+procedural canvas FX on the same transitions (mapped per file in the
+manifest). Individual Monkey/Greedy packs were NOT supplied: wheels reuse
+generic UI sounds procedurally as documented fallbacks, never mislabeled.
+
 Greedy Monkey / Baby King have NO bundled art in DearLive current —
 wheel segments are operator-configured per option (`icon` emoji +
 `colorHex`, seed `gameThemeData`). The developer supplies those via
