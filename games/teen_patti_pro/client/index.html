@@ -2,30 +2,77 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Teen Patti Pro</title>
 <style>
   /* DearLive current theme (Uradhura teen_patti seed + catalog palette).
-   * Full tokens: theme.json. Layout/logic below unchanged. */
+   * Full tokens: theme.json. Layout/logic below unchanged.
+   * Zoom is intentionally NOT disabled: blocking pinch-zoom breaks WCAG 1.4.4
+   * and locks out players who need to magnify small text. */
   :root{
     --dl-navy:#050914; --dl-blue:#2e6bff; --dl-violet:#7c3aed; --dl-cyan:#22d3ee;
     --dl-text:#fef2f2; --dl-muted:#8fa3c8;
     --dl-table-a:#450a0a; --dl-table-b:#7f1d1d;
     --dl-primary:#dc2626; --dl-accent:#fbbf24;
     --dl-seat-a:#ef4444; --dl-seat-b:#3b82f6; --dl-seat-c:#22c55e;
+    /* Read by the canvas renderer so content clears notches and home bars. */
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
   }
   html,body{margin:0;padding:0;height:100%;overflow:hidden;
     background:linear-gradient(180deg,var(--dl-table-a) 0%,var(--dl-table-b) 100%);
     color:var(--dl-text);
-    font-family:system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none}
+    font-family:system-ui,-apple-system,sans-serif;
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent}
   #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
-  #err{position:fixed;top:8px;left:8px;right:8px;color:#ffd54a;font-size:13px;display:none;
-    background:rgba(0,0,0,.6);padding:8px;border-radius:8px;z-index:10}
+
+  /* Status toast. Errors persist until the next successful action; transient
+     messages fade on their own. Sized and contrasted to stay legible. */
+  #err{position:fixed;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);
+    top:calc(var(--sat) + 8px);z-index:10;display:none;
+    padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.4;
+    background:rgba(12,16,28,.94);color:#fff;border:1px solid rgba(255,255,255,.18);
+    box-shadow:0 6px 20px rgba(0,0,0,.45)}
+  #err[data-kind="error"]{border-color:#f87171;background:rgba(60,12,12,.95);color:#fee2e2}
+  #err[data-kind="success"]{border-color:#4ade80;background:rgba(9,42,22,.95);color:#dcfce7}
+  #err[data-kind="info"]{border-color:#93c5fd}
+  #err button{all:unset;float:right;margin-left:10px;cursor:pointer;
+    font-size:18px;line-height:1;padding:2px 6px;border-radius:6px;color:#fff}
+  #err button:focus-visible{outline:3px solid #fbbf24;outline-offset:2px}
+
+  /* Screen-reader announcements for state the canvas cannot expose. */
+  .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+
+  /* Keyboard users need a visible way into the canvas controls. */
+  #kbhint{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(var(--sab) + 6px);z-index:9;display:none;
+    padding:6px 10px;border-radius:8px;font-size:12px;color:#e2e8f0;
+    background:rgba(12,16,28,.9);border:1px solid rgba(255,255,255,.18)}
+  body.kb #kbhint{display:block}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div id="err"></div>
+<canvas id="c" role="img" aria-label="Teen Patti Pro table. Select a seat, choose a chip value, then tap the seat again to bet. Keyboard: keys 1 to 4 choose a chip, A, B or C choose a seat, Enter places the bet, H history, question mark help, M menu, S sound, Escape closes panels."></canvas>
+<div id="err" role="status" aria-live="polite"><button type="button" aria-label="Dismiss message">&times;</button><span id="errtext"></span></div>
+<div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="kbhint">Keys: 1-4 chip &middot; A/B/C seat &middot; Enter bet &middot; H history &middot; ? help &middot; M menu &middot; S sound</div>
+<noscript><p style="padding:24px;font-size:16px">Teen Patti Pro needs JavaScript enabled to run.</p></noscript>
 <script src="game.js"></script>
+<script>
+  // The toast owns a dismiss control; the canvas renderer only sets text/kind.
+  document.addEventListener('DOMContentLoaded', function () {
+    var box = document.getElementById('err');
+    if (box) box.querySelector('button').addEventListener('click', function () {
+      box.style.display = 'none';
+      box.textContent = box.textContent;
+    });
+    // Reveal keyboard hints only once a key is actually used.
+    window.addEventListener('keydown', function () { document.body.classList.add('kb'); }, { once: true });
+  });
+</script>
 </body>
 </html>

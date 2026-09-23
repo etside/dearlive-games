@@ -38,16 +38,42 @@
 
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
   const errBox = document.getElementById('err');
-  let W = 0, H = 0, DPR = 1;
+  const errText = document.getElementById('errtext');
+  const liveEl = document.getElementById('live');
+  let W = 0, H = 0, DPR = 1, SAFE = { t: 0, b: 0, l: 0, r: 0 };
+  const REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function readSafeAreas() {
+    try {
+      const cs = getComputedStyle(document.documentElement);
+      const n = k => parseFloat(cs.getPropertyValue(k)) || 0;
+      SAFE = { t: n('--sat'), b: n('--sab'), l: n('--sal'), r: n('--sar') };
+    } catch (e) { SAFE = { t: 0, b: 0, l: 0, r: 0 }; }
+  }
   function resize() {
     DPR = Math.min(3, window.devicePixelRatio || 1);
     W = window.innerWidth; H = window.innerHeight;
     cv.width = W * DPR; cv.height = H * DPR;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    readSafeAreas();
   }
-  window.addEventListener('resize', resize); resize();
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+  resize();
 
-  const S = { snap: null, selDenom: 100, selPos: null, lastSeq: 0, connected: false, msg: '' };
+  // Type scale: one multiplier for the whole UI, floored so no label drops
+  // below 12px on a small phone. Callers ask for a base size, not a raw px.
+  function U() {
+    const s = Math.max(0.9, Math.min(1.35, Math.min(W, H) / 420));
+    return { s, f: n => Math.max(12, Math.round(n * s)) + 'px' };
+  }
+  function announce(text) {
+    if (!liveEl) return;
+    liveEl.textContent = '';
+    setTimeout(() => { liveEl.textContent = text; }, 30);
+  }
+
+  const S = { snap: null, selDenom: 100, selPos: null, lastSeq: 0, connected: false,
+              msg: '', msgKind: 'info' };
   const DENOMS = [20, 100, 500, 1000];
   const POS = ['A', 'B', 'C'];
   // Common HUD state (BRD common UI): panel overlay, sound/music toggle.
@@ -90,7 +116,26 @@
     try { localStorage.setItem('tpp_sound', S.sound ? 'on' : 'off'); } catch (e) {}
   }
 
-  function showErr(t) { errBox.style.display = t ? 'block' : 'none'; errBox.textContent = t || ''; }
+  // Feedback has three channels: a canvas status line, a DOM toast, and a
+  // screen-reader announcement. Errors persist until the next success so a
+  // failed bet is never silently swallowed.
+  let toastTimer = null;
+  function showErr(t) { errBox.style.display = t ? 'block' : 'none'; }
+  function setToast(text, kind) {
+    if (!text) { showErr(''); return; }
+    errText.textContent = text;
+    errBox.dataset.kind = kind || 'info';
+    showErr('1');
+    if (toastTimer) clearTimeout(toastTimer);
+    if (kind !== 'error') toastTimer = setTimeout(() => showErr(''), 3800);
+    announce(text);
+  }
+  function clearToast() { if (toastTimer) clearTimeout(toastTimer); showErr(''); }
+  function status(text, kind) {
+    S.msg = text || '';
+    S.msgKind = kind || 'info';
+    if (text) setToast(text, kind);
+  }
   async function api(path, opts) {
     opts = opts || {};
     opts.headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION }, opts.headers || {});
@@ -107,10 +152,9 @@
   // ---- layout (normalized 0..1, portrait-first, adapts to landscape) ----
   function layout() {
     const land = W > H;
-    const cx = W / 2, top = H * (land ? 0.30 : 0.24);
+    const cx = W / 2, top = H * (land ? 0.30 : 0.24) + SAFE.t;
     const rx = Math.min(W * 0.36, (land ? 260 : 300));
     const seats = {};
-    const angles = land ? [-0.45, 0.5, Math.PI - 0.05] : [-2.25, -0.85, -1.57 + Math.PI * 0 + 1.57];
     // portrait: A left, B right, C top-center
     const pp = land
       ? [{ x: cx - rx, y: top }, { x: cx + rx, y: top }, { x: cx, y: top - H * 0.16 }]
@@ -155,35 +199,36 @@
     const g = ctx.createRadialGradient(W / 2, H * 0.42, 60, W / 2, H * 0.42, Math.max(W, H) * 0.75);
     g.addColorStop(0, THEME.feltA); g.addColorStop(1, THEME.feltB);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    const L = layout(), s = S.snap;
+    const L = layout(), s = S.snap, u = U();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
     // header: room + connection + server-driven countdown
-    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
-    ctx.fillText('TEEN PATTI PRO · ' + ROOM, W / 2, 22);
-    ctx.fillStyle = S.connected ? '#7CFC98' : '#ff7b7b'; ctx.font = '13px system-ui';
-    ctx.fillText(S.connected ? (S.polling ? '● POLLING' : '● LIVE') : '○ OFFLINE', W / 2, 42);
+    ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
+    ctx.fillText('TEEN PATTI PRO · ' + ROOM, W / 2, 22 + SAFE.t * 0.4);
+    ctx.fillStyle = S.connected ? '#7CFC98' : '#ff9b9b'; ctx.font = u.f(13);
+    ctx.fillText(S.connected ? (S.polling ? '● POLLING' : '● LIVE') : '○ OFFLINE', W / 2, 42 + SAFE.t * 0.4);
     // round number (server-authoritative)
-    ctx.fillStyle = '#ffe9a8'; ctx.font = '12px system-ui';
+    ctx.fillStyle = '#ffe9a8'; ctx.font = u.f(12);
     const rnd = s ? (s.round_no ? ('ROUND ' + s.round_no) : (s.round_id || '')) : '—';
-    ctx.fillText(rnd, W / 2, 58);
+    ctx.fillText(rnd, W / 2, 58 + SAFE.t * 0.4);
     // top-left controls: Back | Help | Sound | Menu ; top-right: History
     S._ctl = [];
     const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
+    const step = Math.min(46, (W * 0.52) / ctl.length);
     ctl.forEach((c, i) => {
-      const x = 26 + i * 44, y = 26;
+      const x = SAFE.l + 24 + i * step, y = 26 + SAFE.t * 0.4;
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(x - 17, y - 15, 34, 30, 8); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui';
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(x - 18, y - 16, 36, 32, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(15);
       ctx.fillText(c[0], x, y + 1); ctx.restore();
-      S._ctl.push({ act: c[1], x, y, r: 22 });
+      S._ctl.push({ act: c[1], x, y, r: 24 });
     });
-    const hx = W - 30;
+    const hx = W - SAFE.r - 32;
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(hx - 24, 11, 48, 30, 8); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('HIST', hx, 27);
+    ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(hx - 26, 11 + SAFE.t * 0.4, 52, 32, 8); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('HIST', hx, 27 + SAFE.t * 0.4);
     ctx.restore();
-    S._ctl.push({ act: 'history', x: hx, y: 26, r: 26 });
+    S._ctl.push({ act: 'history', x: hx, y: 26 + SAFE.t * 0.4, r: 28 });
     let secs = null;
     if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
       // serverTime-anchored: estimate server now from last snapshot skew
@@ -196,20 +241,20 @@
     ctx.beginPath(); ctx.arc(L.cx, L.top + (L.land ? 96 : 150), 34, 0, 7); ctx.stroke();
     if (secs !== null) {
       const frac = Math.min(1, secs / 20);
-      ctx.strokeStyle = secs < 5 ? '#ff5252' : '#ffd54a';
+      ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffd54a';
       ctx.beginPath(); ctx.arc(L.cx, L.top + (L.land ? 96 : 150), 34, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 20px system-ui';
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(20);
       ctx.fillText(secs.toFixed(0), L.cx, L.top + (L.land ? 96 : 150));
-      ctx.font = '11px system-ui'; ctx.fillStyle = '#ffe9a8';
-      ctx.fillText(s.status === 'BETTING_OPEN' ? 'GUESSING' : s.status, L.cx, L.top + (L.land ? 128 : 182));
+      ctx.font = u.f(12); ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(secs < 5 ? 'CLOSING SOON' : (s.status === 'BETTING_OPEN' ? 'GUESSING' : s.status), L.cx, L.top + (L.land ? 128 : 182));
     } else if (s) {
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui';
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(13);
       ctx.fillText(s.status || '—', L.cx, L.top + (L.land ? 96 : 150));
     }
     ctx.restore();
 
     // pot
-    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 15px system-ui';
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(15);
     const pot = s ? s.pot_total : 0, mine = s ? s.my_bet : 0;
     ctx.fillText('POT ' + pot + '   ·   YOU ' + mine, W / 2, H * 0.115);
 
@@ -218,7 +263,8 @@
       const pt = L.seats[p], sel = S.selPos === p;
       const win = s && s.winners && s.winners.indexOf(p) >= 0;
       if (win) {
-        ctx.save(); ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 26;
+        ctx.save();
+        if (!REDUCED) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 26; }
         ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(pt.x, pt.y, 66, 0, 7); ctx.stroke(); ctx.restore();
       }
@@ -227,13 +273,13 @@
       ctx.fillStyle = sel ? '#ffd54a' : '#123f31';
       ctx.beginPath(); ctx.arc(pt.x, pt.y - 62, 22, 0, 7); ctx.fill();
       ctx.lineWidth = sel ? 3 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#ffd54a'; ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui'; ctx.fillText(p, pt.x, pt.y - 62);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(16); ctx.fillText(p, pt.x, pt.y - 62);
       ctx.restore();
       // cards
       const hands = (s && s.hands && s.hands[p]) || ['**', '**', '**'];
       hands.forEach((f, i) => card(pt.x - L.cw * 1.15 + i * (L.cw + 5), pt.y - L.ch / 2, L.cw, L.ch, f));
       // pot per position
-      ctx.fillStyle = '#c8e6c9'; ctx.font = '13px system-ui';
+      ctx.fillStyle = '#d7f5dd'; ctx.font = u.f(13);
       const pv = (s && s.pots && s.pots[p]) || 0;
       ctx.fillText(p + ' · ' + pv, pt.x, pt.y + L.ch / 2 + 16);
     });
@@ -241,14 +287,14 @@
     // winners banner
     if (s && s.winners && s.winners.length && (s.status === 'RESULT' || s.status === 'SETTLED' || s.status === 'CLOSED')) {
       ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(W / 2 - 150, H * 0.47, 300, 44, 12); ctx.fill();
-      ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 18px system-ui';
+      ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(18);
       ctx.fillText('WINNER: ' + s.winners.join(' & '), W / 2, H * 0.47 + 23);
     }
 
     // bottom: balance + chips + actions
-    const by = H - Math.max(150, H * 0.20);
-    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14);
-    ctx.fillStyle = '#fff'; ctx.font = '600 15px system-ui';
+    const by = H - Math.max(150, H * 0.20) - SAFE.b;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14 + SAFE.b);
+    ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
     ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
     S._chips = [];
     const cw2 = Math.min(64, W / (DENOMS.length + 0.6));
@@ -261,34 +307,49 @@
       ctx.fillStyle = sel ? '#ffd54a' : face;
       ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
       ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#c8e6c9'; ctx.stroke();
-      ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold 12px system-ui';
+      ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold ' + u.f(12);
       ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y);
       ctx.restore();
-      S._chips.push({ d, x, y, r: 26 });
+      S._chips.push({ d, x, y, r: 28 });
     });
     // repeat + status msg
-    S._repeat = { x: W - 52, y: by + 44, r: 26 };
+    S._repeat = { x: W - 52, y: by + 44, r: 28 };
     ctx.save(); ctx.fillStyle = '#155e43'; ctx.beginPath(); ctx.arc(S._repeat.x, S._repeat.y, 24, 0, 7); ctx.fill();
     ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.fillText('RPT', S._repeat.x, S._repeat.y); ctx.restore();
-    if (S.msg) { ctx.fillStyle = '#ffd54a'; ctx.font = '13px system-ui'; ctx.fillText(S.msg, W / 2, by + 84); }
-    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '11px system-ui';
-    ctx.fillText('tap a seat, then tap again to bet · server-authoritative', W / 2, H - 12);
-    if (S.panel) drawPanel();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('RPT', S._repeat.x, S._repeat.y); ctx.restore();
+    if (S.msg) {
+      ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : (S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8');
+      ctx.font = u.f(13);
+      ctx.fillText(S.msg, W / 2, by + 84);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = u.f(12);
+    ctx.fillText('tap a seat, then tap again to bet · server-authoritative', W / 2, H - 12 - SAFE.b);
+
+    // first-load and connection states, so the table is never a blank felt
+    if (!S.snap && !S._everConnected) {
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; rr(W / 2 - 130, H * 0.44, 260, 48, 12); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
+      ctx.fillText('Connecting to table…', W / 2, H * 0.44 + 24);
+    } else if (S._everConnected && !S.connected) {
+      ctx.fillStyle = 'rgba(120,20,20,.9)'; rr(W / 2 - 110, H * 0.44, 220, 40, 10); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(14);
+      ctx.fillText('Reconnecting…', W / 2, H * 0.44 + 20);
+    }
+    if (S.panel) drawPanel(u);
     requestAnimationFrame(draw);
   }
 
-  function drawPanel() {
+  function drawPanel(u) {
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,.72)'; ctx.fillRect(0, 0, W, H);
     const pw = Math.min(W - 40, 420), ph = Math.min(H - 120, 380);
     const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     ctx.fillStyle = '#123f31'; rr(px, py, pw, ph, 14); ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = '#ffd54a'; ctx.stroke();
-    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 16px system-ui';
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(16);
     const title = S.panel === 'help' ? 'HELP' : S.panel === 'menu' ? 'MENU' : 'HISTORY / RESULT';
     ctx.fillText(title, W / 2, py + 28);
-    ctx.fillStyle = '#fff'; ctx.font = '13px system-ui';
+    ctx.fillStyle = '#fff'; ctx.font = u.f(13);
     let lines = [];
     if (S.panel === 'help') lines = [
       'Tap a seat (A/B/C), tap again to bet.',
@@ -296,19 +357,20 @@
       'RPT repeats your last bets.',
       'Timer is server time. Results are',
       'server-dealt and auditable.',
-      'Tap ✕ panel or anywhere outside to close.'];
+      'Keys: 1-4 chip, A/B/C seat, Enter bet.',
+      'Tap outside to close.'];
     else if (S.panel === 'menu') lines = [
       'Sound: ' + (S.sound ? 'ON (tap ♪ to mute)' : 'OFF (tap ✕ to unmute)'),
       'Session: ' + (SESSION ? SESSION.slice(0, 18) + '…' : 'none (demo mode)'),
       'Room: ' + ROOM,
-      'Tap RECONNECT below to resync state.'];
+      'Timer and results come from the server.',
+      'Tap outside to close.'];
     else lines = S.hist.length ? S.hist.slice(-10).map(
       h => (h.round_id || '').slice(-6) + ' · ' + h.position + ' · ' + h.amount + ' · ' + h.status)
       : ['No bets yet this round.'];
     lines.forEach((t, i) => ctx.fillText(t, W / 2, py + 58 + i * 22));
-    // close + (menu) reconnect hints
-    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 13px system-ui';
-    ctx.fillText(S.panel === 'menu' ? 'tap RECONNECT in console · tap outside to close' : 'tap outside to close', W / 2, py + ph - 16);
+    ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(13);
+    ctx.fillText('tap outside to close', W / 2, py + ph - 16);
     ctx.restore();
     S._panelBox = { x: px, y: py, w: pw, h: ph };
   }
@@ -330,7 +392,7 @@
     }
     for (const c of (S._ctl || [])) {
       if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
-        if (c.act === 'back') { try { history.back(); } catch (e2) { S.msg = 'Back: no history'; } return; }
+        if (c.act === 'back') { try { history.back(); } catch (e2) { status('No previous page to go back to', 'info'); } return; }
         if (c.act === 'sound') { toggleSound(); return; }
         if (c.act === 'help') { S.panel = 'help'; return; }
         if (c.act === 'menu') { S.panel = 'menu'; return; }
@@ -338,7 +400,9 @@
       }
     }
     for (const c of (S._chips || [])) {
-      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) { S.selDenom = c.d; S.msg = ''; return; }
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
+        S.selDenom = c.d; status('Chip ' + c.d + ' selected', 'info'); return;
+      }
     }
     const rp = S._repeat;
     if (rp && (x - rp.x) ** 2 + (y - rp.y) ** 2 < rp.r * rp.r) { doRepeat(); return; }
@@ -347,29 +411,53 @@
       const pt = L.seats[p];
       if (Math.hypot(x - pt.x, y - pt.y) < 110) {
         if (S.selPos === p) { placeBet(p); S.selPos = null; }
-        else { S.selPos = p; S.msg = 'Seat ' + p + ' selected — tap again to bet ' + S.selDenom; }
+        else { S.selPos = p; status('Seat ' + p + ' selected — tap again to bet ' + S.selDenom, 'info'); }
         return;
       }
     }
   });
 
   const BETS = '/api/v1/games/teen-patti-pro/rooms/' + encodeURIComponent(ROOM) + '/bets';
+  // One in-flight bet at a time. Without this a fast double tap could submit
+  // two independent bets (each call mints its own idempotency key), which is a
+  // player-money bug, not just a visual one.
+  let betBusy = false;
+  function friendlyError(e) {
+    const m = String((e && e.message) || e || 'error');
+    if (/INSUFFICIENT_BALANCE/.test(m)) return 'Not enough balance for that chip.';
+    if (/BETTING_CLOSED|BETTING_CLOSED_RACE/.test(m)) return 'Betting closed for this round.';
+    if (/DUPLICATE_REQUEST/.test(m)) return 'That bet was already accepted.';
+    if (/VALIDATION_ERROR/.test(m)) return 'That chip is not allowed on this table.';
+    if (/UNAUTHENTICATED|Unknown session/i.test(m)) return 'Session expired — reopen the game.';
+    if (/FAILED|Fetch|NetworkError/i.test(m)) return 'Network problem — retrying.';
+    return m.replace(/^[A-Z_]+:\s*/, '');
+  }
   async function placeBet(pos) {
-    S.msg = 'Placing ' + S.selDenom + ' on ' + pos + '…';
+    if (betBusy) { status('Please wait — bet still sending…', 'info'); return; }
+    if (S.snap && S.snap.status !== 'BETTING_OPEN') {
+      status('Betting is closed for this round.', 'error');
+      return;
+    }
+    betBusy = true;
+    status('Placing ' + S.selDenom + ' on ' + pos + '…', 'info');
     try {
       const d = await api(BETS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
         body: JSON.stringify({ position: pos, amount: S.selDenom })
       });
-      S.msg = 'Accepted ' + d.bet_id;
+      status('Bet accepted · ' + S.selDenom + ' on ' + pos, 'success');
       S._placedThisRound = true;
       sfx('bet');
-    } catch (e) { S.msg = String(e.message || e); showErr(''); }
-    refresh();
+    } catch (e) {
+      status(friendlyError(e), 'error');
+    } finally {
+      setTimeout(() => { betBusy = false; }, 400);
+      refresh();
+    }
   }
   async function doRepeat() {
-    S.msg = 'Repeat: replays last round bets (server-side)…';
+    status('Repeating your last bets…', 'info');
     try {
       const h = await api('/api/v1/games/teen-patti-pro/history?room=' + encodeURIComponent(ROOM));
       const bets = (h.bets || []).slice(-3);
@@ -380,43 +468,77 @@
           body: JSON.stringify({ position: b.position, amount: b.amount })
         });
       }
-      S.msg = bets.length ? 'Repeated ' + bets.length + ' bet(s)' : 'Nothing to repeat';
-    } catch (e) { S.msg = String(e.message || e); }
+      status(bets.length ? ('Repeated ' + bets.length + ' bet(s)') : 'Nothing to repeat',
+             bets.length ? 'success' : 'info');
+    } catch (e) { status(friendlyError(e), 'error'); }
     refresh();
   }
   async function refresh() {
     try {
+      const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
       if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
         // New server round -> deal moment: flip sound, reset participation.
         sfx('flip');
         S._placedThisRound = false;
+        announce('New round ' + (S.snap.round_id || ''));
       }
       if (S.snap) S._roundId = S.snap.round_id;
       if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
         // Authoritative result published: win jingle only if we took part.
         if (S._placedThisRound) { sfx('win'); sfx('coin'); }
         else sfx('lose');
+        status('Result · winner ' + S.snap.winners.join(' and '), 'success');
+      } else if (prev && prev.status === 'BETTING_OPEN' && S.snap.status !== 'BETTING_OPEN') {
+        status('Betting closed — waiting for the result.', 'info');
       }
       S._lastWinKey = key;
       S.srvNow = Date.now(); S.locNow = Date.now();
       try {
         const w = await api('/api/v1/games/teen-patti-pro/rooms/' + encodeURIComponent(ROOM) + '/wallet');
+        if (w.available !== S.balance) announce('Balance ' + w.available);
         S.balance = w.available;
       } catch (e) { /* wallet optional in snapshot loop */ }
-      showErr('');
-    } catch (e) { showErr('API: ' + e.message); }
+      if (S.msgKind === 'error') clearToast();
+    } catch (e) {
+      S._everConnected = true;
+      status(friendlyError(e), 'error');
+    }
   }
+  // Keyboard parity for every canvas control (WCAG 2.1.1). Pointer users are
+  // unaffected; this also makes the table scriptable in browser QA.
+  window.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (k === 'Escape') { S.panel = null; return; }
+    if (S.panel) return;
+    if (k >= '1' && k <= '4') {
+      const d = DENOMS[Number(k) - 1];
+      if (d) { S.selDenom = d; status('Chip ' + d + ' selected', 'info'); }
+      e.preventDefault(); return;
+    }
+    const seat = k.toUpperCase();
+    if (POS.indexOf(seat) >= 0) {
+      if (S.selPos === seat) { placeBet(seat); S.selPos = null; }
+      else { S.selPos = seat; status('Seat ' + seat + ' selected — press Enter to bet ' + S.selDenom, 'info'); }
+      e.preventDefault(); return;
+    }
+    if (k === 'Enter') { if (S.selPos) { placeBet(S.selPos); S.selPos = null; } e.preventDefault(); return; }
+    if (k === 'r' || k === 'R') { doRepeat(); e.preventDefault(); return; }
+    if (k === 'h' || k === 'H') { openHistory(); e.preventDefault(); return; }
+    if (k === '?') { S.panel = 'help'; e.preventDefault(); return; }
+    if (k === 'm' || k === 'M') { S.panel = 'menu'; e.preventDefault(); return; }
+    if (k === 's' || k === 'S') { toggleSound(); status('Sound ' + (S.sound ? 'on' : 'off'), 'info'); e.preventDefault(); }
+  });
   function connect() {
     if (!SESSION) {
-      showErr('No session — open via ?session=<id>&room=<room> (launch token redeem first), or watch the offline demo: demo.html');
-      S.msg = 'No live session — see demo.html for an offline engine replay';
+      status('No session — open via the launch URL from your operator, or view demo.html', 'error');
       return;
     }
     if (!WS) {
       // Staging/serverless transport: no WebSocket — authoritative polling.
-      S.connected = true;
+      S.connected = true; S._everConnected = true;
       S.polling = true;
       refresh();
       setInterval(refresh, 2000);
@@ -425,7 +547,7 @@
     let ws;
     try { ws = new WebSocket(WS); } catch (e) { showErr('WS: ' + e.message); return; }
     ws.onopen = () => {
-      S.connected = true;
+      S.connected = true; S._everConnected = true;
       ws.send(JSON.stringify({ action: 'subscribe', room: ROOM, session: SESSION }));
       refresh();
     };
