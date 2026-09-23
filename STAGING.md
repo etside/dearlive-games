@@ -7,12 +7,10 @@
 
 ## URL
 
-`https://dearlive-games-staging-<team>.vercel.app` (exact URL printed by
-`vercel deploy`; also see `vercel ls`). Requires Upstash Redis env (below)
-or `/api/*` returns `503 staging backend unavailable` — static pages still
-render, money/state calls fail loudly, never faked.
+`https://dearlive-games-staging-6fejccerl-whotjms-projects.vercel.app`
+(redeploys get fresh preview URLs; `vercel ls` lists them).
 
-## Login (staging adapter)
+## Login (staging adapter — any player name works, no password)
 
 1. Open `/` → pick player + room → **Login + 20K test coins**.
 2. `POST /api/v1/staging/test-login {player, room, game}` → `{launch_token}`.
@@ -23,6 +21,17 @@ render, money/state calls fail loudly, never faked.
 
 Test accounts: `qa-player`, `qa-player-2`, `qa-player-3` (any name works;
 first login funds 20,000 TEST coins, idempotent per player).
+
+## Admin (X-Admin-Key header; roles superadmin > admin > operator > auditor)
+
+Keys are issued per-deployment and stored ONLY as Vercel env secrets
+(`GAME_ADMIN_KEYS`) — never in git. See `docs/staging-credentials.md`
+for roles, rotation, and who holds the current values.
+- auditor: read admin endpoints (config views, games, audit, webhooks).
+- operator: + round start/close/result/settle.
+- admin: general operator role.
+- superadmin: + `PUT /api/v1/admin/games/{id}/config` (audited with
+  before/reason/updated_by/applied_at).
 
 ## Games
 
