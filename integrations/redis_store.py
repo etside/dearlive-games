@@ -34,18 +34,44 @@ class RedisConnectionError(ConnectionError):
     pass
 
 
+def _from_url(url: str) -> dict:
+    """Parse redis:// or rediss:// into discrete connection settings.
+
+    Hosted providers (Vercel Marketplace, Upstash) usually inject a single
+    REDIS_URL; explicit REDIS_* variables still win when both are present.
+    """
+    try:
+        import urllib.parse as _up
+        parsed = _up.urlparse(url)
+    except Exception:
+        return {}
+    if not parsed.hostname:
+        return {}
+    return {
+        "host": parsed.hostname,
+        "port": int(parsed.port or 6379),
+        "username": _up.unquote(parsed.username or ""),
+        "password": _up.unquote(parsed.password or ""),
+        "use_tls": parsed.scheme == "rediss",
+        "db": int((parsed.path or "/0").lstrip("/") or 0),
+    }
+
+
 class MinimalRedis:
     """Tiny RESP2 client: GET/SET(NX,PX)/DEL/EXPIRE/EVAL. Enough for the contract."""
 
     def __init__(self, host: str = "", port: int = 6379, db: int = 0,
                  username: str = "", password: str = "", use_tls: bool = False,
                  timeout: float = 5.0):
-        self.host = host or _env("REDIS_HOST", "127.0.0.1")
-        self.port = int(port or _env("REDIS_PORT", "6379"))
-        self.db = int(db if db is not None else _env("REDIS_DB", "0"))
-        self.username = username or _env("REDIS_USERNAME", "")
-        self.password = password or _env("REDIS_PASSWORD", "")
-        self.use_tls = use_tls or _env("REDIS_TLS", "false").lower() in ("1", "true", "yes")
+        from_url = _from_url(_env("REDIS_URL", ""))
+        self.host = host or _env("REDIS_HOST", "") or from_url.get("host", "127.0.0.1")
+        self.port = int(port or _env("REDIS_PORT", "") or from_url.get("port", 6379))
+        self.db = int(db if db is not None else _env("REDIS_DB", from_url.get("db", 0)))
+        self.username = username or _env("REDIS_USERNAME", "") or from_url.get("username", "")
+        self.password = password or _env("REDIS_PASSWORD", "") or from_url.get("password", "")
+        self.use_tls = (use_tls
+                        or _env("REDIS_TLS", "false").lower() in ("1", "true", "yes")
+                        or from_url.get("use_tls", False))
         self.timeout = timeout
         self._sock: Optional[socket.socket] = None
         self._buf = b""
