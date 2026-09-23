@@ -1,8 +1,11 @@
 # STAGING ASSET QA
 
-Evidence-backed asset checklist (local QA runs; deployed-URL column filled
-after Vercel deploy). Status PASS requires: file exists + served live (200,
-correct MIME) + browser-loaded + event-wired (audio) or host-mapped (Lottie/GIF).
+Deployed URL: https://dearlive-games-staging-9mnugmwp1-whotjms-projects.vercel.app
+Evidence-backed asset checklist. Status PASS requires: file exists + served
+live (200, correct MIME) + browser-loaded + event-wired (audio) or
+host-mapped (Lottie/GIF). Static column verified on the deployed URL
+(20/20 checks green, 0 JS exceptions); gameplay column needs Upstash Redis
+env (API currently 503 UNAVAILABLE by design until then).
 
 ## Teen Patti Pro
 
