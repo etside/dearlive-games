@@ -119,6 +119,11 @@ def build_postman():
             {"key": "baseUrl", "value": "http://127.0.0.1:5002"},
             {"key": "providerApiKey", "value": "tp_live_xxx"},
             {"key": "providerSecret", "value": "replace-me"},
+            {"key": "game", "value": "teen-patti",
+             "description": "Game slug: teen-patti, greedy-lion or monkey-wheel. "
+                            "Greedy Lion bets on option_id, Teen Patti on position."},
+            {"key": "tableId", "value": "teen-patti-low",
+             "description": "Table id for the selected game."},
             {"key": "timestamp", "value": ""},
             {"key": "nonce", "value": ""},
             {"key": "signature", "value": ""},

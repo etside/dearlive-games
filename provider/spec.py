@@ -143,49 +143,66 @@ SPEC = {
                               **_errors(401, 404, 429)},
             },
         },
-        "/api/v1/teen-patti/tables": {
+        "/api/v1/{game}/tables": {
             "get": {
                 "tags": ["Tables"],
-                "summary": "List tables with live status",
+                "summary": "List tables for a game with live status",
+                "parameters": [{"$ref": "#/components/parameters/Game"}],
                 "responses": {"200": _ok("TableListResponse"), **ENVELOPE_ERROR,
                               **_errors(401, 429)},
             },
         },
-        "/api/v1/teen-patti/tables/{tableId}": {
+        "/api/v1/{game}/tables/{tableId}/choices": {
+            "get": {
+                "tags": ["Tables"],
+                "summary": "List the choices a table accepts for this game",
+                "description": "Teen Patti returns its positions; the wheels return "
+                               "their options with multipliers. Use choice_field to "
+                               "name the field in an action request.",
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"}],
+                "responses": {"200": _ok("ChoiceListResponse"), **ENVELOPE_ERROR,
+                              **_errors(401, 404, 429)},
+            },
+        },
+        "/api/v1/{game}/tables/{tableId}": {
             "get": {
                 "tags": ["Tables"],
                 "summary": "Read one table",
-                "parameters": [{"$ref": "#/components/parameters/TableId"}],
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"}],
                 "responses": {"200": _ok("Table"), **ENVELOPE_ERROR,
                               **_errors(401, 404, 429)},
             },
         },
-        "/api/v1/teen-patti/tables/{tableId}/join": {
+        "/api/v1/{game}/tables/{tableId}/join": {
             "post": {
                 "tags": ["Tables"],
                 "summary": "Seat a player at a table",
                 "description": "Identify the player with a session id or "
                                "session_token. A session token always wins over a "
                                "caller-supplied player_id.",
-                "parameters": [{"$ref": "#/components/parameters/TableId"}],
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"}],
                 "requestBody": {"required": True, "content": {"application/json": {
                     "schema": {"$ref": "#/components/schemas/JoinRequest"}}}},
                 "responses": {"200": _ok("JoinResponse"), **ENVELOPE_ERROR,
                               **_errors(401, 404, 409, 422, 429)},
             },
         },
-        "/api/v1/teen-patti/tables/{tableId}/leave": {
+        "/api/v1/{game}/tables/{tableId}/leave": {
             "post": {
                 "tags": ["Tables"],
                 "summary": "Release a seat",
-                "parameters": [{"$ref": "#/components/parameters/TableId"}],
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"}],
                 "requestBody": {"required": False, "content": {"application/json": {
                     "schema": {"$ref": "#/components/schemas/SessionRefRequest"}}}},
                 "responses": {"200": _ok("LeaveResponse"), **ENVELOPE_ERROR,
                               **_errors(401, 422, 429)},
             },
         },
-        "/api/v1/teen-patti/tables/{tableId}/action": {
+        "/api/v1/{game}/tables/{tableId}/action": {
             "post": {
                 "tags": ["Tables"],
                 "summary": "Submit the V1 player action (bet)",
@@ -193,7 +210,8 @@ SPEC = {
                                "turn, fold or show action. Amounts are validated "
                                "against the server-side denomination and table "
                                "limits; the client is never trusted.",
-                "parameters": [{"$ref": "#/components/parameters/TableId"},
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"},
                                {"$ref": "#/components/parameters/IdempotencyKey"}],
                 "requestBody": {"required": True, "content": {"application/json": {
                     "schema": {"$ref": "#/components/schemas/ActionRequest"}}}},
@@ -201,11 +219,12 @@ SPEC = {
                               **_errors(401, 402, 404, 409, 422, 429)},
             },
         },
-        "/api/v1/teen-patti/tables/{tableId}/state": {
+        "/api/v1/{game}/tables/{tableId}/state": {
             "get": {
                 "tags": ["Tables"],
                 "summary": "Authoritative table state for one player",
-                "parameters": [{"$ref": "#/components/parameters/TableId"},
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"},
                                {"name": "player_id", "in": "query", "required": False,
                                 "schema": {"type": "string"},
                                 "description": "Required unless a session bearer token is sent."}],
@@ -213,11 +232,12 @@ SPEC = {
                               **_errors(401, 422, 429)},
             },
         },
-        "/api/v1/teen-patti/tables/{tableId}/history": {
+        "/api/v1/{game}/tables/{tableId}/history": {
             "get": {
                 "tags": ["Tables"],
                 "summary": "Settled round history",
-                "parameters": [{"$ref": "#/components/parameters/TableId"},
+                "parameters": [{"$ref": "#/components/parameters/Game"},
+                               {"$ref": "#/components/parameters/TableId"},
                                {"name": "limit", "in": "query", "required": False,
                                 "schema": {"type": "integer", "minimum": 1, "maximum": 200,
                                            "default": 50}}],
@@ -307,6 +327,11 @@ SPEC = {
                           "schema": {"type": "string"}},
             "TableId": {"name": "tableId", "in": "path", "required": True,
                         "schema": {"type": "string"}},
+            "Game": {"name": "game", "in": "path", "required": True,
+                     "description": "Game slug. Teen Patti bets on positions, "
+                                    "the wheels bet on options.",
+                     "schema": {"type": "string",
+                                "enum": ["teen-patti", "greedy-lion", "monkey-wheel"]}},
             "PlayerId": {"name": "playerId", "in": "path", "required": True,
                          "schema": {"type": "string"}},
             "IdempotencyKey": {
@@ -394,7 +419,7 @@ SPEC = {
                     "player_id": {"type": "string", "maxLength": 128,
                                   "description": "Operator-owned player identity."},
                     "game_code": {"type": "string", "default": "teen_patti_pro",
-                                  "enum": ["teen_patti_pro", "teen-patti-pro"]},
+                                  "enum": ["teen_patti_pro", "greedy_lion", "monkey_wheel"]},
                     "currency": {"type": "string", "default": "COIN"},
                     "language": {"type": "string", "default": "en"},
                     "platform": {"type": "string", "default": "web"},
@@ -486,11 +511,16 @@ SPEC = {
             },
             "ActionRequest": {
                 "type": "object",
-                "required": ["action", "position", "amount"],
+                "required": ["action", "amount"],
+                "description": "Send the choice under the field the game reports in "
+                               "choice_field: position for Teen Patti, option_id for "
+                               "the wheels.",
                 "properties": {
                     "action": {"type": "string", "enum": ["bet"],
                                "description": "V1 supports betting only."},
                     "position": {"type": "string", "enum": ["A", "B", "C"]},
+                    "option_id": {"type": "string",
+                                  "description": "Wheel option, e.g. cub, mane, pride."},
                     "amount": {"type": "integer", "minimum": 1},
                     "session_id": {"type": "string"},
                     "session_token": {"type": "string"},
@@ -522,10 +552,15 @@ SPEC = {
             },
             "HistoryResponse": {
                 "type": "object",
+                "description": "Teen Patti returns settled rounds; the wheels return "
+                               "their recent authoritative results. Player bets are "
+                               "returned when the caller identifies a player.",
                 "properties": {
+                    "game_code": {"type": "string"},
                     "table_id": {"type": "string"},
                     "count": {"type": "integer"},
                     "rounds": {"type": "array", "items": {"type": "object"}},
+                    "bets": {"type": "array", "items": {"type": "object"}},
                 },
             },
             "BalanceResponse": {
@@ -605,8 +640,34 @@ SPEC = {
             },
             "TableListResponse": {
                 "type": "object",
-                "properties": {"tables": {"type": "array",
-                                          "items": {"$ref": "#/components/schemas/Table"}}},
+                "properties": {
+                    "game_code": {"type": "string"},
+                    "slug": {"type": "string"},
+                    "tables": {"type": "array",
+                               "items": {"$ref": "#/components/schemas/Table"}}},
+            },
+            "ChoiceListResponse": {
+                "type": "object",
+                "properties": {
+                    "game_code": {"type": "string"},
+                    "table_id": {"type": "string"},
+                    "choice_field": {"type": "string",
+                                      "enum": ["position", "option_id"]},
+                    "choices": {"type": "array",
+                                "items": {"$ref": "#/components/schemas/Choice"}},
+                },
+            },
+            "Choice": {
+                "type": "object",
+                "properties": {
+                    "choice": {"type": "string"},
+                    "label": {"type": "string"},
+                    "multiplier": {"type": ["number", "null"],
+                                   "description": "Payout multiplier for a wheel option."},
+                    "icon": {"type": "string"},
+                    "color_hex": {"type": "string"},
+                    "hot": {"type": "boolean"},
+                },
             },
         },
     },

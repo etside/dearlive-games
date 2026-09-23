@@ -38,6 +38,16 @@
       "value": "replace-me"
     },
     {
+      "key": "game",
+      "value": "teen-patti",
+      "description": "Game slug: teen-patti, greedy-lion or monkey-wheel. Greedy Lion bets on option_id, Teen Patti on position."
+    },
+    {
+      "key": "tableId",
+      "value": "teen-patti-low",
+      "description": "Table id for the selected game."
+    },
+    {
       "key": "timestamp",
       "value": ""
     },
@@ -199,7 +209,7 @@
             "sessions"
           ]
         },
-        "description": "The operator supplies player identity; no player registration or password exists in V1. Returns a session id, a short-lived session token, a launch URL and the expiry. The session token is the only credential the player app ever sees.",
+        "description": "The operator supplies player identity; no player registration or password exists in V1. Returns a session id, a short-lived session token, a launch URL and the expiry. The session token is the only credential the player app ever sees. Compatibility: an unsigned request carrying a single-use launch_token redeems that token instead (deprecated, player-facing, no operator rights).",
         "body": {
           "mode": "raw",
           "raw": "{\n  \"player_id\": \"string\",\n  \"game_code\": \"teen_patti_pro\",\n  \"currency\": \"string\",\n  \"table_id\": \"string\",\n  \"amount\": 1\n}",
@@ -250,7 +260,7 @@
             ":sessionId"
           ]
         },
-        "description": "Read a session"
+        "description": "An operator signature reads any session. A player may read only their own session with its bearer token."
       },
       "response": []
     },
@@ -297,7 +307,7 @@
       "response": []
     },
     {
-      "name": "List tables with live status",
+      "name": "List tables for a game with live status",
       "request": {
         "method": "GET",
         "header": [
@@ -323,18 +333,62 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables",
+          "raw": "{{baseUrl}}/api/v1/:game/tables",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables"
           ]
         },
-        "description": "List tables with live status"
+        "description": "List tables for a game with live status"
+      },
+      "response": []
+    },
+    {
+      "name": "List the choices a table accepts for this game",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId/choices",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            ":game",
+            "tables",
+            ":tableId",
+            "choices"
+          ]
+        },
+        "description": "Teen Patti returns its positions; the wheels return their options with multipliers. Use choice_field to name the field in an action request."
       },
       "response": []
     },
@@ -365,14 +419,14 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId",
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables",
             ":tableId"
           ]
@@ -413,14 +467,14 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/join",
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId/join",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables",
             ":tableId",
             "join"
@@ -471,14 +525,14 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/leave",
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId/leave",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables",
             ":tableId",
             "leave"
@@ -534,14 +588,14 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/action",
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId/action",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables",
             ":tableId",
             "action"
@@ -587,14 +641,14 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/state",
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId/state",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables",
             ":tableId",
             "state"
@@ -637,14 +691,14 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/api/v1/teen-patti/tables/:tableId/history",
+          "raw": "{{baseUrl}}/api/v1/:game/tables/:tableId/history",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "api",
             "v1",
-            "teen-patti",
+            ":game",
             "tables",
             ":tableId",
             "history"

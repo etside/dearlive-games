@@ -82,7 +82,7 @@
       "tags":
         - "Sessions"
       "summary": "Create a player game session (provider launch)"
-      "description": "The operator supplies player identity; no player registration or password exists in V1. Returns a session id, a short-lived session token, a launch URL and the expiry. The session token is the only credential the player app ever sees."
+      "description": "The operator supplies player identity; no player registration or password exists in V1. Returns a session id, a short-lived session token, a launch URL and the expiry. The session token is the only credential the player app ever sees. Compatibility: an unsigned request carrying a single-use launch_token redeems that token instead (deprecated, player-facing, no operator rights)."
       "requestBody":
         "required": true
         "content":
@@ -130,6 +130,7 @@
       "tags":
         - "Sessions"
       "summary": "Read a session"
+      "description": "An operator signature reads any session. A player may read only their own session with its bearer token."
       "parameters":
         - "$ref": "#/components/parameters/SessionId"
       "responses":
@@ -198,11 +199,13 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables":
+  "/api/v1/{game}/tables":
     "get":
       "tags":
         - "Tables"
-      "summary": "List tables with live status"
+      "summary": "List tables for a game with live status"
+      "parameters":
+        - "$ref": "#/components/parameters/Game"
       "responses":
         "200":
           "description": "Success"
@@ -227,12 +230,52 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables/{tableId}":
+  "/api/v1/{game}/tables/{tableId}/choices":
+    "get":
+      "tags":
+        - "Tables"
+      "summary": "List the choices a table accepts for this game"
+      "description": "Teen Patti returns its positions; the wheels return their options with multipliers. Use choice_field to name the field in an action request."
+      "parameters":
+        - "$ref": "#/components/parameters/Game"
+        - "$ref": "#/components/parameters/TableId"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ChoiceListResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/{game}/tables/{tableId}":
     "get":
       "tags":
         - "Tables"
       "summary": "Read one table"
       "parameters":
+        - "$ref": "#/components/parameters/Game"
         - "$ref": "#/components/parameters/TableId"
       "responses":
         "200":
@@ -264,13 +307,14 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables/{tableId}/join":
+  "/api/v1/{game}/tables/{tableId}/join":
     "post":
       "tags":
         - "Tables"
       "summary": "Seat a player at a table"
       "description": "Identify the player with a session id or session_token. A session token always wins over a caller-supplied player_id."
       "parameters":
+        - "$ref": "#/components/parameters/Game"
         - "$ref": "#/components/parameters/TableId"
       "requestBody":
         "required": true
@@ -320,12 +364,13 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables/{tableId}/leave":
+  "/api/v1/{game}/tables/{tableId}/leave":
     "post":
       "tags":
         - "Tables"
       "summary": "Release a seat"
       "parameters":
+        - "$ref": "#/components/parameters/Game"
         - "$ref": "#/components/parameters/TableId"
       "requestBody":
         "required": false
@@ -363,13 +408,14 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables/{tableId}/action":
+  "/api/v1/{game}/tables/{tableId}/action":
     "post":
       "tags":
         - "Tables"
       "summary": "Submit the V1 player action (bet)"
       "description": "The V1 engine has one betting phase and no player turn, fold or show action. Amounts are validated against the server-side denomination and table limits; the client is never trusted."
       "parameters":
+        - "$ref": "#/components/parameters/Game"
         - "$ref": "#/components/parameters/TableId"
         - "$ref": "#/components/parameters/IdempotencyKey"
       "requestBody":
@@ -426,12 +472,13 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables/{tableId}/state":
+  "/api/v1/{game}/tables/{tableId}/state":
     "get":
       "tags":
         - "Tables"
       "summary": "Authoritative table state for one player"
       "parameters":
+        - "$ref": "#/components/parameters/Game"
         - "$ref": "#/components/parameters/TableId"
         - "name": "player_id"
           "in": "query"
@@ -469,12 +516,13 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
-  "/api/v1/teen-patti/tables/{tableId}/history":
+  "/api/v1/{game}/tables/{tableId}/history":
     "get":
       "tags":
         - "Tables"
       "summary": "Settled round history"
       "parameters":
+        - "$ref": "#/components/parameters/Game"
         - "$ref": "#/components/parameters/TableId"
         - "name": "limit"
           "in": "query"
@@ -807,6 +855,17 @@
       "required": true
       "schema":
         "type": "string"
+    "Game":
+      "name": "game"
+      "in": "path"
+      "required": true
+      "description": "Game slug. Teen Patti bets on positions, the wheels bet on options."
+      "schema":
+        "type": "string"
+        "enum":
+          - "teen-patti"
+          - "greedy-lion"
+          - "monkey-wheel"
     "PlayerId":
       "name": "playerId"
       "in": "path"
@@ -966,7 +1025,8 @@
           "default": "teen_patti_pro"
           "enum":
             - "teen_patti_pro"
-            - "teen-patti-pro"
+            - "greedy_lion"
+            - "monkey_wheel"
         "currency":
           "type": "string"
           "default": "COIN"
@@ -1116,8 +1176,8 @@
       "type": "object"
       "required":
         - "action"
-        - "position"
         - "amount"
+      "description": "Send the choice under the field the game reports in choice_field: position for Teen Patti, option_id for the wheels."
       "properties":
         "action":
           "type": "string"
@@ -1130,6 +1190,9 @@
             - "A"
             - "B"
             - "C"
+        "option_id":
+          "type": "string"
+          "description": "Wheel option, e.g. cub, mane, pride."
         "amount":
           "type": "integer"
           "minimum": 1
@@ -1172,12 +1235,19 @@
           "description": "Authoritative snapshot; unrevealed hands stay masked."
     "HistoryResponse":
       "type": "object"
+      "description": "Teen Patti returns settled rounds; the wheels return their recent authoritative results. Player bets are returned when the caller identifies a player."
       "properties":
+        "game_code":
+          "type": "string"
         "table_id":
           "type": "string"
         "count":
           "type": "integer"
         "rounds":
+          "type": "array"
+          "items":
+            "type": "object"
+        "bets":
           "type": "array"
           "items":
             "type": "object"
@@ -1308,10 +1378,48 @@
     "TableListResponse":
       "type": "object"
       "properties":
+        "game_code":
+          "type": "string"
+        "slug":
+          "type": "string"
         "tables":
           "type": "array"
           "items":
             "$ref": "#/components/schemas/Table"
+    "ChoiceListResponse":
+      "type": "object"
+      "properties":
+        "game_code":
+          "type": "string"
+        "table_id":
+          "type": "string"
+        "choice_field":
+          "type": "string"
+          "enum":
+            - "position"
+            - "option_id"
+        "choices":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/Choice"
+    "Choice":
+      "type": "object"
+      "properties":
+        "choice":
+          "type": "string"
+        "label":
+          "type": "string"
+        "multiplier":
+          "type":
+            - "number"
+            - "null"
+          "description": "Payout multiplier for a wheel option."
+        "icon":
+          "type": "string"
+        "color_hex":
+          "type": "string"
+        "hot":
+          "type": "boolean"
 "x-provider":
   "authentication":
     "headers":
