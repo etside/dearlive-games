@@ -152,15 +152,17 @@ class GameBinding:
         service, _ = self.room(ctx, table_id)
         if self.kind == "table_game":
             rounds = service.history(table_id, limit)
-            return {"rounds": rounds, "bets": []}
+            return {"rounds": rounds, "bets": [], "earnings_today": None}
         results = service.recent_results(table_id, limit).get("results", [])
-        bets = []
+        bets, earnings = [], None
         if player_id:
             try:
-                bets = service.history(table_id, player_id, limit).get("bets", [])
+                data = service.history(table_id, player_id, limit)
+                bets = data.get("bets", [])
+                earnings = data.get("earnings_today")
             except Exception:
-                bets = []
-        return {"rounds": results, "bets": bets}
+                bets, earnings = [], None
+        return {"rounds": results, "bets": bets, "earnings_today": earnings}
 
 
 def _teen_service(ctx):

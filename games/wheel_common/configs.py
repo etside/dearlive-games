@@ -4,6 +4,8 @@ Values below mirror DearLive current shapes (weight + multiplier + icon +
 colorHex + HOT flag) so the developer replaces them with approved
 option lists via admin config — never by editing game logic.
 """
+from dataclasses import replace
+
 from .service import WheelConfig, WheelOption
 
 GREEDY_DEFAULT_OPTIONS = (
@@ -46,16 +48,26 @@ GREEDY_LION_DEFAULT_OPTIONS = (
 )
 
 
+def _fresh(defaults: tuple) -> tuple:
+    """Copy the option template so callers cannot mutate shared state.
+
+    The factories used to hand every WheelConfig the SAME options list, so
+    deactivating an option in one service silently disabled it in every other
+    service built in the process.
+    """
+    return tuple(replace(option) for option in defaults)
+
+
 def greedy_config() -> WheelConfig:
     return WheelConfig(game_id="greedy-monkey", version="greedy-1.0.0-tbc",
-                       options=GREEDY_DEFAULT_OPTIONS)
+                       options=_fresh(GREEDY_DEFAULT_OPTIONS))
 
 
 def baby_king_config() -> WheelConfig:
     return WheelConfig(game_id="baby-king", version="baby-king-1.0.0-tbc",
-                       options=BABY_KING_DEFAULT_OPTIONS)
+                       options=_fresh(BABY_KING_DEFAULT_OPTIONS))
 
 
 def greedy_lion_config() -> WheelConfig:
     return WheelConfig(game_id="greedy-lion", version="greedy-lion-1.0.0-tbc",
-                       options=GREEDY_LION_DEFAULT_OPTIONS)
+                       options=_fresh(GREEDY_LION_DEFAULT_OPTIONS))

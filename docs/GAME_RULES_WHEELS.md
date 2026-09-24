@@ -548,34 +548,46 @@ remain `*-tbc` and `confirmed=False` (`games/wheel_common/configs.py:49-61`;
 
 ## 9. Known gaps, TBC items, and inconsistencies
 
-| # | Issue | Actual code / impact |
-|---:|---|---|
-| 1 | No wheel-specific carry, tie, pot, or rake rule | The wheel service has no rake field or deduction, no pot aggregation, no tie policy, and no carry-out field. It settles each bet directly as `stake * multiplier` or `0` (`games/wheel_common/service.py:62-78,389-405`). `GAME_RULES.md:148-172` describes pot/dead-heat/carry behavior for Teen Patti, not for these wheels. |
-| 2 | `payout_rule` is configurable-looking but ignored | The field is present and defaults to `stake_x_multiplier` (`games/wheel_common/service.py:75-77`), but settlement never reads it (`games/wheel_common/service.py:389-400`). A config change alone cannot change payout behavior. |
-| 3 | `round_duration_ms` is declared but unused | The dataclass declares 30,000 ms (`games/wheel_common/service.py:69`), while start and sweep use only `betting_duration_ms` and `betting_end_at_ms` (`games/wheel_common/service.py:205-214,468-490`). There is no 30-second enforcement or documented post-betting phase. |
-| 4 | Provider table limits and engine limits disagree | Provider defaults advertise low min 10 while the engine's lowest denomination is 20; high tables cap at 10,000 while the engine max is 100,000 (`provider/context.py:23-32`; `games/wheel_common/service.py:69-74`). `h_action` does not repeat the table min/max check before calling the engine (`provider/router.py:522-548`). |
-| 5 | Provider “seats” are not game seats | Provider table details expose members as `seats` (`provider/games.py:111-113`), while the wheel engine accepts `option_id` only (`games/wheel_common/service.py:81-91,548-578`). The six-player table value is an occupancy limit, not a six-position betting model. |
-| 6 | `close_betting` can emit a close event without transitioning | It only transitions when status is `BETTING_OPEN`, but it fires `betting.closed` and returns for any existing round regardless of status (`games/wheel_common/service.py:244-255`). The lifecycle permits the round to remain in its prior state. |
-| 7 | `result.processing` is not a webhook event | It is a local round event (`games/wheel_common/service.py:361-365`) but absent from the webhook allow-list (`common/webhooks.py:15-18`). A receiver cannot receive it as a signed webhook through `build_event`. |
-| 8 | Webhook payload documentation is broader than implementation | `docs/webhooks.md:11-13` describes settlement data with settlement rows and result data with `winners`; the service fires `settlement.completed` with only a count and `result.published` with the actual result fields (`games/wheel_common/service.py:373-375,441-442`). The service also uses a `MemoryDeliveryLog` rather than the production sender (`games/wheel_common/service.py:140-158,166-170`; `common/webhooks.py:35-58`). |
-| 9 | Raw seed is returned and locally emitted before settlement | `publish_result` returns raw `server_seed` and its hash, and the local `result.published` event includes the raw seed (`games/wheel_common/service.py:371-376`). This is earlier than the common wheel comment's “reveal server_seed after settlement” statement (`common/wheel.py:25-30`). The webhook itself omits the raw seed, so exposure depends on the caller/path. |
-| 10 | Pre-result seed commitment is not exposed by state | `state` omits both seed fields (`games/wheel_common/service.py:568-578`), while `server_seed_hash` is only returned by the result method (`games/wheel_common/service.py:375-376`). A player cannot verify a pre-result commitment from the state snapshot. |
-| 11 | Client seed is fixed | The only default is `dearlive`; the inspected wheel service has no client-seed input or setter (`games/wheel_common/service.py:101-104`). This is not a player-selected fairness input. |
-| 12 | Non-positive weights silently become weight 1 | `wheel_outcome` changes any configured weight `<=0` to `1.0` before selection (`common/wheel.py:34-36`). The default values are positive, but an admin-configured invalid weight is not rejected and changes probabilities. |
-| 13 | Empty active option set has no graceful result path | `wheel_outcome` raises `ValueError` when no active options exist (`common/wheel.py:32-33`). `start_round` does not validate the option set (`games/wheel_common/service.py:199-225`), and `sweep` catches lifecycle/service/wallet errors but not `ValueError` (`games/wheel_common/service.py:477-489`). |
-| 14 | `settle` marks settlement complete before all credits succeed | Rows, `_settled=True`, status transitions, and `settled_bet_ids` updates occur before wallet credits (`games/wheel_common/service.py:401-435`). A credit exception can leave a row marked complete and make a later call skip it because the in-memory state is already settled. This is an operational durability/recovery gap. |
-| 15 | Exact-once protection is process-local in the wheel service | The guard is `_settled` plus a service-level set (`games/wheel_common/service.py:110-111,140-158,378-435`), not a durable database constraint in this module. Restarting with in-memory round state loses the guard. |
-| 16 | Auto-bet API/configuration and confirmation gate differ | `set_autobet` is blocked only by `auto_allowed`, not `confirmed` (`games/wheel_common/service.py:515-529`). The default `auto_allowed=False` means current configs cannot set it, but if an administrator flips it while `confirmed=False`, each execution still fails and retains the count. |
-| 17 | Confirmation is not enforced by every money-affecting path | `_require_confirmed` is called by `place_bet` and `settle`, but not by `start_round`, `close_betting`, `publish_result`, or `cancel_round` (`games/wheel_common/service.py:199-225,244-255,353-376,378-380,492-513`). `cancel_round` credits stakes, and `sweep` can close/publish before settlement raises the TBC block (`games/wheel_common/service.py:477-485`). |
-| 18 | Failed auto-bets are silently skipped | `_apply_autobets` catches every `ServiceError` and continues without auditing the skip (`games/wheel_common/service.py:534-545`). This makes insufficient funds and operational/config errors indistinguishable to the stored configuration. |
-| 19 | `today_earnings` is not exposed in the provider history response | The service `history` method includes it (`games/wheel_common/service.py:580-583`), but provider normalization returns only `rounds` and `bets` (`provider/games.py:150-163`; `provider/router.py:562-571`). `state` also omits it (`games/wheel_common/service.py:548-578`). |
-| 20 | Earnings are local and non-durable | Day uses `datetime.date.today()` and storage is an in-memory dictionary (`games/wheel_common/service.py:446-458`). No timezone or persistence policy is defined by the engine. |
-| 21 | Amount type is not explicitly validated as integer | `_validate` tests membership and range but does not check `type(amount)` (`games/wheel_common/service.py:258-279`). The provider parser normally supplies an integer, but direct service callers can pass a value equal to a denomination such as `20.0`; payout later uses `int(...)` (`games/wheel_common/service.py:395-400`). |
-| 22 | No aggregate exposure or max-payout rule exists | The service has per-bet max and per-player count, but settlement has no aggregate stake cap, pot cap, or payout cap (`games/wheel_common/service.py:69-74,275-279,389-405`). |
-| 23 | Idempotency storage is in-memory by default | `MemoryIdempotencyStore` is the default and its in-flight claim returns `None` just like a new claim (`games/wheel_common/service.py:140-149`; `common/idempotency.py:31-53`). The wallet interface requires debit idempotency, but the service does not persist idempotency records itself. |
-| 24 | `GAME_RULES.md` is a different game specification | Its source-of-truth section names Teen Patti files (`GAME_RULES.md:15-16`) and its settlement section describes hand-ranking, dead heats, pot, and carry (`GAME_RULES.md:61-76,148-172`). None of those wheel rules are implemented by `WheelService`; they must not be inferred for Greedy Lion or Monkey Wheel. |
+### 9.1 Resolved in the money-path hardening pass
 
----
+Found while documenting this spec, then fixed. Each is pinned by a regression
+test in `tests/test_wheel_gaps.py`.
+
+| Gap | Status |
+|---|---|
+| A round was marked `_settled` and moved to `CLOSED` **before** wallet credits ran, so a credit failure was unrecoverable: a retry returned the cached rows and the player was never paid | **Fixed.** `_settled` and the transitions now happen only after every credit succeeds |
+| The first attempt finalised bet statuses, so a retry recomputed **zero** rows and silently paid nobody | **Fixed.** An interrupted settlement resumes from `r.settlements` instead of recomputing from finalised bets |
+| `cancel_round` refunds every accepted stake but never called `_require_confirmed`, so refunds were possible while business rules were unconfirmed | **Fixed.** Now a gated money path like `place_bet` and `settle` |
+| `set_autobet` only checked `auto_allowed` and never `_require_confirmed`, so auto bets could be armed on an unconfirmed game | **Fixed.** Arming auto bets now requires confirmed rules |
+| `place_bet` accepted non-integer amounts (strings, floats, `True`) | **Fixed.** Amount must be a positive integer |
+| An empty active option set raised a bare `ValueError` from inside result processing | **Fixed.** `publish_result` raises a `ServiceError` and leaves the round for investigation |
+| Failed auto bets were skipped silently, invisible to player and operator | **Fixed.** Each skip is audited as `autobet.skipped` with the reason |
+| The provider action route did not re-check table limits although the contract promised enforcement | **Fixed.** `h_action` validates the amount against the table profile for every game |
+| `earnings_today` was computed by the engine but dropped from provider history | **Fixed.** Returned when a player is identified |
+| Every `greedy_lion_config()` / `greedy_config()` / `baby_king_config()` call returned a new config that **shared the same mutable `options` list**, so deactivating an option in one service silently disabled it in every other service in the process | **Fixed.** Each factory returns independent `WheelOption` copies |
+
+### 9.2 Still open
+
+Not yet resolved. Each needs a code change or a business decision; none is
+safe to assume.
+
+| # | Gap | Why it is still open |
+|---:|---|---|
+| 1 | No wheel rake, pot, tie, no-winner or carry-over rule | The wheel pays stake x multiplier, a different economic model from Teen Patti. Needs sign-off before implementation |
+| 2 | `payout_rule` is configurable-looking but ignored | The only implementation is stake x multiplier. Wire it up or delete it; deleting changes the config surface |
+| 3 | `round_duration_ms` is declared (30s) but unused; the real window is `betting_duration_ms` (20s) | Changing either changes game timing, so it is a business decision, not a bug fix |
+| 4 | Non-positive option weights silently become weight 1 | Silently coercing an invalid weight can change odds; failing loudly alters behaviour for a misconfigured game |
+| 5 | `result.processing` is not in the webhook event allow-list | Emitted locally only, so this is a documentation gap rather than a crash. `close_betting` was re-checked and is correct |
+| 6 | Raw server seed is returned and locally emitted before settlement, and `state` exposes no pre-result commitment | Publishing the seed before settlement weakens the fairness guarantee; committing to a hash first is a design change |
+| 7 | The client seed is fixed, not player-controlled | Provable fairness is weaker without a player contribution. Adding one is a protocol change |
+| 8 | Exactly-once protection is process-local | The wallet adapter's idempotency is the real boundary; the in-process set is a fast path lost on restart. Documented, not changed |
+| 9 | Earnings are local-date based and in-memory | Resets on restart and follows server local time. Needs a timezone and persistence decision |
+| 10 | No aggregate exposure, pot cap or payout cap | A limits policy has not been agreed. Business decision |
+| 11 | Idempotency storage defaults to in-memory, where an in-flight claim is indistinguishable from a new one | The Redis store is used in staging and production; the in-memory default is a sandbox convenience |
+| 12 | Provider table limits (max 10,000) and engine limits (max 100,000) disagree | Needs sign-off on real maximum exposure per game |
+| 13 | Provider "seats" are room members, not betting positions | The wheel has no fixed positions; a member cap may not be meaningful |
+| 14 | Webhook payload documentation is broader than implementation, and delivery uses an in-memory log | Documentation and delivery hardening are separate work |
+
 
 ## 10. Change control
 

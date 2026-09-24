@@ -262,7 +262,16 @@ class WheelService:
         if r is None or not (r.status == RoundStatus.BETTING_OPEN
                              and now < r.betting_end_at_ms):
             return {"ok": False, "code": "BETTING_CLOSED", "message": "Betting window closed"}
-        opts = {o.option_id: o for o in self._options(room)}
+        if isinstance(amount, bool) or not isinstance(amount, int):
+            return {"ok": False, "code": "VALIDATION_ERROR",
+                    "message": "Amount must be an integer number of coins"}
+        if amount <= 0:
+            return {"ok": False, "code": "VALIDATION_ERROR",
+                    "message": "Amount must be positive"}
+        opts = {o.option_id for o in self._options(room)}
+        if not opts:
+            return {"ok": False, "code": "VALIDATION_ERROR",
+                    "message": "No active betting options configured"}
         if option_id not in opts:
             return {"ok": False, "code": "VALIDATION_ERROR",
                     "message": "Unknown or inactive option"}
@@ -364,6 +373,12 @@ class WheelService:
             r.emit("result.processing", {"round_id": r.round_id}, now)
             opts = [{"id": o.option_id, "name": o.name, "weight": o.weight,
                      "multiplier": o.multiplier} for o in self._options(room)]
+            if not opts:
+                # No active options: wheel_outcome would raise a bare ValueError
+                # from an empty weighted choice. Refuse cleanly and leave the
+                # round in RESULT_PROCESSING so an operator can investigate.
+                raise ServiceError(E.E_CONFLICT,
+                                   "No active betting options: cannot determine a result")
             w = wheel_outcome(opts, r.server_seed, r.client_seed, r.nonce)
             r.winner = w
             transition(r.status, RoundStatus.RESULT)
@@ -388,51 +403,63 @@ class WheelService:
                 raise ServiceError(E.E_CONFLICT, f"Settle requires RESULT, have {r.status}")
             win_id = r.winner["winning_option_id"]
             mult = float(r.winner["payout_multiplier"])
-            rows = []
-            for b in r.bets:
-                if b.status != "accepted":
-                    continue
-                if b.option_id == win_id:
-                    payout = int(b.amount * mult)  # TBC W-PAYOUT-RULE (current rule)
-                    b.status = "won"
-                else:
-                    payout = 0
-                    b.status = "lost"
-                rows.append({"settlement_id": f"stl-{b.bet_id}", "bet_id": b.bet_id,
-                             "player_id": b.player_id, "option_id": b.option_id,
-                             "stake": b.amount, "payout": payout,
-                             "config_version": r.config_version})
-            r.settlements = rows
-            r._settled = True
-            # History must reflect settlement: patch placement snapshots with
-            # final status/payout (player history reads bet_history, not bets).
-            by_id = {row["bet_id"]: row for row in rows}
-            for h in room.bet_history:
-                if h["round_id"] == r.round_id and h["bet_id"] in by_id:
-                    row = by_id[h["bet_id"]]
-                    h["status"] = "won" if row["payout"] > 0 else "lost"
-                    h["payout"] = row["payout"]
-            transition(r.status, RoundStatus.SETTLED)
-            r.status = RoundStatus.SETTLED
-            r.emit("settlement.completed", {"round_id": r.round_id,
-                                            "settlements": len(rows)}, self._now())
-            transition(r.status, RoundStatus.CLOSED)
-            r.status = RoundStatus.CLOSED
-            r.emit("session.completed", {"round_id": r.round_id}, self._now())
+            if r.settlements and not r._settled:
+                # Resume an interrupted settlement. Bet statuses were already
+                # finalised on the first attempt, so recomputing rows from
+                # r.bets would produce nothing and silently pay nobody.
+                rows = r.settlements
+            else:
+                rows = []
+                for b in r.bets:
+                    if b.status != "accepted":
+                        continue
+                    if b.option_id == win_id:
+                        payout = int(b.amount * mult)  # TBC W-PAYOUT-RULE (current rule)
+                        b.status = "won"
+                    else:
+                        payout = 0
+                        b.status = "lost"
+                    rows.append({"settlement_id": f"stl-{b.bet_id}", "bet_id": b.bet_id,
+                                 "player_id": b.player_id, "option_id": b.option_id,
+                                 "stake": b.amount, "payout": payout,
+                                 "config_version": r.config_version})
+                r.settlements = rows
+            # NOTE: _settled and the status transitions happen only AFTER the
+            # wallet credits succeed (see below). Marking the round settled
+            # first would make a credit failure unrecoverable: a retry returns
+            # the cached rows and the player is never paid.
         credited = []
         with self._settle_lock:
             for row in rows:
                 if row["bet_id"] in self.settled_bet_ids:
                     continue
-                self.settled_bet_ids.add(row["bet_id"])
                 if row["payout"] > 0:
                     self.wallet.credit(row["player_id"], row["payout"],
                                        ref=f"settle:{row['bet_id']}",
                                        idempotency_key=f"settle:{row['bet_id']}")
+                self.settled_bet_ids.add(row["bet_id"])
                 self._add_earning(row["player_id"], row["payout"] - row["stake"])
                 self.audit.record("system", "settlement.credit", "settlement",
                                   row["settlement_id"], after=row)
                 credited.append(row)
+        with room.lock:
+            if not r._settled:
+                r._settled = True
+                # History must reflect settlement: patch placement snapshots with
+                # final status/payout (player history reads bet_history, not bets).
+                by_id = {row["bet_id"]: row for row in rows}
+                for h in room.bet_history:
+                    if h["round_id"] == r.round_id and h["bet_id"] in by_id:
+                        row = by_id[h["bet_id"]]
+                        h["status"] = "won" if row["payout"] > 0 else "lost"
+                        h["payout"] = row["payout"]
+                transition(r.status, RoundStatus.SETTLED)
+                r.status = RoundStatus.SETTLED
+                r.emit("settlement.completed", {"round_id": r.round_id,
+                                                "settlements": len(rows)}, self._now())
+                transition(r.status, RoundStatus.CLOSED)
+                r.status = RoundStatus.CLOSED
+                r.emit("session.completed", {"round_id": r.round_id}, self._now())
         room.recent.insert(0, {"round_id": r.round_id,
                                "winning_option_id": win_id,
                                "winning_label": r.winner["winning_label"],
@@ -490,6 +517,10 @@ class WheelService:
         return reports
 
     def cancel_round(self, room_id: str, reason: str, actor: str) -> dict:
+        # Cancellation refunds every accepted stake, so it is a money-moving
+        # path and must be blocked while business rules are unconfirmed, the
+        # same as place_bet and settle.
+        self._require_confirmed()
         room = self._room(room_id)
         with room.lock:
             r = room.round
@@ -515,6 +546,10 @@ class WheelService:
     # -- autobet / autoplay (only where approved) --
     def set_autobet(self, room_id: str, player_id: str, option_id: str,
                     amount: int, rounds: int) -> dict:
+        # Auto Bet spends the player's balance on every future round, so it
+        # needs the same confirmed-rules gate as an explicit bet. Arming an
+        # auto bet while rules are unconfirmed was a real-money bypass.
+        self._require_confirmed()
         room = self._room(room_id)
         if not room.config.auto_allowed:
             raise ServiceError(E.E_FORBIDDEN, "Auto Bet not approved for this game")
@@ -541,8 +576,15 @@ class WheelService:
                 self.place_bet(room_id, player_id, cfg["option_id"], cfg["amount"],
                                f"auto:{player_id}:{r.round_id}", auto=True)
                 cfg["rounds_left"] -= 1
-            except ServiceError:
-                continue  # e.g. insufficient balance: skip this round, keep config
+            except ServiceError as exc:
+                # Skip this round but keep the config. Record why: a silently
+                # skipped auto bet is invisible to both player and operator.
+                self.audit.record("system", "autobet.skipped", "autobet",
+                                  f"{room_id}:{player_id}:{r.round_id}",
+                                  after={"reason": exc.code, "message": str(exc),
+                                         "option_id": cfg["option_id"],
+                                         "amount": cfg["amount"],
+                                         "rounds_left": cfg["rounds_left"]})
 
     # -- views --
     def state(self, room_id: str, player_id: str) -> dict:

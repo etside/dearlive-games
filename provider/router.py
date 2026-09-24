@@ -534,6 +534,15 @@ def h_action(ctx: ProviderContext, req: Request, game: str, table_id: str) -> Tu
             "action must be 'bet' in V1 (the engine has no turn/fold/show phase)")
     choice = _text(body.get(binding.action_field), binding.action_field, 32)
     amount = _int(body.get("amount"), "amount", 1)
+    # Re-check the table profile here. The engine validates its own denoms and
+    # limits, but a provider table may be stricter, and the contract promises
+    # the table's range is enforced on every action.
+    table = ctx.catalog_for(binding.game_code).require(table_id)
+    if table is not None and not (table.min_bet <= amount <= table.max_bet):
+        raise ProviderError(
+            E.E_VALIDATION,
+            f"amount must be between {table.min_bet} and {table.max_bet} for "
+            f"{table.table_id}")
     key = str(req.header("Idempotency-Key") or body.get("idempotency_key") or "").strip()
     if not key:
         raise ProviderError(E.E_VALIDATION, "Idempotency-Key header is required")
@@ -567,7 +576,8 @@ def h_history(ctx: ProviderContext, req: Request, game: str, table_id: str) -> T
     rounds = data.get("rounds", [])
     return 200, {"game_code": binding.game_code, "table_id": table_id,
                  "rounds": rounds, "count": len(rounds),
-                 "bets": data.get("bets", [])}
+                 "bets": data.get("bets", []),
+                 "earnings_today": data.get("earnings_today")}
 
 
 def h_balance(ctx: ProviderContext, req: Request, player_id: str) -> Tuple[int, dict]:

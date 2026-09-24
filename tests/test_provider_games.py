@@ -32,6 +32,19 @@ API_SECRET = "multi-game-secret"
 GAMES = [(TEEN_CODE, "teen-patti", "position"),
          (LION_CODE, "greedy-lion", "option_id"),
          (MONKEY_CODE, "monkey-wheel", "option_id")]
+DENOMS = (20, 100, 500, 1000)
+
+
+def valid_amount(min_bet, max_bet):
+    """Smallest configured denomination inside the table's own limits.
+
+    The provider now re-checks table limits on every action, so a test must
+    place a stake the chosen table actually accepts.
+    """
+    for value in DENOMS:
+        if min_bet <= value <= max_bet:
+            return value
+    raise AssertionError(f"no denomination fits {min_bet}-{max_bet}")
 
 
 def make_context():
@@ -117,12 +130,14 @@ class MultiGameProviderTest(unittest.TestCase):
                     "GET", f"/api/v1/{slug}/tables/{table}/choices"))
                 self.assertEqual(choices["choice_field"], field)
                 self.assertTrue(choices["choices"])
+                detail = self.data(self.call(
+                    "GET", f"/api/v1/{slug}/tables/{table}"))
+                stake = valid_amount(detail["min_bet"], detail["max_bet"])
 
-                before = None
                 result = self.data(self.call(
                     "POST", f"/api/v1/{slug}/tables/{table}/action",
                     {"action": "bet", "session_id": session["session_id"],
-                     field: choices["choices"][0]["choice"], "amount": 20},
+                     field: choices["choices"][0]["choice"], "amount": stake},
                     {"Idempotency-Key": f"{code}-bet-1"}))
                 self.assertTrue(result["accepted"])
                 self.assertEqual(result[field], choices["choices"][0]["choice"])
@@ -151,8 +166,11 @@ class MultiGameProviderTest(unittest.TestCase):
                 table = session["table_id"]
                 choices = self.data(self.call(
                     "GET", f"/api/v1/{slug}/tables/{table}/choices"))
+                detail = self.data(self.call(
+                    "GET", f"/api/v1/{slug}/tables/{table}"))
+                stake = valid_amount(detail["min_bet"], detail["max_bet"])
                 body = {"action": "bet", "session_id": session["session_id"],
-                        field: choices["choices"][0]["choice"], "amount": 20}
+                        field: choices["choices"][0]["choice"], "amount": stake}
                 first = self.data(self.call(
                     "POST", f"/api/v1/{slug}/tables/{table}/action", body,
                     {"Idempotency-Key": f"{code}-replay"}))
