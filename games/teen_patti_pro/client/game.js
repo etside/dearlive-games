@@ -830,19 +830,52 @@
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
+      
+      // Round reset: animate cards flying back to deck before new deal
       if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
-        // New server round -> deal moment
         const L = layout();
         const deckPos = { x: L.cx, y: L.top + (L.land ? 96 : 150) };
-        const players = (S.snap && S.snap.players) || [];
-        window.__tppAnim.animateDeal(deckPos, L.seats, 3, players);
+        const players = (prev && prev.players) || [];
+        await window.__tppAnim.animateRoundReset(L.seats, deckPos, players);
+        
+        // New server round -> deal moment
+        const newPlayers = (S.snap && S.snap.players) || [];
+        window.__tppAnim.animateDeal(deckPos, L.seats, 3, newPlayers);
         S._placedThisRound = false;
         announce('New round ' + (S.snap.round_id || ''));
       }
       if (S.snap) S._roundId = S.snap.round_id;
       if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
-        // Authoritative result published: win celebration
+        // Authoritative result published: card flip reveal + win celebration
         const L = layout();
+        
+        // Flip cards for all players who had hands (showdown reveal)
+        if (prev && prev.hands) {
+          const cardW = L.cw, cardH = L.ch;
+          for (const [pos, hands] of Object.entries(prev.hands)) {
+            if (!hands) continue;
+            const seatPos = L.seats[pos];
+            if (!seatPos) continue;
+            for (let i = 0; i < hands.length; i++) {
+              const cardData = hands[i];
+              if (cardData === '**') continue; // Already face down
+              // Create a temporary card element at the seat position for the flip
+              const cardEl = document.createElement('div');
+              cardEl.style.position = 'absolute';
+              cardEl.style.left = (seatPos.x - cardW * 1.15 + i * (cardW + 5)) + 'px';
+              cardEl.style.top = (seatPos.y - cardH / 2) + 'px';
+              cardEl.style.width = cardW + 'px';
+              cardEl.style.height = cardH + 'px';
+              cardEl.style.zIndex = 2000;
+              cardEl.innerHTML = renderCardBack();
+              cv.parentElement.appendChild(cardEl);
+              window.__tppAnim.animateFlip(cardEl, true, cardData);
+              // Remove after animation
+              setTimeout(() => { if (cardEl.parentElement) cardEl.remove(); }, 400);
+            }
+          }
+        }
+        
         const winners = S.snap.winners;
         const winnerPositions = winners.map(w => L.seats[w]).filter(Boolean);
         const potPos = { x: L.cx, y: H * 0.115 + 30 };
