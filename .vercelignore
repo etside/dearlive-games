@@ -12,3 +12,14 @@ __pycache__
 .git
 .gitignore
 AGENTS.md
+node_modules
+.env
+.env.*
+*.log
+dist
+packages/*/dist
+.pytest_cache
+.mypy_cache
+.opencode
+reference
+sdk
