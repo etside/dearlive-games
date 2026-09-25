@@ -767,6 +767,22 @@ def app(environ, start_response):
         start_response(f"{status} {_http_phrase(status)}",
                        [(k, v) for k, v in resp_headers.items()])
         return [payload]
+    if path.startswith("/api/v1/demo/"):
+        from staging.demo import dispatch as demo_dispatch
+        redis = None
+        try:
+            redis = ST._redis()
+            demo = demo_dispatch(method, path, headers, body, environ, redis)
+        finally:
+            if redis is not None:
+                redis.close()
+        if demo is not None:
+            status, payload = demo
+            response = json.dumps(payload).encode()
+            start_response(f"{status} {_http_phrase(status)}",
+                           [("Content-Type", "application/json"),
+                            ("Content-Length", str(len(response)))])
+            return [response]
     if (path.startswith("/api/v1/superadmin/") or
             path.startswith("/api/v1/operator/admin/")):
         from staging.economy import dispatch as phase3_dispatch
