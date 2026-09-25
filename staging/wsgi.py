@@ -328,7 +328,7 @@ def _probe_websocket():
         host = os.environ.get("GAME_API_HOST", "").strip()
         port = os.environ.get("GAME_WS_PORT", "").strip()
     if not host or not port:
-        return _service_result("unavailable", "WEBSOCKET_URL is not configured")
+        return _service_result("not_configured", "WEBSOCKET_URL is not configured; REST polling is active")
     try:
         with socket.create_connection((host, int(port)), timeout=2):
             return _service_result("ok")
@@ -342,9 +342,10 @@ def _health_payload():
     services = {"database": _probe_database(), "redis": _probe_redis(),
                 "websocket": _probe_websocket()}
     statuses = {name: service["status"] for name, service in services.items()}
-    if all(value == "ok" for value in statuses.values()):
+    critical = {"database": statuses["database"], "redis": statuses["redis"]}
+    if all(value == "ok" for value in critical.values()):
         status = "ok"
-    elif any(value == "error" for value in statuses.values()):
+    elif any(value == "error" for value in critical.values()):
         status = "down"
     else:
         status = "degraded"

@@ -47,6 +47,17 @@ class HealthEndpointTests(unittest.TestCase):
         })
         self.assertEqual(payload["status"], "ok")
 
+    def test_health_allows_missing_websocket(self):
+        with patch("staging.wsgi._probe_database", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_redis", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_websocket", return_value={
+                 "status": "not_configured", "reason": "WEBSOCKET_URL is not configured"
+             }):
+            response, payload = self.call_health()
+        self.assertEqual(response["status"], 200)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["services"]["websocket"]["status"], "not_configured")
+
     def test_health_status_code_matches_service_state(self):
         with patch("staging.wsgi._probe_database", return_value={
             "status": "unavailable", "reason": "DATABASE_URL is not configured"

@@ -7,7 +7,7 @@
   'use strict';
   const q = new URLSearchParams(location.search);
   const API = (q.get('api') || window.location.origin).replace(/\/$/, '');
-  const WS = (q.get('ws') || '').replace(/\/$/, '');
+  const WS = (q.get('ws') || window.DL_WEBSOCKET_URL || '').replace(/\/$/, '');
   const SESSION = q.get('session') || '';
   const DEMO_TOKEN = q.get('demo_token') || '';
   const ROOM = q.get('room') || 'default';
@@ -75,6 +75,7 @@
 
   const S = { snap: null, selDenom: 100, selPos: null, lastSeq: 0, connected: false,
               msg: '', msgKind: 'info' };
+  let roundPollTimer = null, walletPollTimer = null, wsRetryTimer = null;
   const DENOMS = [20, 100, 500, 1000];
   const POS = ['A', 'B', 'C'];
   const SEAT_LABELS = { A: 'YOU', B: 'PLAYER A', C: 'ONLINE' };
@@ -980,18 +981,34 @@
       }
       S._lastWinKey = key;
       S.srvNow = Date.now(); S.locNow = Date.now();
-      try {
-        const w = await api('/api/v1/games/teen-patti-pro/rooms/' + encodeURIComponent(ROOM) + '/wallet');
-        if (w.available !== S.balance) announce('Balance ' + w.available);
-        S.balance = w.available;
-      } catch (e) { /* wallet optional in snapshot loop */ }
       if (S.msgKind === 'error') clearToast();
     } catch (e) {
       S._everConnected = true;
       status(friendlyError(e), 'error');
     }
   }
-  // Keyboard parity for every canvas control (WCAG 2.1.1). Pointer users are
+  async function refreshWallet() {
+    try {
+      const w = await api('/api/v1/wallet/balance');
+      if (w.available !== S.balance) announce('Balance ' + w.available);
+      S.balance = w.available;
+    } catch (e) { }
+  }
+  function startPolling() {
+    S.polling = true;
+    if (!roundPollTimer) roundPollTimer = setInterval(refresh, 1500);
+    if (!walletPollTimer) walletPollTimer = setInterval(refreshWallet, 3000);
+  }
+  function stopRoundPolling() {
+    if (roundPollTimer) { clearInterval(roundPollTimer); roundPollTimer = null; }
+    S.polling = false;
+  }
+  function scheduleWsRetry() {
+    if (wsRetryTimer) return;
+    wsRetryTimer = setTimeout(() => { wsRetryTimer = null; connect(); }, 30000);
+  }
+
+
   // unaffected; this also makes the table scriptable in browser QA.
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1022,18 +1039,18 @@
       return;
     }
     if (!WS) {
-      // Staging/serverless transport: no WebSocket — authoritative polling.
       S.connected = true; S._everConnected = true;
-      S.polling = true;
       window.__tppAnim.AnimLayer.hardReset();
+      startPolling();
       refresh();
-      setInterval(refresh, 2000);
+      refreshWallet();
       return;
     }
     let ws;
-    try { ws = new WebSocket(WS); } catch (e) { showErr('WS: ' + e.message); return; }
+    try { ws = new WebSocket(WS); } catch (e) { startPolling(); scheduleWsRetry(); return; }
     ws.onopen = () => {
       S.connected = true; S._everConnected = true;
+      stopRoundPolling();
       window.__tppAnim.AnimLayer.hardReset();
       ws.send(JSON.stringify({ action: 'subscribe', room: ROOM, session: SESSION }));
       refresh();
@@ -1091,9 +1108,9 @@
     };
     ws.onclose = () => {
       S.connected = false;
-      // Hard reset animations on disconnect
+      startPolling();
       window.__tppAnim.AnimLayer.hardReset();
-      setTimeout(connect, 3000);
+      scheduleWsRetry();
     };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* noop */ } };
     setInterval(() => { try { ws.readyState === 1 && ws.send(JSON.stringify({ action: 'ping' })); } catch (e) { /* noop */ } }, 25000);

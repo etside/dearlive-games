@@ -565,6 +565,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(404, E.err("Unknown session", E.E_NOT_FOUND))
                 return self.ok({"session_id": s.session_id, "player_id": s.player_id,
                                  "room_id": s.room_id, "game_id": s.game_id})
+            if path == "/api/v1/wallet/balance":
+                identity = self.session_identity_any()
+                if identity is None:
+                    return self.send(401, E.err("Bearer session required", E.E_AUTH))
+                svc = self.game_service(identity.get("game_id", "teen-patti-pro"))
+                if svc is None:
+                    return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))
+                balance = svc.wallet.get_balance(identity["player_id"])
+                return self.ok({"player_id": balance.player_id,
+                                "available": balance.available,
+                                "currency": balance.currency})
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rounds/current", path)
             if m:
                 room = qs.get("room", ["default"])[0]
