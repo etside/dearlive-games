@@ -1,0 +1,9 @@
+{
+  "name": "@dearlive/player",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'static frontend: no build step (serve public/)'",
+    "dev": "echo 'static frontend: serve the public/ directory'"
+  }
+}

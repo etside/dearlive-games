@@ -208,10 +208,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _provider_player(self, token: str):
         """Resolve a gst_ session token to its player (player-facing bearer)."""
-        if self.provider_tokens is None or not token.startswith("gst_"):
-            return None
-        from provider.sessions import resolve as _resolve
-        record = _resolve(self.provider_tokens, token)
+        record = self._provider_token_record(token)
         return record.get("player_id") if record else None
 
     def session_player(self):
@@ -224,8 +221,8 @@ class Handler(BaseHTTPRequestHandler):
             return sess.player_id
         return self._provider_player(m.group(1))
 
-    def session_player_any(self):
-        """Player lookup across teen + wheel session stores (cross-game auth)."""
+    def session_identity_any(self):
+        """Bearer identity plus the canonical game that issued the credential."""
         auth = self.headers.get("Authorization", "")
         m = re.fullmatch(r"Bearer (\S+)", auth)
         if not m:
@@ -233,12 +230,31 @@ class Handler(BaseHTTPRequestHandler):
         sid = m.group(1)
         sess = self.svc.sessions.get(sid)
         if sess:
-            return sess.player_id
-        for wsf in (self.wheels or {}).values():
+            return {"player_id": sess.player_id, "game_id": sess.game_id,
+                    "source": "session"}
+        for gid, wsf in (self.wheels or {}).items():
             sess = wsf.sessions.get(sid)
             if sess:
-                return sess.player_id
-        return self._provider_player(sid)
+                return {"player_id": sess.player_id, "game_id": sess.game_id,
+                        "source": "session"}
+        record = self._provider_token_record(sid)
+        if record:
+            return {"player_id": record.get("player_id"),
+                    "game_id": record.get("game_code"),
+                    "source": "session_token"}
+        return None
+
+    def session_player_any(self):
+        """Player lookup across teen + wheel session stores (cross-game auth)."""
+        identity = self.session_identity_any()
+        return identity["player_id"] if identity else None
+
+    def _provider_token_record(self, token: str):
+        """Resolve a gst_ session token without trusting client claims."""
+        if self.provider_tokens is None or not token.startswith("gst_"):
+            return None
+        from provider.sessions import resolve as _resolve
+        return _resolve(self.provider_tokens, token)
 
     def admin_role(self):
         return ADMIN_KEYS.get(self.headers.get("X-Admin-Key", ""))
@@ -314,19 +330,33 @@ class Handler(BaseHTTPRequestHandler):
                                for o in cfg.options]
         return view
 
-    def game_inventory(self) -> list:
+    def game_inventory(self, allowed=None) -> list:
+        from provider.games import canonical_code
+        wanted = None
+        if allowed:
+            wanted = set()
+            for entry in allowed:
+                code = canonical_code(entry)
+                if code is not None:
+                    wanted.add(code)
         out = []
         for gid in self._all_game_ids():
             svc = self.game_service(gid)
             if svc is None:
                 continue
             v = self.game_config_view(gid, svc)
+            if wanted is not None:
+                from provider.games import canonical_code as _canonical
+                if _canonical(v.get("game_id", gid)) not in wanted:
+                    continue
             out.append({k: v[k] for k in ("game_id", "name", "status", "enabled",
                                           "config_version", "confirmed") if k in v})
         seen, uniq = set(), []
         for g in out:
-            if g["game_id"] not in seen:
-                seen.add(g["game_id"])
+            canonical = canonical_code(g["game_id"])
+            dedupe = canonical if canonical is not None else g["game_id"]
+            if dedupe not in seen:
+                seen.add(dedupe)
                 uniq.append(g)
         return uniq
 
@@ -563,10 +593,43 @@ class Handler(BaseHTTPRequestHandler):
                 return self.ok({"bets": bets})
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/wallet", path)
             if m:
-                pid = self.session_player()
-                if not pid:
+                from provider.games import TEEN_CODE, canonical_code
+                identity = self.session_identity_any()
+                if not identity:
                     return self.send(401, E.err("Bearer session required", E.E_AUTH))
+                if canonical_code(identity.get("game_id")) != TEEN_CODE:
+                    return self.send(403, E.err(
+                        "session belongs to another game", E.E_FORBIDDEN))
+                pid = identity["player_id"]
                 bal = self.svc.wallet.get_balance(pid)
+                return self.ok({"player_id": pid, "available": bal.available,
+                                 "currency": bal.currency})
+            m = re.fullmatch(r"/api/v1/games/(\S+)/rooms/(\S+)/wallet", path)
+            if m and m.group(1) not in ("teen-patti-pro",):
+                svc = self.game_check(m.group(1))
+                if svc is None:
+                    return
+                from provider.games import canonical_code as _canonical_code
+                requested = _canonical_code(m.group(1))
+                admin_key = self.admin_role() is not None
+                identity = self.session_identity_any()
+                if identity is not None:
+                    pid = identity["player_id"]
+                    if _canonical_code(identity.get("game_id")) != requested:
+                        return self.send(403, E.err(
+                            "session belongs to another game", E.E_FORBIDDEN))
+                elif admin_key:
+                    denied = self.require_role("auditor", m.group(1))
+                    if denied:
+                        return self.send(*denied)
+                    pid = urllib.parse.parse_qs(
+                        urllib.parse.urlparse(self.path).query).get("player", [""])[0]
+                    if not pid:
+                        return self.send(422, E.err("player query is required",
+                                                    E.E_VALIDATION))
+                else:
+                    return self.send(401, E.err("Bearer session required", E.E_AUTH))
+                bal = svc.wallet.get_balance(pid)
                 return self.ok({"player_id": pid, "available": bal.available,
                                  "currency": bal.currency})
             # --- cross-game contract: GET /api/v1/games/{gameId}/... ---
@@ -679,6 +742,14 @@ class Handler(BaseHTTPRequestHandler):
                 st["players"] = sorted(svc._room(table_id).members.keys())
                 return self.ok(st)
             # --- admin reads (auditor role or higher) ---
+            if path == "/api/v1/admin/whoami":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                from provider.games import BINDINGS
+                scopes = self.admin_scopes()
+                return self.ok({"role": self.admin_role(),
+                                 "games": sorted(scopes) if scopes else sorted(BINDINGS)})
             if path == "/api/v1/admin/config":
                 denied = self.require_role("auditor")
                 if denied:
@@ -703,7 +774,7 @@ class Handler(BaseHTTPRequestHandler):
                 denied = self.require_role("auditor")
                 if denied:
                     return self.send(*denied)
-                return self.ok(self.game_inventory())
+                return self.ok(self.game_inventory(self.admin_scopes()))
             m = re.fullmatch(r"/api/v1/admin/games/(\S+)/config", path)
             if m:
                 denied = self.require_role("auditor")

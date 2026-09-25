@@ -988,6 +988,219 @@
         "description": "Immutable transaction ledger for a player"
       },
       "response": []
+    },
+    {
+      "name": "Issue a short-lived scoped staging API key",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/staging/api-keys/provision",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "staging",
+            "api-keys",
+            "provision"
+          ]
+        },
+        "description": "Staging-only. A configured staging PIN mints one operator or auditor provider credential restricted to named V1 games. The secret is returned exactly once; list, revoke, and audit records carry only metadata.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List staging API key metadata",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/staging/api-keys",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "staging",
+            "api-keys"
+          ]
+        },
+        "description": "Superadmin X-Admin-Key only. Metadata never includes a key secret."
+      },
+      "response": []
+    },
+    {
+      "name": "Revoke a staging API key",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/staging/api-keys/revoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "staging",
+            "api-keys",
+            "revoke"
+          ]
+        },
+        "description": "Superadmin X-Admin-Key only. The secret is deleted immediately; a short non-sensitive tombstone remains until its original expiry.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Rotate a staging API key",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{providerApiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Timestamp",
+            "value": "{{timestamp}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Nonce",
+            "value": "{{nonce}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/staging/api-keys/rotate",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "staging",
+            "api-keys",
+            "rotate"
+          ]
+        },
+        "description": "Superadmin X-Admin-Key plus the staging PIN. Mints an equivalent replacement and immediately revokes the old key.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
     }
   ]
 }

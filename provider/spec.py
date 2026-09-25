@@ -39,7 +39,9 @@ def _errors(*codes):
         413: ("BAD_REQUEST", "Request body too large"),
         422: ("VALIDATION_ERROR", "Request failed validation"),
         429: ("RATE_LIMITED", "Rate limit exceeded"),
+        500: ("INTERNAL_ERROR", "Server could not complete the request"),
         502: ("INTERNAL_ERROR", "Upstream wallet or identity error"),
+        503: ("UNAVAILABLE", "Staging credential service is not configured"),
     }
     out = {}
     for code in codes:
@@ -81,6 +83,7 @@ SPEC = {
         {"name": "Tables", "description": "Tables, seats, actions and state"},
         {"name": "Wallet", "description": "Idempotent money operations and ledger"},
         {"name": "Players", "description": "Operator-owned balances"},
+        {"name": "Staging", "description": "UAT-only key and test-wallet issuance"},
     ],
     "security": PROVIDER_SECURITY,
     "paths": {
@@ -306,6 +309,61 @@ SPEC = {
                               **_errors(401, 422, 429)},
             },
         },
+        "/api/v1/staging/api-keys/provision": {
+            "post": {
+                "tags": ["Staging"],
+                "summary": "Issue a short-lived scoped staging API key",
+                "description": "Staging-only. A configured staging PIN mints one "
+                               "operator or auditor provider credential restricted "
+                               "to named V1 games. The secret is returned exactly "
+                               "once; list, revoke, and audit records carry only "
+                               "metadata.",
+                "requestBody": {"required": True, "content": {"application/json": {
+                    "schema": {"$ref": "#/components/schemas/StagingKeyProvisionRequest"}}}},
+                "responses": {"201": {"description": "Staging API key issued",
+                                       "content": {"application/json": {"schema": {
+                                           "$ref": "#/components/schemas/StagingKeyIssued"}}}},
+                              **ENVELOPE_ERROR, **_errors(401, 403, 422, 429, 500, 503)},
+            },
+        },
+        "/api/v1/staging/api-keys": {
+            "get": {
+                "tags": ["Staging"],
+                "summary": "List staging API key metadata",
+                "description": "Superadmin X-Admin-Key only. Metadata never includes "
+                               "a key secret.",
+                "responses": {"200": _ok("StagingKeyListResponse"), **ENVELOPE_ERROR,
+                              **_errors(401, 403)},
+            },
+        },
+        "/api/v1/staging/api-keys/revoke": {
+            "post": {
+                "tags": ["Staging"],
+                "summary": "Revoke a staging API key",
+                "description": "Superadmin X-Admin-Key only. The secret is deleted "
+                               "immediately; a short non-sensitive tombstone remains "
+                               "until its original expiry.",
+                "requestBody": {"required": True, "content": {"application/json": {
+                    "schema": {"$ref": "#/components/schemas/StagingKeyRevokeRequest"}}}},
+                "responses": {"200": _ok("StagingKeyRevoked"), **ENVELOPE_ERROR,
+                              **_errors(401, 403, 404, 422)},
+            },
+        },
+        "/api/v1/staging/api-keys/rotate": {
+            "post": {
+                "tags": ["Staging"],
+                "summary": "Rotate a staging API key",
+                "description": "Superadmin X-Admin-Key plus the staging PIN. Mints "
+                               "an equivalent replacement and immediately revokes "
+                               "the old key.",
+                "requestBody": {"required": True, "content": {"application/json": {
+                    "schema": {"$ref": "#/components/schemas/StagingKeyRotateRequest"}}}},
+                "responses": {"201": {"description": "Staging API key rotated",
+                                       "content": {"application/json": {"schema": {
+                                           "$ref": "#/components/schemas/StagingKeyIssued"}}}},
+                              **ENVELOPE_ERROR, **_errors(401, 403, 404, 422, 429, 500, 503)},
+            },
+        },
     },
     "components": {
         "securitySchemes": {
@@ -318,8 +376,11 @@ SPEC = {
                     "'METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nSHA256(raw_body)' with "
                     "HMAC-SHA256 using the shared secret and send the lowercase "
                     "hex digest in X-Signature. Timestamps outside the accepted "
-                    "window and reused nonces are rejected. The secret is never "
-                    "placed in a player app."),
+                    "window and reused nonces are rejected. Static secrets are "
+                    "never placed in a player app. Staging can also issue "
+                    "short-lived, game-scoped TEST-only keys through the staging "
+                    "API-key endpoints; those secrets are returned once and "
+                    "never listed."),
             },
         },
         "parameters": {
@@ -621,6 +682,83 @@ SPEC = {
                     "count": {"type": "integer"},
                     "transactions": {"type": "array",
                                      "items": {"$ref": "#/components/schemas/Transaction"}},
+                },
+            },
+            "StagingKeyProvisionRequest": {
+                "type": "object",
+                "required": ["pin", "label", "games"],
+                "properties": {
+                    "pin": {"type": "string",
+                            "description": "Configured STAGING_PROVISION_PIN. "
+                                           "Staging-only."},
+                    "label": {"type": "string", "maxLength": 64},
+                    "role": {"type": "string", "enum": ["operator", "auditor"],
+                             "default": "operator"},
+                    "games": {"type": "array", "minItems": 1,
+                              "items": {"type": "string",
+                                        "enum": ["teen_patti_pro", "greedy_lion",
+                                                 "monkey_wheel"]}},
+                    "ttl_seconds": {"type": "integer", "minimum": 900,
+                                    "maximum": 2592000, "default": 86400},
+                },
+            },
+            "StagingKeyIssued": {
+                "type": "object",
+                "description": "The key_secret is returned exactly once and must "
+                               "be stored immediately by the Super Admin console.",
+                "properties": {
+                    "key_id": {"type": "string"},
+                    "key_secret": {"type": "string"},
+                    "label": {"type": "string"},
+                    "role": {"type": "string", "enum": ["operator", "auditor"]},
+                    "games": {"type": "array", "items": {"type": "string"}},
+                    "environment": {"type": "string", "const": "staging"},
+                    "test_only": {"type": "boolean", "const": True},
+                    "created_at_ms": {"type": "integer"},
+                    "expires_at_ms": {"type": "integer"},
+                },
+            },
+            "StagingKeyMetadata": {
+                "type": "object",
+                "description": "Public key metadata. It never contains a secret.",
+                "properties": {
+                    "key_id": {"type": "string"},
+                    "label": {"type": "string"},
+                    "role": {"type": "string", "enum": ["operator", "auditor"]},
+                    "games": {"type": "array", "items": {"type": "string"}},
+                    "environment": {"type": "string", "const": "staging"},
+                    "test_only": {"type": "boolean", "const": True},
+                    "revoked": {"type": "boolean"},
+                    "created_at_ms": {"type": "integer"},
+                    "expires_at_ms": {"type": "integer"},
+                    "revoked_at_ms": {"type": ["integer", "null"]},
+                },
+            },
+            "StagingKeyListResponse": {
+                "type": "object",
+                "properties": {
+                    "keys": {"type": "array",
+                             "items": {"$ref": "#/components/schemas/StagingKeyMetadata"}},
+                    "count": {"type": "integer"},
+                },
+            },
+            "StagingKeyRevokeRequest": {
+                "type": "object",
+                "required": ["key_id"],
+                "properties": {"key_id": {"type": "string"}},
+            },
+            "StagingKeyRevoked": {
+                "type": "object",
+                "properties": {"revoked": {"type": "boolean", "const": True}},
+            },
+            "StagingKeyRotateRequest": {
+                "type": "object",
+                "required": ["key_id", "pin"],
+                "properties": {
+                    "key_id": {"type": "string"},
+                    "pin": {"type": "string"},
+                    "ttl_seconds": {"type": "integer", "minimum": 900,
+                                    "maximum": 2592000},
                 },
             },
             "Table": {

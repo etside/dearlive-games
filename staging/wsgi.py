@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import uuid
 
 from staging import state as ST
 
@@ -51,16 +52,23 @@ def _canonical(game):
 
 
 def _load_all(r, teen, wheels):
-    from staging.state import _load_cfg, load_handler_state, load_room
+    from staging.state import (_load_cfg, load_handler_state, load_room,
+                               load_webhook_config)
     hstate = load_handler_state(r)
     teen.config = _load_cfg(r, "teen-patti-pro", teen.config)
     for gid, svc in wheels.items():
         svc.config = _load_cfg(r, gid, svc.config)
+    webhooks = load_webhook_config(r)
+    destinations = list(webhooks.get("destinations", [])) if webhooks.get("enabled") else []
+    teen.webhook_destinations = destinations
+    for svc in wheels.values():
+        svc.webhook_destinations = list(destinations)
     return hstate
 
 
 def _save_all(r, teen, wheels, hstate, games_touched):
-    from staging.state import _save_cfg, save_handler_state, save_room, spill_audit
+    from staging.state import (_save_cfg, save_handler_state, save_room,
+                               spill_audit, spill_webhook_deliveries)
     save_handler_state(r, hstate)
     _save_cfg(r, "teen-patti-pro", teen.config)
     for gid, svc in wheels.items():
@@ -72,6 +80,7 @@ def _save_all(r, teen, wheels, hstate, games_touched):
         for room_id in list(getattr(svc, "rooms", {}).keys()):
             save_room(r, svc, game, room_id)
         spill_audit(r, svc, game)
+        spill_webhook_deliveries(r, svc)
 
 
 class _Headers(dict):
@@ -142,6 +151,11 @@ def _run_handler(method, path, query, headers, body):
     _p = _up(path).path
     _no_lock = _p in ("/api/v1/staging/test-login",
                       "/api/v1/staging/test-wallet/grant",
+                      "/api/v1/staging/api-keys/provision",
+                      "/api/v1/staging/api-keys",
+                      "/api/v1/staging/api-keys/revoke",
+                      "/api/v1/staging/api-keys/rotate",
+                      "/api/v1/admin/webhooks/config",
                       "/api/v1/sessions") or _p.endswith("/sessions")
     if method in ("POST", "PUT") and not _no_lock:
         scope_rooms = rooms if rooms and not wildcard else {"*"}
@@ -185,16 +199,34 @@ def _run_handler(method, path, query, headers, body):
                 game = canon
         try:
             if method == "GET":
+                from urllib.parse import urlparse
+                _staging_get_path = urlparse(path).path
+                if _staging_get_path == "/api/v1/staging/api-keys":
+                    return _staging_list_keys(r, headers)
+                if _staging_get_path == "/api/v1/admin/audit":
+                    return _staging_admin_audit(r, headers, query)
+                if _staging_get_path == "/api/v1/admin/webhooks":
+                    return _staging_webhook_log(r, headers, query)
                 h.do_GET()
             elif method == "POST":
                 # Staging-only issuance routes (refused in production).
                 from urllib.parse import urlparse
-                if urlparse(path).path == "/api/v1/staging/test-login":
+                _staging_path = urlparse(path).path
+                if _staging_path == "/api/v1/staging/test-login":
                     return _staging_login(r, teen, wheels, body)
-                if urlparse(path).path == "/api/v1/staging/test-wallet/grant":
+                if _staging_path == "/api/v1/staging/test-wallet/grant":
                     return _staging_grant(r, wheels, teen, body)
+                if _staging_path == "/api/v1/staging/api-keys/provision":
+                    return _staging_issue_key(r, body)
+                if _staging_path == "/api/v1/staging/api-keys/revoke":
+                    return _staging_revoke_key(r, headers, body)
+                if _staging_path == "/api/v1/staging/api-keys/rotate":
+                    return _staging_rotate_key(r, headers, body)
                 h.do_POST()
             elif method == "PUT":
+                from urllib.parse import urlparse
+                if urlparse(path).path == "/api/v1/admin/webhooks/config":
+                    return _staging_webhook_config(r, teen, wheels, headers, body)
                 h.do_PUT()
             elif method == "DELETE":
                 h.do_DELETE()
@@ -222,6 +254,294 @@ def _run_handler(method, path, query, headers, body):
     except Exception:
         pass
     return status, resp_headers, payload
+
+
+def _staging_json(body, max_bytes=8192):
+    from common import envelope as E
+    if len(body or b"") > max_bytes:
+        raise ValueError("request body too large")
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        raise ValueError("invalid JSON")
+    if not isinstance(data, dict):
+        raise ValueError("body must be a JSON object")
+    return data
+
+
+def _staging_json_response(status, payload):
+    from common import envelope as E
+    return status, {"Content-Type": "application/json"}, json.dumps(payload).encode()
+
+
+def _staging_require_role(headers, minimum, game_id=""):
+    from common import envelope as E
+    from games.teen_patti_pro.api import Handler
+    facade = Handler.__new__(Handler)
+    facade.headers = _Headers(dict(headers or {}))
+    denied = facade.require_role(minimum, game_id)
+    if denied is None:
+        return None
+    status, payload = denied
+    return (status, {"Content-Type": "application/json"},
+            json.dumps(payload).encode())
+
+
+def _staging_require_superadmin(headers):
+    return _staging_require_role(headers, "superadmin")
+
+
+def _staging_audit_event(r, actor, action, entity, entity_id, after):
+    """Persist staging control-plane audit rows immediately.
+
+    Direct staging routes return before the normal end-of-request spill, so
+    issuance, revocation and configuration changes must not rely on in-memory
+    service audit state.
+    """
+    import time as _time
+    aid = f"stg-audit-{uuid.uuid4().hex}"
+    entry = {"audit_id": aid, "actor": actor, "action": action,
+             "entity": entity, "entity_id": entity_id, "before": None,
+             "after": after, "timestamp": int(_time.time() * 1000)}
+    key = "stg:audit:provider"
+    r.command("LPUSH", key, json.dumps(entry))
+    r.command("SADD", key + ":ids", aid)
+    r.command("LTRIM", key, "0", "499")
+
+
+def _staging_key_audit(r, actor, action, entity_id, after):
+    _staging_audit_event(r, actor, action, "api-key", entity_id, after)
+
+
+def _staging_webhook_config_payload(config):
+    return {"enabled": bool(config.get("enabled", False)),
+            "destinations": list(config.get("destinations", [])),
+            "secret_configured": bool(os.environ.get("WEBHOOK_SECRET") or
+                                      os.environ.get("SETTLEMENT_SIGNING_SECRET"))}
+
+
+def _validate_webhook_config(data):
+    from common import envelope as E
+    from urllib.parse import urlparse
+    if not isinstance(data, dict):
+        raise ValueError("body must be a JSON object")
+    if not isinstance(data.get("enabled"), bool):
+        raise ValueError("enabled must be a boolean")
+    destinations = data.get("destinations", [])
+    if not isinstance(destinations, list):
+        raise ValueError("destinations must be a list")
+    if len(destinations) > 5:
+        raise ValueError("at most five webhook destinations are allowed")
+    cleaned = []
+    for destination in destinations:
+        text = str(destination or "").strip()
+        if len(text) > 512:
+            raise ValueError("webhook destination is too long")
+        parsed = urlparse(text)
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise ValueError("webhook destinations must be https URLs")
+        cleaned.append(text)
+    reason = data.get("reason", "")
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("reason must be a string")
+    if len(reason or "") > 256:
+        raise ValueError("reason is too long")
+    return {"enabled": data["enabled"], "destinations": cleaned}
+
+
+def _staging_webhook_log(r, headers, query):
+    from common import envelope as E
+    from urllib.parse import parse_qs
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    denied = _staging_require_role(headers, "auditor")
+    if denied is not None:
+        return denied
+    params = parse_qs(query or "")
+    try:
+        limit = int((params.get("limit") or ["100"])[0])
+    except (TypeError, ValueError):
+        return _staging_json_response(422, E.err("limit must be an integer",
+                                                 E.E_VALIDATION))
+    deliveries = ST.read_webhook_deliveries(r, max(1, min(limit, 200)))
+    return _staging_json_response(200, E.ok({
+        "config": _staging_webhook_config_payload(ST.load_webhook_config(r)),
+        "deliveries": deliveries, "count": len(deliveries)}))
+
+
+def _staging_webhook_config(r, teen, wheels, headers, body):
+    from common import envelope as E
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    denied = _staging_require_role(headers, "superadmin")
+    if denied is not None:
+        return denied
+    try:
+        data = _staging_json(body)
+        config = _validate_webhook_config(data)
+    except ValueError as exc:
+        return _staging_json_response(422, E.err(str(exc), E.E_VALIDATION))
+    import time as _time
+    config.update({"updated_by": "super-admin",
+                   "updated_at_ms": int(_time.time() * 1000),
+                   "reason": str(data.get("reason") or "")})
+    ST.save_webhook_config(r, {"enabled": config["enabled"],
+                               "destinations": config["destinations"]})
+    teen.webhook_destinations = list(config["destinations"]) if config["enabled"] else []
+    for svc in wheels.values():
+        svc.webhook_destinations = list(teen.webhook_destinations)
+    _staging_audit_event(r, "super-admin", "staging.webhooks.configure",
+                         "webhooks", "staging",
+                         {"enabled": config["enabled"],
+                          "destinations": config["destinations"],
+                          "reason": config["reason"]})
+    return _staging_json_response(200, E.ok({"config": _staging_webhook_config_payload(
+        ST.load_webhook_config(r))}, "webhook configuration updated"))
+
+
+def _staging_admin_audit(r, headers, query):
+    from common import envelope as E
+    from games.teen_patti_pro.api import ADMIN_SCOPES
+    from provider.games import BINDINGS, ENGINE_IDS, canonical_code
+    from urllib.parse import parse_qs
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    denied = _staging_require_role(headers, "auditor")
+    if denied is not None:
+        return denied
+    params = parse_qs(query or "")
+    try:
+        limit = int((params.get("limit") or ["100"])[0])
+    except (TypeError, ValueError):
+        return _staging_json_response(422, E.err("limit must be an integer",
+                                                 E.E_VALIDATION))
+    limit = max(1, min(limit, 200))
+    entity = str((params.get("entity") or [""])[0])[:64]
+    requested = str((params.get("game") or [""])[0]).strip()
+    requested_code = canonical_code(requested) if requested else None
+    if requested and requested_code is None:
+        return _staging_json_response(404, E.err(f"unknown game {requested}",
+                                                 E.E_NOT_FOUND))
+    key = (headers or {}).get("X-Admin-Key", "")
+    raw_scopes = ADMIN_SCOPES.get(key)
+    if raw_scopes:
+        allowed = {code for value in raw_scopes
+                   if (code := canonical_code(value)) is not None}
+    else:
+        allowed = set(BINDINGS)
+    if requested_code is not None and requested_code not in allowed:
+        return _staging_json_response(403, E.err(
+            "key is not scoped to this game", E.E_FORBIDDEN))
+    codes = [requested_code] if requested_code else sorted(allowed)
+    rows = []
+    for code in codes:
+        engine = ENGINE_IDS.get(code)
+        if not engine:
+            continue
+        raw = r.command("LRANGE", f"stg:audit:{engine}", "0", str(limit - 1)) or []
+        for item in raw:
+            try:
+                row = json.loads(item)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and (not entity or row.get("entity") == entity):
+                rows.append(row)
+    rows.sort(key=lambda row: int(row.get("timestamp", 0) or 0), reverse=True)
+    rows = rows[:limit]
+    return _staging_json_response(200, E.ok({"entries": rows, "count": len(rows)}))
+
+
+def _staging_issue_key(r, body):
+    from common import envelope as E
+    from provider import dynamic_keys as DK
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    try:
+        data = _staging_json(body)
+    except ValueError as exc:
+        return _staging_json_response(422, E.err(str(exc), E.E_VALIDATION))
+    try:
+        issued = DK.issue_provider_key(
+            r, pin=data.get("pin"), label=data.get("label"),
+            role=data.get("role", "operator"), games=data.get("games"),
+            ttl_seconds=data.get("ttl_seconds"), audit=None)
+    except DK.DynamicKeyError as exc:
+        return _staging_json_response(exc.status, E.err(str(exc), exc.code))
+    _staging_key_audit(r, "staging-pin", "staging.api-key.issue",
+                       issued["key_id"], {k: issued[k] for k in
+                                          ("label", "role", "games",
+                                           "environment", "test_only",
+                                           "expires_at_ms")})
+    return _staging_json_response(201, E.ok(issued, "staging API key issued"))
+
+
+def _staging_list_keys(r, headers):
+    from common import envelope as E
+    from provider import dynamic_keys as DK
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    denied = _staging_require_superadmin(headers)
+    if denied is not None:
+        return denied
+    try:
+        records = DK.list_provider_keys(r)
+    except DK.DynamicKeyError as exc:
+        return _staging_json_response(exc.status, E.err(str(exc), exc.code))
+    return _staging_json_response(200, E.ok({"keys": records,
+                                             "count": len(records)}))
+
+
+def _staging_revoke_key(r, headers, body):
+    from common import envelope as E
+    from provider import dynamic_keys as DK
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    denied = _staging_require_superadmin(headers)
+    if denied is not None:
+        return denied
+    try:
+        data = _staging_json(body)
+    except ValueError as exc:
+        return _staging_json_response(422, E.err(str(exc), E.E_VALIDATION))
+    try:
+        revoked = DK.revoke_provider_key(
+            r, data.get("key_id"), actor="super-admin", audit=None)
+    except DK.DynamicKeyError as exc:
+        return _staging_json_response(exc.status, E.err(str(exc), exc.code))
+    if revoked:
+        _staging_key_audit(r, "super-admin", "staging.api-key.revoke",
+                           str(data.get("key_id") or ""),
+                           {"revoked": True})
+        return _staging_json_response(200, E.ok({"revoked": True}))
+    return _staging_json_response(404, E.err("unknown staging API key",
+                                             E.E_NOT_FOUND))
+
+
+def _staging_rotate_key(r, headers, body):
+    from common import envelope as E
+    from provider import dynamic_keys as DK
+    if _is_production():
+        return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
+    denied = _staging_require_superadmin(headers)
+    if denied is not None:
+        return denied
+    try:
+        data = _staging_json(body)
+    except ValueError as exc:
+        return _staging_json_response(422, E.err(str(exc), E.E_VALIDATION))
+    try:
+        rotated = DK.rotate_provider_key(
+            r, data.get("key_id"), pin=data.get("pin"),
+            ttl_seconds=data.get("ttl_seconds"), actor="super-admin",
+            audit=None)
+    except DK.DynamicKeyError as exc:
+        return _staging_json_response(exc.status, E.err(str(exc), exc.code))
+    _staging_key_audit(r, "super-admin", "staging.api-key.rotate",
+                       rotated["key_id"],
+                       {"label": rotated["label"], "role": rotated["role"],
+                        "games": rotated["games"],
+                        "expires_at_ms": rotated["expires_at_ms"]})
+    return _staging_json_response(201, E.ok(rotated, "staging API key rotated"))
 
 
 def _staging_login(r, teen, wheels, body):

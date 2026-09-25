@@ -1,0 +1,32 @@
+{
+  "name": "dearlive-games-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:super-admin": "npm run dev --workspace=apps/super-admin",
+    "dev:admin": "npm run dev --workspace=apps/admin",
+    "dev:player": "npm run dev --workspace=apps/player",
+    "build:all": "npm run build --workspaces",
+    "build:super-admin": "npm run build --workspace=apps/super-admin",
+    "build:admin": "npm run build --workspace=apps/admin",
+    "build:player": "npm run build --workspace=apps/player",
+    "deploy:super-admin": "vercel deploy --prod --scope=tukitattu --name=dearlive-games-superadmin",
+    "deploy:admin": "vercel deploy --prod --scope=tukitattu --name=dearlive-games-admin",
+    "deploy:player": "vercel deploy --prod --scope=tukitattu --name=dearlive-games-player",
+    "deploy:api": "vercel deploy --prod --scope=tukitattu --name=dearlive-games-api",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -297,15 +297,66 @@ class AdminScopeTest(unittest.TestCase):
         cls.api.ADMIN_KEYS = cls._orig_keys
         cls.api.ADMIN_SCOPES = cls._orig_scopes
 
-    def post(self, path, key):
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{self.port}{path}", data=b"{}", method="POST",
-            headers={"X-Admin-Key": key, "Content-Type": "application/json"})
+    def request(self, method, path, key="", bearer="", body=None, query=""):
+        url = f"http://127.0.0.1:{self.port}{path}{query}"
+        data = json.dumps(body or {}).encode() if method in ("POST", "PUT") else None
+        headers = {"Content-Type": "application/json"}
+        if key:
+            headers["X-Admin-Key"] = key
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
+        request = urllib.request.Request(url, data=data, method=method,
+                                         headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=10) as resp:
                 return resp.status, json.load(resp)
         except urllib.error.HTTPError as exc:
             return exc.code, json.load(exc)
+
+    def post(self, path, key):
+        return self.request("POST", path, key=key, body={})
+
+    def test_whoami_reports_role_without_revealing_key(self):
+        status, body = self.request("GET", "/api/v1/admin/whoami", key="lion-op")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["data"]["role"], "operator")
+        self.assertEqual(body["data"]["games"], ["greedy-lion", "greedy_lion"])
+        self.assertNotIn("lion-op", json.dumps(body))
+        status, body = self.request("GET", "/api/v1/admin/whoami")
+        self.assertEqual(status, 403, body)
+
+    def test_inventory_only_lists_assigned_games(self):
+        status, body = self.request("GET", "/api/v1/admin/games", key="lion-op")
+        self.assertEqual(status, 200, body)
+        games = [row["game_id"] for row in body["data"]]
+        self.assertEqual(games, ["greedy-lion"])
+        status, body = self.request("GET", "/api/v1/admin/games", key="all-op")
+        self.assertEqual(status, 200, body)
+        from provider.games import TEEN_CODE, canonical_code
+        self.assertEqual({canonical_code(row["game_id"]) for row in body["data"]},
+                         {TEEN_CODE, "greedy_lion"})
+
+    def test_wheel_wallet_requires_matching_session_or_scoped_admin(self):
+        token = self.wheel.tokens.mint("scope-player", "scope-wallet",
+                                       "greedy-lion").token
+        opened = self.wheel.open_session(token)
+        self.wheel.wallet.fund("scope-player", 12345)
+        status, body = self.request(
+            "GET", "/api/v1/games/greedy-lion/rooms/scope-wallet/wallet",
+            bearer=opened["session_id"])
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["data"]["available"], 12345)
+        status, body = self.request(
+            "GET", "/api/v1/games/greedy-lion/rooms/scope-wallet/wallet",
+            key="lion-op",
+            query="?player=scope-player")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["data"]["available"], 12345)
+        status, body = self.request(
+            "GET", "/api/v1/games/teen-patti-pro/rooms/scope-wallet/wallet",
+            bearer=opened["session_id"])
+        self.assertEqual(status, 403, body)
+        self.assertIn("another game", body["message"])
 
     def test_scoped_key_allowed_on_its_game_and_denied_elsewhere(self):
         room = "scope-room-a"

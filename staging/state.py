@@ -17,6 +17,9 @@ LOCK_KEY = "stg:lock:{game}:{room}"
 AUDIT_KEY = "stg:audit:{game}"
 CFG_KEY = "stg:cfg:{game}"
 HANDLER_KEY = "stg:handler"
+WEBHOOK_CFG_KEY = "stg:webhooks"
+WEBHOOK_LOG_KEY = "stg:webhooks-log"
+WEBHOOK_LOG_CAP = 500
 LOCK_TTL_MS = 15000
 AUDIT_CAP = 500
 
@@ -113,6 +116,59 @@ def load_handler_state(r):
 
 def save_handler_state(r, state):
     r.command("SET", HANDLER_KEY, json.dumps(state))
+
+
+def default_webhook_config() -> dict:
+    return {"enabled": False, "destinations": []}
+
+
+def load_webhook_config(r) -> dict:
+    raw = r.command("GET", WEBHOOK_CFG_KEY)
+    if raw is None:
+        return default_webhook_config()
+    try:
+        cfg = json.loads(raw)
+    except ValueError:
+        return default_webhook_config()
+    if not isinstance(cfg, dict):
+        return default_webhook_config()
+    destinations = cfg.get("destinations", [])
+    if not isinstance(destinations, list):
+        return default_webhook_config()
+    return {"enabled": bool(cfg.get("enabled", False)),
+            "destinations": [str(url) for url in destinations]}
+
+
+def save_webhook_config(r, config: dict) -> None:
+    r.command("SET", WEBHOOK_CFG_KEY, json.dumps(config))
+
+
+def spill_webhook_deliveries(r, svc) -> None:
+    deliveries = getattr(getattr(svc, "webhooks", None), "deliveries", [])
+    if not deliveries:
+        return
+    seen_key = WEBHOOK_LOG_KEY + ":ids"
+    for entry in deliveries:
+        key = f"{entry.get('destination','')}:{entry.get('event_id','')}"
+        if not entry.get("event_id") or r.command("SISMEMBER", seen_key, key):
+            continue
+        r.command("LPUSH", WEBHOOK_LOG_KEY, json.dumps(entry, default=str))
+        r.command("SADD", seen_key, key)
+    r.command("LTRIM", WEBHOOK_LOG_KEY, "0", str(WEBHOOK_LOG_CAP - 1))
+
+
+def read_webhook_deliveries(r, limit: int = 100):
+    raw = r.command("LRANGE", WEBHOOK_LOG_KEY, "0",
+                    str(max(0, min(limit, WEBHOOK_LOG_CAP) - 1))) or []
+    out = []
+    for item in raw:
+        try:
+            parsed = json.loads(item)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict):
+            out.append(parsed)
+    return out
 
 
 def load_room(r, svc, game, room_id):

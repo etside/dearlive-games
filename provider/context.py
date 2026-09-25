@@ -113,9 +113,13 @@ def client_path_for(code: str) -> str:
 def staging_context(redis, teen_service, wheels=None):
     """Staging keeps TEST-coin balances in the existing Redis wallet."""
     from staging.redis_wallet import RedisWallet
+    from provider.dynamic_keys import load_provider_signing_keys
     ctx = build_context(teen_service, RedisWallet(redis), redis=redis)
     if wheels:
         ctx.attach_games(teen_service, wheels)
+    secrets, scopes = load_provider_signing_keys(redis, ctx.keys)
+    ctx.keys = secrets
+    ctx.key_scopes = scopes
     return ctx
 
 

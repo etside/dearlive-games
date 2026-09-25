@@ -61,6 +61,7 @@ class ProviderContext:
     redis: bool = False
     catalogs: Dict[str, TableCatalog] = field(default_factory=dict)
     wheels: Dict[str, object] = field(default_factory=dict)
+    key_scopes: Dict[str, dict] = field(default_factory=dict)
 
     def attach_games(self, teen_service, wheels: Dict[str, object]):
         """Bind the wheel engines so one API can serve every game."""
@@ -183,6 +184,76 @@ def _service_error(exc):
     return ProviderError(code, str(exc), _status_for(code))
 
 
+def _actor_scope(ctx: ProviderContext, actor: str) -> Optional[dict]:
+    """Scoped staging credentials only; static operator keys stay unrestricted."""
+    if not actor:
+        return None
+    return (getattr(ctx, "key_scopes", {}) or {}).get(actor)
+
+
+def _visible_games(ctx: ProviderContext, actor: str) -> List[str]:
+    scope = _actor_scope(ctx, actor)
+    if not scope:
+        return list(BINDINGS)
+    return [code for code in BINDINGS if code in (scope.get("games") or [])]
+
+
+def _require_game_scope(ctx: ProviderContext, actor: str, game_code: str) -> str:
+    scope = _actor_scope(ctx, actor)
+    if not scope:
+        return game_code
+    code = canonical_code(game_code)
+    if code is None or code not in (scope.get("games") or []):
+        raise ProviderError(E.E_FORBIDDEN,
+                            "API key is not scoped to this game", 403)
+    return code
+
+
+def _require_scope_for_request(ctx: ProviderContext, actor: str, handler,
+                               groups: List[str], body: bytes):
+    """Enforce short-lived staging key scopes before any game state changes."""
+    scope = _actor_scope(ctx, actor)
+    if not scope:
+        return
+    if (scope.get("role") or "operator") == "auditor" and \
+            getattr(handler, "__name__", "").startswith("h_") and \
+            handler not in (h_health, h_games, h_get_session, h_list_tables,
+                            h_table_detail, h_choices, h_state, h_history,
+                            h_balance, h_transactions, h_openapi, h_docs,
+                            h_launch):
+        raise ProviderError(E.E_FORBIDDEN,
+                            "auditor credentials are read-only", 403)
+    if handler in (h_list_tables, h_table_detail, h_choices, h_join, h_leave,
+                   h_action, h_state, h_history):
+        _require_game_scope(ctx, actor, binding_for_slug(groups[0]).game_code)
+    elif handler is h_create_session:
+        try:
+            payload = json.loads(body or b"{}")
+        except ValueError:
+            return
+        if isinstance(payload, dict) and "game_code" in payload:
+            _require_game_scope(ctx, actor, payload.get("game_code"))
+    elif handler in (h_get_session, h_delete_session):
+        session = _load_session(ctx, groups[0])
+        _require_game_scope(ctx, actor, session.game_id)
+    elif handler in (h_debit, h_credit):
+        try:
+            payload = json.loads(body or b"{}")
+        except ValueError:
+            return
+        if isinstance(payload, dict) and "game_code" in payload:
+            _require_game_scope(ctx, actor, payload.get("game_code"))
+    elif handler is h_rollback:
+        try:
+            payload = json.loads(body or b"{}")
+        except ValueError:
+            return
+        original = str((payload or {}).get("original_reference") or "")
+        row = ctx.wallet.ledger.find_by_reference(original) if original else None
+        if row is not None:
+            _require_game_scope(ctx, actor, row.get("game_code"))
+
+
 # ---------------------------------------------------------------- handlers
 def h_health(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
     rooms = getattr(ctx.service, "rooms", {}) or {}
@@ -193,7 +264,7 @@ def h_health(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
         "game_code": GAME_CODE,
         "engine": "TeenPattiPro/1.0",
         "provider_api": "v1",
-        "provider_auth_configured": bool(ctx.keys),
+        "provider_auth_configured": bool(ctx.keys) or bool(getattr(ctx, "key_scopes", {})),
         "wallet_backend": type(ctx.wallet.adapter).__name__,
         "currency": ctx.currency,
         "tables": len(ctx.catalog.all()),
@@ -206,7 +277,7 @@ def h_health(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
 
 def h_games(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
     games = []
-    for code in BINDINGS:
+    for code in _visible_games(ctx, req.actor):
         binding = BINDINGS[code]
         catalog = ctx.catalog_for(code)
         service = None
@@ -620,6 +691,11 @@ def h_transactions(ctx: ProviderContext, req: Request, player_id: str) -> Tuple[
                       pattern=PLAYER_ID_RE)
     limit = _int(req.q("limit", "50"), "limit", 1, 200)
     rows = ctx.wallet.transactions(player_id, limit)
+    scope = _actor_scope(ctx, req.actor)
+    if scope:
+        allowed = set(scope.get("games") or [])
+        rows = [row for row in rows
+                if canonical_code(row.get("game_code")) in allowed]
     return 200, {"player_id": player_id, "transactions": rows, "count": len(rows)}
 
 
@@ -732,6 +808,12 @@ def dispatch(ctx: ProviderContext, method: str, path: str, query: str,
                                     ctx.nonces, ctx.limiter)
         except PA.ProviderAuthError:
             actor = ""  # handler enforces the alternative credential
+
+    if actor:
+        try:
+            _require_scope_for_request(ctx, actor, handler, groups, body or b"")
+        except ProviderError as exc:
+            return exc.status, exc.headers, E.err(str(exc), exc.code)
 
     query_map = {k: v[-1] for k, v in
                  urllib.parse.parse_qs(query or "").items()}

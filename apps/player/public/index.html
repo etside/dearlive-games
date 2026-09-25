@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DearLive Staging — Player</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <h1>DearLive Staging · Player</h1>
+  <p class="sub">TEST coins only · same-origin <code>/api/…</code> · game clients open with a valid session</p>
+</header>
+
+<div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<main class="wrap">
+
+  <section class="card" aria-labelledby="h-login">
+    <h2 id="h-login">1 · Test-player login</h2>
+    <form id="login-form">
+      <div class="grid">
+        <label>Player
+          <input id="player" name="player" list="players" value="qa-player" maxlength="64"
+                 autocomplete="off" required>
+          <datalist id="players">
+            <option value="qa-player"></option>
+            <option value="qa-player-2"></option>
+            <option value="staging-tester"></option>
+          </datalist>
+        </label>
+        <label>Game
+          <select id="game" name="game">
+            <option value="teen-patti-pro">Teen Patti Pro</option>
+            <option value="greedy-lion">Greedy Lion</option>
+            <option value="greedy-monkey">Monkey Wheel</option>
+          </select>
+        </label>
+        <label>Room
+          <input id="room" name="room" value="staging-room" maxlength="64" autocomplete="off" required>
+        </label>
+      </div>
+      <div class="row">
+        <button type="submit" id="login-btn">Log in (staging)</button>
+        <button type="button" id="logout-btn" class="ghost">Log out</button>
+      </div>
+    </form>
+    <dl class="kv" id="login-out" hidden>
+      <div><dt>player_id</dt><dd id="o-player">–</dd></div>
+      <div><dt>game_id</dt><dd id="o-game">–</dd></div>
+      <div><dt>room_id</dt><dd id="o-room">–</dd></div>
+      <div><dt>launch_token</dt><dd id="o-token">–</dd></div>
+      <div><dt>session_id</dt><dd id="o-session">–</dd></div>
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="h-fund">
+    <h2 id="h-fund">2 · TEST funding</h2>
+    <form id="fund-form">
+      <div class="grid">
+        <label>Amount (TEST)
+          <input id="amount" name="amount" type="number" min="1" step="1" value="5000" required>
+        </label>
+      </div>
+      <div class="row">
+        <button type="submit" id="fund-btn">Grant TEST coins</button>
+        <button type="button" id="refresh-btn" class="ghost">Refresh views</button>
+      </div>
+    </form>
+    <p class="hint">Grants are idempotent per key and never touch real money.</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-play">
+    <h2 id="h-play">3 · Play</h2>
+    <div class="row">
+      <button type="button" id="open-session-btn">Open session</button>
+      <a id="launch-link" class="btn" href="#" hidden>Open game client ↗</a>
+    </div>
+    <p class="hint" id="launch-hint">Open a session first, then launch the exact backend game client
+      (<code>/teen-patti-pro/</code>, <code>/greedy-lion/</code>, <code>/greedy-monkey/</code>)
+      with <code>?session=&amp;room=</code>. Use the in-game controls there; this page mirrors
+      balance / state / history below. <a href="./">Return home</a> any time.</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-bal">
+    <h2 id="h-bal">Balance</h2>
+    <pre id="balance" class="out">Log in first.</pre>
+    <p class="hint" id="balance-note" hidden></p>
+  </section>
+
+  <section class="card" aria-labelledby="h-state">
+    <h2 id="h-state">Table state</h2>
+    <pre id="state" class="out">Log in first.</pre>
+  </section>
+
+  <section class="card" aria-labelledby="h-bet">
+    <h2 id="h-bet">Place a bet (same contract as the game client)</h2>
+    <form id="bet-form">
+      <div class="grid">
+        <label>Choice <span class="hint" id="choice-src"></span>
+          <select id="choice" name="choice"></select>
+        </label>
+        <label>Amount
+          <input id="bet-amount" name="bet-amount" type="number" min="1" step="1" value="100" required>
+        </label>
+      </div>
+      <div class="row">
+        <button type="submit" id="bet-btn">Place bet</button>
+        <button type="button" id="choices-btn" class="ghost">Reload choices</button>
+      </div>
+    </form>
+    <p class="hint">Choices come from the server (<code>/api/v1/games/teen-patti-pro</code> seats for
+      Teen Patti, <code>/api/v1/games/{game}/assets</code> options for wheels). No rules are invented here.</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-hist">
+    <h2 id="h-hist">History &amp; results</h2>
+    <div class="row">
+      <button type="button" id="hist-btn" class="ghost">Reload history</button>
+      <button type="button" id="recent-btn" class="ghost">Reload recent results</button>
+    </div>
+    <h3>My bets</h3>
+    <pre id="history" class="out">–</pre>
+    <h3>Recent results</h3>
+    <pre id="recent" class="out">–</pre>
+    <h3>Published result</h3>
+    <pre id="result" class="out">–</pre>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <a href="./">Home</a> · static build, no dependencies · TEST environment only
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

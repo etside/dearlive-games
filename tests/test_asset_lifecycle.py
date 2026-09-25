@@ -128,8 +128,8 @@ class AssetLifecycleTest(CountedCase):
         status, _, _ = self.get("/teen-patti-pro/master/wav/bet.mp3")
         self.counted(status == 404, "wrong extension rejected")
         src = (CLIENT_DIR / "game.js").read_text()
-        for token in ("master/teen-patti-pro/wav/", "sfx('bet')", "sfx('win')",
-                      "sfx('flip')", "sfx('click')", "sfx('lose')"):
+        for token in ("master/teen-patti-pro/wav/", "Sound.play('bet'", "Sound.play('win')",
+                      "Sound.play('flip'", "sfx('click')", "Sound.play('lose')"):
             self.counted(token in src, f"game.js wires {token} to real transitions")
 
     def test_demo_bundle_intact(self):

@@ -113,6 +113,7 @@
   }
   function toggleSound() {
     S.sound = !S.sound;
+    Sound.setMuted(!S.sound);
     try { localStorage.setItem('tpp_sound', S.sound ? 'on' : 'off'); } catch (e) {}
   }
 
@@ -136,6 +137,352 @@
     S.msgKind = kind || 'info';
     if (text) setToast(text, kind);
   }
+
+  // ===== ANIMATION LAYER (interruptible, reconnect-safe) =====
+  const AnimLayer = (function () {
+    const animations = new Map();
+    let nextId = 0;
+    const lottiePlayers = new Map();
+    let lottieLib = null;
+
+    function loadLottie() {
+      if (lottieLib) return Promise.resolve(lottieLib);
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.9.6/lottie.min.js';
+        s.onload = () => { lottieLib = window.lottie; resolve(lottieLib); };
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    function playLottie(name, container, opts) {
+      return loadLottie().then(() => {
+        const url = 'master/teen-patti-pro/lottie/' + name + '.json';
+        const anim = lottieLib.loadAnimation({
+          container: container,
+          renderer: 'svg',
+          loop: opts.loop || false,
+          autoplay: true,
+          path: url
+        });
+        if (opts.onComplete) {
+          anim.addEventListener('complete', () => { opts.onComplete(); cleanup(name); });
+        }
+        const key = name + '_' + Date.now();
+        lottiePlayers.set(key, { anim, container });
+        return { anim, key, destroy: () => { anim.destroy(); lottiePlayers.delete(key); } };
+      }).catch(() => {
+        // Fallback to GIF
+        const img = document.createElement('img');
+        img.src = 'master/teen-patti-pro/gif/' + name + '.gif.gif';
+        img.style.width = '100%'; img.style.height = '100%';
+        container.appendChild(img);
+        return { destroy: () => img.remove() };
+      });
+    }
+
+    function cleanup(key) { const p = lottiePlayers.get(key); if (p) p.destroy(); }
+
+    function hardReset() {
+      animations.forEach(a => a.cancelled = true);
+      animations.clear();
+      lottiePlayers.forEach(p => p.anim.destroy());
+      lottiePlayers.clear();
+    }
+
+    function animate({ duration, easing = 'easeOutCubic', onFrame, onComplete }) {
+      const id = ++nextId;
+      const start = performance.now();
+      const instance = { id, cancelled: false, promise: null };
+      const easings = {
+        linear: t => t,
+        easeOutCubic: t => 1 - Math.pow(1 - t, 3),
+        easeOutQuad: t => t * (2 - t),
+        easeOutBack: t => 1 + (--t) * t * ((1.7 + 1) * t + 1.7),
+        easeInOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+        easeOutElastic: t => t === 1 ? 1 : -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * 2 * Math.PI / 3)
+      };
+      const ease = easings[easing] || easings.easeOutCubic;
+      instance.promise = new Promise(resolve => {
+        function step(now) {
+          if (instance.cancelled) { resolve('cancelled'); return; }
+          const t = Math.min(1, (now - start) / duration);
+          const eased = ease(t);
+          onFrame(eased, t);
+          if (t < 1) requestAnimationFrame(step);
+          else { resolve('done'); onComplete && onComplete(); }
+        }
+        requestAnimationFrame(step);
+      });
+      animations.set(id, instance);
+      return { id, promise: instance.promise, cancel: () => { instance.cancelled = true; } };
+    }
+
+    function cancel(id) { const a = animations.get(id); if (a) a.cancelled = true; }
+
+    function cancelAll() { animations.forEach(a => a.cancelled = true); animations.clear(); }
+
+    return { animate, cancel, cancelAll, hardReset, playLottie, cleanup };
+  })();
+
+  // Sound manager (preloads, volume, fallbacks)
+  const Sound = (function () {
+    const cache = {};
+    let muted = false;
+    try { muted = localStorage.getItem('tpp_sound') === 'off'; } catch (e) {}
+    const files = { bet: 'bet.wav', win: 'win.wav', coin: 'coin.wav', lose: 'lose.wav', flip: 'card_flip.wav', click: 'click.wav' };
+    function play(name, volume = 1.0) {
+      if (muted) return Promise.resolve();
+      let audio = cache[name];
+      if (!audio) {
+        audio = new Audio('master/teen-patti-pro/wav/' + files[name]);
+        audio.preload = 'auto';
+        cache[name] = audio;
+      }
+      audio.currentTime = 0;
+      audio.volume = volume;
+      const p = audio.play();
+      return p ? p.catch(() => beep(name === 'win')) : Promise.resolve();
+    }
+    function setMuted(m) { muted = m; try { localStorage.setItem('tpp_sound', m ? 'off' : 'on'); } catch (e) {} }
+    function isMuted() { return muted; }
+    return { play, setMuted, isMuted };
+  })();
+
+  // ===== GAME ANIMATIONS (use AnimLayer + Sound) =====
+  // Card deal: deck -> seat with bezier arc, stagger, Lottie + sound
+  async function animateDeal(deckPos, seatPositions, cardsPerPlayer, players) {
+    const L = layout();
+    const totalCards = cardsPerPlayer * players.length;
+    const cardW = L.cw, cardH = L.ch;
+    for (let i = 0; i < totalCards; i++) {
+      const playerIdx = i % players.length;
+      const player = players[playerIdx];
+      if (!player) continue;
+      const seatKey = POS[playerIdx];
+      const seatPos = L.seats[seatKey];
+      if (!seatPos) continue;
+      const cardIdx = Math.floor(i / players.length);
+      const targetX = seatPos.x - cardW * 1.15 + cardIdx * (cardW + 5);
+      const targetY = seatPos.y - cardH / 2;
+      const cardEl = document.createElement('div');
+      cardEl.style.position = 'absolute';
+      cardEl.style.left = deckPos.x + 'px';
+      cardEl.style.top = deckPos.y + 'px';
+      cardEl.style.width = cardW + 'px';
+      cardEl.style.height = cardH + 'px';
+      cardEl.style.pointerEvents = 'none';
+      cardEl.style.zIndex = 1000 + i;
+      cardEl.innerHTML = '<div style="width:100%;height:100%;background:#0b5fa5;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ffd54a;font-weight:bold;font-size:' + (cardW * 0.32) + 'px">TP</div>';
+      cv.parentElement.appendChild(cardEl);
+      const ctrlX = (deckPos.x + targetX) / 2;
+      const ctrlY = Math.min(deckPos.y, targetY) - 120;
+      await AnimLayer.animate({
+        duration: 400 + i * 80,
+        easing: 'easeOutBack',
+        onFrame: (eased) => {
+          if (cardEl.parentElement) {
+            const x = (1 - eased) ** 2 * deckPos.x + 2 * (1 - eased) * eased * ctrlX + eased ** 2 * targetX;
+            const y = (1 - eased) ** 2 * deckPos.y + 2 * (1 - eased) * eased * ctrlY + eased ** 2 * targetY;
+            const rot = (1 - eased) * (Math.random() * 30 - 15);
+            cardEl.style.transform = `translate(${x - deckPos.x}px, ${y - deckPos.y}px) rotate(${rot}deg)`;
+          }
+        },
+        onComplete: () => {
+          if (cardEl.parentElement) cardEl.remove();
+        }
+      }).promise;
+      if (i % players.length === players.length - 1) await Sound.play('flip', 0.6);
+    }
+  }
+
+  // Card flip: scaleX 1 -> 0 -> 1 with texture swap
+  function animateFlip(cardEl, faceUp, cardData) {
+    return AnimLayer.animate({
+      duration: 350,
+      easing: 'easeInOutCubic',
+      onFrame: (eased) => {
+        const scaleX = eased < 0.5 ? 1 - eased * 2 : (eased - 0.5) * 2;
+        cardEl.style.transform = `scaleX(${Math.max(0.01, scaleX)})`;
+        if (Math.abs(eased - 0.5) < 0.02) {
+          // Swap texture at midpoint
+          cardEl.innerHTML = faceUp ? renderCardFace(cardData) : renderCardBack();
+        }
+      }
+    }).promise;
+  }
+
+  function renderCardBack() {
+    return '<div style="width:100%;height:100%;background:#0b5fa5;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ffd54a;font-weight:bold">TP</div>';
+  }
+  function renderCardFace(card) {
+    if (!card || card === '**') return renderCardBack();
+    const red = /[HD]$/.test(card);
+    return '<div style="width:100%;height:100%;background:#f7f4ec;border-radius:8px;border:2px solid #8b0000;display:flex;align-items:center;justify-content:center;color:' + (red ? '#b71c1c' : '#212121') + ';font-weight:bold;font-size:1.2em">' + card + '</div>';
+  }
+
+  // Chip bet: arc from seat to pot, stack, glow Lottie + sound
+  async function animateChipBet(seatPos, potPos, amount) {
+    const chipEl = document.createElement('div');
+    chipEl.style.position = 'absolute';
+    chipEl.style.left = seatPos.x + 'px';
+    chipEl.style.top = seatPos.y + 'px';
+    chipEl.style.width = '48px';
+    chipEl.style.height = '48px';
+    chipEl.style.pointerEvents = 'none';
+    chipEl.style.zIndex = 2000;
+    const color = amount === 20 ? '#22c55e' : amount === 100 ? '#3b82f6' : amount === 500 ? '#8b5cf6' : '#ef4444';
+    chipEl.innerHTML = '<div style="width:100%;height:100%;background:' + color + ';border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.4)">' + (amount >= 1000 ? (amount/1000)+'K' : amount) + '</div>';
+    cv.parentElement.appendChild(chipEl);
+    const ctrlX = (seatPos.x + potPos.x) / 2;
+    const ctrlY = Math.min(seatPos.y, potPos.y) - 80;
+    await AnimLayer.animate({
+      duration: 500,
+      easing: 'easeOutQuad',
+      onFrame: (eased) => {
+        if (chipEl.parentElement) {
+          const x = (1 - eased) ** 2 * seatPos.x + 2 * (1 - eased) * eased * ctrlX + eased ** 2 * potPos.x;
+          const y = (1 - eased) ** 2 * seatPos.y + 2 * (1 - eased) * eased * ctrlY + eased ** 2 * potPos.y;
+          const scale = 1 + eased * 0.2;
+          chipEl.style.transform = `translate(${x - seatPos.x}px, ${y - seatPos.y}px) scale(${scale})`;
+        }
+      },
+      onComplete: () => {
+        if (chipEl.parentElement) chipEl.remove();
+        // Play chip glow Lottie at pot
+        const glowContainer = document.createElement('div');
+        glowContainer.style.position = 'absolute';
+        glowContainer.style.left = (potPos.x - 40) + 'px';
+        glowContainer.style.top = (potPos.y - 40) + 'px';
+        glowContainer.style.width = '80px';
+        glowContainer.style.height = '80px';
+        glowContainer.style.pointerEvents = 'none';
+        glowContainer.style.zIndex = 2001;
+        cv.parentElement.appendChild(glowContainer);
+        AnimLayer.playLottie('chip_glow', glowContainer, { loop: false, onComplete: () => glowContainer.remove() });
+      }
+    }).promise;
+    await Sound.play('bet', 0.7);
+    await Sound.play('coin', 0.5);
+  }
+
+  // Pot collection: chips fly from pot to winner(s)
+  async function animatePotCollection(potPos, winnerPositions, amounts) {
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = (potPos.x - 60) + 'px';
+    container.style.top = (potPos.y - 60) + 'px';
+    container.style.width = '120px';
+    container.style.height = '120px';
+    container.style.pointerEvents = 'none';
+    container.style.zIndex = 3000;
+    cv.parentElement.appendChild(container);
+    await AnimLayer.playLottie('coin_effect', container, { loop: false });
+    for (let i = 0; i < winnerPositions.length; i++) {
+      const wp = winnerPositions[i];
+      const chipEl = document.createElement('div');
+      chipEl.style.position = 'absolute';
+      chipEl.style.left = potPos.x + 'px';
+      chipEl.style.top = potPos.y + 'px';
+      chipEl.style.width = '56px';
+      chipEl.style.height = '56px';
+      chipEl.style.pointerEvents = 'none';
+      chipEl.style.zIndex = 3001;
+      chipEl.innerHTML = '<div style="width:100%;height:100%;background:#ffd54a;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#3a2f00;font-weight:bold;font-size:16px;box-shadow:0 4px 20px rgba(255,213,74,.6)">' + (amounts[i] >= 1000 ? (amounts[i]/1000)+'K' : amounts[i]) + '</div>';
+      cv.parentElement.appendChild(chipEl);
+      const ctrlX = (potPos.x + wp.x) / 2;
+      const ctrlY = Math.min(potPos.y, wp.y) - 100;
+      AnimLayer.animate({
+        duration: 700,
+        easing: 'easeInOutCubic',
+        onFrame: (eased) => {
+          if (chipEl.parentElement) {
+            const x = (1 - eased) ** 2 * potPos.x + 2 * (1 - eased) * eased * ctrlX + eased ** 2 * wp.x;
+            const y = (1 - eased) ** 2 * potPos.y + 2 * (1 - eased) * eased * ctrlY + eased ** 2 * wp.y;
+            const scale = 1 + (1 - eased) * 0.3;
+            chipEl.style.transform = `translate(${x - potPos.x}px, ${y - potPos.y}px) scale(${scale})`;
+          }
+        },
+        onComplete: () => { if (chipEl.parentElement) chipEl.remove(); }
+      });
+      await new Promise(r => setTimeout(r, 150));
+    }
+    await Sound.play('coin', 0.8);
+    await Sound.play('win', 0.7);
+    container.remove();
+  }
+
+  // Timer pulse: Lottie synced to server timeout
+  let timerPulseAnim = null;
+  function startTimerPulse(container, secsRemaining) {
+    stopTimerPulse();
+    if (secsRemaining > 10) return;
+    AnimLayer.playLottie('timer_pulse', container, { loop: true }).then(p => { timerPulseAnim = p; });
+  }
+  function stopTimerPulse() { if (timerPulseAnim) { timerPulseAnim.destroy(); timerPulseAnim = null; } }
+
+  // Winner celebration: fireworks + glow
+  async function animateWin(winnerSeatPositions) {
+    const promises = winnerSeatPositions.map(pos => {
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = (pos.x - 80) + 'px';
+      container.style.top = (pos.y - 80) + 'px';
+      container.style.width = '160px';
+      container.style.height = '160px';
+      container.style.pointerEvents = 'none';
+      container.style.zIndex = 4000;
+      cv.parentElement.appendChild(container);
+      return AnimLayer.playLottie('win_fireworks', container, { loop: false, onComplete: () => container.remove() });
+    });
+    await Promise.all(promises);
+    await Sound.play('win', 0.8);
+  }
+
+  // Round reset: cards fly back to deck
+  async function animateRoundReset(seatPositions, deckPos, players) {
+    const L = layout();
+    const cardW = L.cw, cardH = L.ch;
+    const promises = [];
+    players.forEach((player, pIdx) => {
+      if (!player) return;
+      const seatKey = POS[pIdx];
+      const seatPos = L.seats[seatKey];
+      if (!seatPos) return;
+      const hands = 3; // Teen Patti = 3 cards
+      for (let c = 0; c < hands; c++) {
+        const cardEl = document.createElement('div');
+        cardEl.style.position = 'absolute';
+        cardEl.style.left = (seatPos.x - cardW * 1.15 + c * (cardW + 5)) + 'px';
+        cardEl.style.top = (seatPos.y - cardH / 2) + 'px';
+        cardEl.style.width = cardW + 'px';
+        cardEl.style.height = cardH + 'px';
+        cardEl.style.pointerEvents = 'none';
+        cardEl.style.zIndex = 1000;
+        cardEl.innerHTML = renderCardBack();
+        cv.parentElement.appendChild(cardEl);
+        const ctrlX = (seatPos.x + deckPos.x) / 2;
+        const ctrlY = Math.min(seatPos.y, deckPos.y) - 100;
+        promises.push(AnimLayer.animate({
+          duration: 400,
+          easing: 'easeInQuad',
+          onFrame: (eased) => {
+            if (cardEl.parentElement) {
+              const x = (1 - eased) ** 2 * (seatPos.x - cardW * 1.15 + c * (cardW + 5)) + 2 * (1 - eased) * eased * ctrlX + eased ** 2 * deckPos.x;
+              const y = (1 - eased) ** 2 * (seatPos.y - cardH / 2) + 2 * (1 - eased) * eased * ctrlY + eased ** 2 * deckPos.y;
+              cardEl.style.transform = `translate(${x - (seatPos.x - cardW * 1.15 + c * (cardW + 5))}px, ${y - (seatPos.y - cardH / 2)}px) rotate(${eased * 360}deg) scale(${1 - eased * 0.3})`;
+            }
+          },
+          onComplete: () => { if (cardEl.parentElement) cardEl.remove(); }
+        }).promise);
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  // Expose for reconnect handling
+  window.__tppAnim = { AnimLayer, animateDeal, animateFlip, animateChipBet, animatePotCollection, startTimerPulse, stopTimerPulse, animateWin, animateRoundReset };
   async function api(path, opts) {
     opts = opts || {};
     opts.headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION }, opts.headers || {});
@@ -448,7 +795,12 @@
       });
       status('Bet accepted · ' + S.selDenom + ' on ' + pos, 'success');
       S._placedThisRound = true;
-      sfx('bet');
+      // Chip animation + sound
+      const L = layout();
+      const seatPos = L.seats[pos];
+      const potPos = { x: L.cx, y: H * 0.115 + 30 };
+      if (seatPos) window.__tppAnim.animateChipBet(seatPos, potPos, S.selDenom);
+      await Sound.play('bet');
     } catch (e) {
       status(friendlyError(e), 'error');
     } finally {
@@ -479,19 +831,61 @@
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
       if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
-        // New server round -> deal moment: flip sound, reset participation.
-        sfx('flip');
+        // New server round -> deal moment
+        const L = layout();
+        const deckPos = { x: L.cx, y: L.top + (L.land ? 96 : 150) };
+        const players = (S.snap && S.snap.players) || [];
+        window.__tppAnim.animateDeal(deckPos, L.seats, 3, players);
         S._placedThisRound = false;
         announce('New round ' + (S.snap.round_id || ''));
       }
       if (S.snap) S._roundId = S.snap.round_id;
       if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
-        // Authoritative result published: win jingle only if we took part.
-        if (S._placedThisRound) { sfx('win'); sfx('coin'); }
-        else sfx('lose');
+        // Authoritative result published: win celebration
+        const L = layout();
+        const winners = S.snap.winners;
+        const winnerPositions = winners.map(w => L.seats[w]).filter(Boolean);
+        const potPos = { x: L.cx, y: H * 0.115 + 30 };
+        if (winnerPositions.length) {
+          window.__tppAnim.animateWin(winnerPositions);
+          const amounts = winners.map(w => S.snap.pots?.[w] || 0);
+          window.__tppAnim.animatePotCollection(potPos, winnerPositions, amounts);
+        }
+        if (S._placedThisRound) { Sound.play('win'); Sound.play('coin'); }
+        else Sound.play('lose');
         status('Result · winner ' + S.snap.winners.join(' and '), 'success');
       } else if (prev && prev.status === 'BETTING_OPEN' && S.snap.status !== 'BETTING_OPEN') {
         status('Betting closed — waiting for the result.', 'info');
+      }
+      // Timer pulse sync
+      if (S.snap && S.snap.status === 'BETTING_OPEN' && S.snap.betting_end_at) {
+        const skew = (S.srvNow || Date.now()) - (S.locNow || Date.now());
+        const secs = Math.max(0, (S.snap.betting_end_at - (Date.now() + skew)) / 1000);
+        if (secs <= 10) {
+          const L = layout();
+          const timerContainer = document.getElementById('tpp-timer-pulse');
+          if (!timerContainer) {
+            const tc = document.createElement('div');
+            tc.id = 'tpp-timer-pulse';
+            tc.style.position = 'absolute';
+            tc.style.left = (L.cx - 40) + 'px';
+            tc.style.top = (L.top + (L.land ? 96 : 150) - 40) + 'px';
+            tc.style.width = '80px';
+            tc.style.height = '80px';
+            tc.style.pointerEvents = 'none';
+            tc.style.zIndex = 500;
+            cv.parentElement.appendChild(tc);
+            window.__tppAnim.startTimerPulse(tc, secs);
+          }
+        } else {
+          window.__tppAnim.stopTimerPulse();
+          const tc = document.getElementById('tpp-timer-pulse');
+          if (tc) tc.remove();
+        }
+      } else {
+        window.__tppAnim.stopTimerPulse();
+        const tc = document.getElementById('tpp-timer-pulse');
+        if (tc) tc.remove();
       }
       S._lastWinKey = key;
       S.srvNow = Date.now(); S.locNow = Date.now();
@@ -540,6 +934,7 @@
       // Staging/serverless transport: no WebSocket — authoritative polling.
       S.connected = true; S._everConnected = true;
       S.polling = true;
+      window.__tppAnim.AnimLayer.hardReset();
       refresh();
       setInterval(refresh, 2000);
       return;
@@ -548,6 +943,7 @@
     try { ws = new WebSocket(WS); } catch (e) { showErr('WS: ' + e.message); return; }
     ws.onopen = () => {
       S.connected = true; S._everConnected = true;
+      window.__tppAnim.AnimLayer.hardReset();
       ws.send(JSON.stringify({ action: 'subscribe', room: ROOM, session: SESSION }));
       refresh();
     };
@@ -557,12 +953,57 @@
         if (m.kind === 'snapshot' && m.data) { S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now(); }
         else if (m.kind === 'event' && m.data) {
           if (m.data.seq > S.lastSeq) S.lastSeq = m.data.seq;
+          // Handle specific event types for animations
+          if (m.data.type === 'round_started') {
+            // New round dealt - trigger deal animation
+            const L = layout();
+            const deckPos = { x: L.cx, y: L.top + (L.land ? 96 : 150) };
+            const players = (S.snap && S.snap.players) || [];
+            window.__tppAnim.animateDeal(deckPos, L.seats, 3, players);
+          } else if (m.data.type === 'bet_placed') {
+            // Chip bet animation
+            const L = layout();
+            const seatKey = m.data.player_id || m.data.position;
+            const seatPos = L.seats[seatKey];
+            const potPos = { x: L.cx, y: H * 0.115 + 30 };
+            if (seatPos) window.__tppAnim.animateChipBet(seatPos, potPos, m.data.amount);
+          } else if (m.data.type === 'round_ended') {
+            // Winner celebration + pot collection
+            const L = layout();
+            const winners = m.data.winners || [];
+            const winnerPositions = winners.map(w => L.seats[w]).filter(Boolean);
+            const potPos = { x: L.cx, y: H * 0.115 + 30 };
+            if (winnerPositions.length) {
+              window.__tppAnim.animateWin(winnerPositions);
+              const amounts = winners.map(w => m.data.pots?.[w] || 0);
+              window.__tppAnim.animatePotCollection(potPos, winnerPositions, amounts);
+            }
+          } else if (m.data.type === 'turn_changed') {
+            // Timer pulse if low time
+            const secs = m.data.timeout_seconds || 0;
+            const timerContainer = document.createElement('div');
+            timerContainer.style.position = 'absolute';
+            timerContainer.style.left = (L.cx - 40) + 'px';
+            timerContainer.style.top = (L.top + (L.land ? 96 : 150) - 40) + 'px';
+            timerContainer.style.width = '80px';
+            timerContainer.style.height = '80px';
+            timerContainer.style.pointerEvents = 'none';
+            timerContainer.style.zIndex = 500;
+            cv.parentElement.appendChild(timerContainer);
+            window.__tppAnim.startTimerPulse(timerContainer, secs);
+            if (secs > 10) window.__tppAnim.stopTimerPulse();
+          }
           refresh();
         } else if (m.kind === 'pong') { /* keepalive */ }
         else if (m.kind === 'error') { showErr('WS: ' + (m.data && m.data.message)); }
       } catch (e) { /* ignore malformed */ }
     };
-    ws.onclose = () => { S.connected = false; setTimeout(connect, 3000); };
+    ws.onclose = () => {
+      S.connected = false;
+      // Hard reset animations on disconnect
+      window.__tppAnim.AnimLayer.hardReset();
+      setTimeout(connect, 3000);
+    };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* noop */ } };
     setInterval(() => { try { ws.readyState === 1 && ws.send(JSON.stringify({ action: 'ping' })); } catch (e) { /* noop */ } }, 25000);
   }

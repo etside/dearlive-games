@@ -27,6 +27,8 @@
     "description": "Idempotent money operations and ledger"
   - "name": "Players"
     "description": "Operator-owned balances"
+  - "name": "Staging"
+    "description": "UAT-only key and test-wallet issuance"
 "security":
   - "ProviderHmac":
       - "X-API-Key"
@@ -835,13 +837,217 @@
             "application/json":
               "schema":
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/staging/api-keys/provision":
+    "post":
+      "tags":
+        - "Staging"
+      "summary": "Issue a short-lived scoped staging API key"
+      "description": "Staging-only. A configured staging PIN mints one operator or auditor provider credential restricted to named V1 games. The secret is returned exactly once; list, revoke, and audit records carry only metadata."
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/StagingKeyProvisionRequest"
+      "responses":
+        "201":
+          "description": "Staging API key issued"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/StagingKeyIssued"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "Not permitted for this credential or player (code: FORBIDDEN)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "500":
+          "description": "Server could not complete the request (code: INTERNAL_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "503":
+          "description": "Staging credential service is not configured (code: UNAVAILABLE)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/staging/api-keys":
+    "get":
+      "tags":
+        - "Staging"
+      "summary": "List staging API key metadata"
+      "description": "Superadmin X-Admin-Key only. Metadata never includes a key secret."
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/StagingKeyListResponse"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "Not permitted for this credential or player (code: FORBIDDEN)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/staging/api-keys/revoke":
+    "post":
+      "tags":
+        - "Staging"
+      "summary": "Revoke a staging API key"
+      "description": "Superadmin X-Admin-Key only. The secret is deleted immediately; a short non-sensitive tombstone remains until its original expiry."
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/StagingKeyRevokeRequest"
+      "responses":
+        "200":
+          "description": "Success"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/StagingKeyRevoked"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "Not permitted for this credential or player (code: FORBIDDEN)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/staging/api-keys/rotate":
+    "post":
+      "tags":
+        - "Staging"
+      "summary": "Rotate a staging API key"
+      "description": "Superadmin X-Admin-Key plus the staging PIN. Mints an equivalent replacement and immediately revokes the old key."
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/StagingKeyRotateRequest"
+      "responses":
+        "201":
+          "description": "Staging API key rotated"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/StagingKeyIssued"
+        "description": "Error envelope"
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/Error"
+        "401":
+          "description": "Missing, expired, replayed or badly signed request (code: UNAUTHENTICATED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "403":
+          "description": "Not permitted for this credential or player (code: FORBIDDEN)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "404":
+          "description": "Unknown session, table or transaction (code: NOT_FOUND)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "422":
+          "description": "Request failed validation (code: VALIDATION_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "429":
+          "description": "Rate limit exceeded (code: RATE_LIMITED)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "500":
+          "description": "Server could not complete the request (code: INTERNAL_ERROR)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
+        "503":
+          "description": "Staging credential service is not configured (code: UNAVAILABLE)"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Error"
 "components":
   "securitySchemes":
     "ProviderHmac":
       "type": "apiKey"
       "in": "header"
       "name": "X-API-Key"
-      "description": "Signed request authentication. Sign the canonical string 'METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nSHA256(raw_body)' with HMAC-SHA256 using the shared secret and send the lowercase hex digest in X-Signature. Timestamps outside the accepted window and reused nonces are rejected. The secret is never placed in a player app."
+      "description": "Signed request authentication. Sign the canonical string 'METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nSHA256(raw_body)' with HMAC-SHA256 using the shared secret and send the lowercase hex digest in X-Signature. Timestamps outside the accepted window and reused nonces are rejected. Static secrets are never placed in a player app. Staging can also issue short-lived, game-scoped TEST-only keys through the staging API-key endpoints; those secrets are returned once and never listed."
   "parameters":
     "SessionId":
       "name": "sessionId"
@@ -1351,6 +1557,137 @@
           "type": "array"
           "items":
             "$ref": "#/components/schemas/Transaction"
+    "StagingKeyProvisionRequest":
+      "type": "object"
+      "required":
+        - "pin"
+        - "label"
+        - "games"
+      "properties":
+        "pin":
+          "type": "string"
+          "description": "Configured STAGING_PROVISION_PIN. Staging-only."
+        "label":
+          "type": "string"
+          "maxLength": 64
+        "role":
+          "type": "string"
+          "enum":
+            - "operator"
+            - "auditor"
+          "default": "operator"
+        "games":
+          "type": "array"
+          "minItems": 1
+          "items":
+            "type": "string"
+            "enum":
+              - "teen_patti_pro"
+              - "greedy_lion"
+              - "monkey_wheel"
+        "ttl_seconds":
+          "type": "integer"
+          "minimum": 900
+          "maximum": 2592000
+          "default": 86400
+    "StagingKeyIssued":
+      "type": "object"
+      "description": "The key_secret is returned exactly once and must be stored immediately by the Super Admin console."
+      "properties":
+        "key_id":
+          "type": "string"
+        "key_secret":
+          "type": "string"
+        "label":
+          "type": "string"
+        "role":
+          "type": "string"
+          "enum":
+            - "operator"
+            - "auditor"
+        "games":
+          "type": "array"
+          "items":
+            "type": "string"
+        "environment":
+          "type": "string"
+          "const": "staging"
+        "test_only":
+          "type": "boolean"
+          "const": true
+        "created_at_ms":
+          "type": "integer"
+        "expires_at_ms":
+          "type": "integer"
+    "StagingKeyMetadata":
+      "type": "object"
+      "description": "Public key metadata. It never contains a secret."
+      "properties":
+        "key_id":
+          "type": "string"
+        "label":
+          "type": "string"
+        "role":
+          "type": "string"
+          "enum":
+            - "operator"
+            - "auditor"
+        "games":
+          "type": "array"
+          "items":
+            "type": "string"
+        "environment":
+          "type": "string"
+          "const": "staging"
+        "test_only":
+          "type": "boolean"
+          "const": true
+        "revoked":
+          "type": "boolean"
+        "created_at_ms":
+          "type": "integer"
+        "expires_at_ms":
+          "type": "integer"
+        "revoked_at_ms":
+          "type":
+            - "integer"
+            - "null"
+    "StagingKeyListResponse":
+      "type": "object"
+      "properties":
+        "keys":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/StagingKeyMetadata"
+        "count":
+          "type": "integer"
+    "StagingKeyRevokeRequest":
+      "type": "object"
+      "required":
+        - "key_id"
+      "properties":
+        "key_id":
+          "type": "string"
+    "StagingKeyRevoked":
+      "type": "object"
+      "properties":
+        "revoked":
+          "type": "boolean"
+          "const": true
+    "StagingKeyRotateRequest":
+      "type": "object"
+      "required":
+        - "key_id"
+        - "pin"
+      "properties":
+        "key_id":
+          "type": "string"
+        "pin":
+          "type": "string"
+        "ttl_seconds":
+          "type": "integer"
+          "minimum": 900
+          "maximum": 2592000
     "Table":
       "type": "object"
       "properties":
