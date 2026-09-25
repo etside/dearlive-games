@@ -1098,7 +1098,12 @@ class Handler(BaseHTTPRequestHandler):
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.settle(m.group(1)), "Settled")
-            m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/(?:rounds/(\S+)/)?bets", path)
+            # [^/]+ not \S+: \S+ is greedy and the trailing group is optional, so
+            # "/rooms/qaZ/rounds/qaZ-r1/bets" matched with room_id =
+            # "qaZ/rounds/qaZ-r1" (greedy wins before backtracking to the short
+            # parse). That silently addressed a phantom room, which had no open
+            # round, so every bet came back 409 BETTING_CLOSED.
+            m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/([^/]+)/(?:rounds/([^/]+)/)?bets", path)
             if m:
                 room_id = m.group(1)
                 pid = self.session_player()
