@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from common import envelope as E
 from provider import auth as PA
-from provider.games import (BINDINGS, LION_CODE, MONKEY_CODE, TEEN_CODE,
+from provider.games import (BINDINGS, MONKEY_CODE, TEEN_CODE,
                              binding_for_code, binding_for_slug, canonical_code)
 from provider.ledger import WalletError_
 from provider.sessions import SessionTokenError, resolve as resolve_token
@@ -723,7 +723,7 @@ def h_launch(ctx: ProviderContext, req: Request, token: str) -> Tuple[int, dict]
     return 302, {"__redirect__": location}
 
 
-GAME_SLUG = r"(teen-patti|greedy-lion|monkey-wheel)"
+GAME_SLUG = r"(teen-patti|greedy-monkey|baby-king|monkey-wheel)"
 
 # ------------------------------------------------------------------ routes
 AUTH_HMAC = "hmac"

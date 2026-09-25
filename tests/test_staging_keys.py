@@ -87,30 +87,32 @@ class StagingKeyManagementTest(CountedCase):
         self.counted(data["key_id"].startswith("stg_"), "key id scoped")
         self.counted(data["key_secret"].startswith("stgsk_"), "one-time secret shape")
         self.counted(data["role"] == role, "role recorded")
-        self.counted(data["games"] == sorted(games), "games normalized")
+        from provider.games import canonical_code
+        self.counted(data["games"] == sorted(canonical_code(g) for g in games),
+                     "games normalized to canonical codes")
         self.counted(data["test_only"] is True, "test-only marker")
         self.counted(sum(1 for key in data if key == "key_secret") == 1,
                       "one-time secret is present exactly once")
         return data
 
-def test_pin_provision_authenticates_and_scopes_one_game(self):
+    def test_pin_provision_authenticates_and_scopes_one_game(self):
         label = f"qa-monkey-{secrets.token_hex(4)}"
         issued = self.issue_key(label, ["greedy-monkey"])
         status, body = signed_call("GET", "/api/v1/games", issued["key_id"],
                                    issued["key_secret"])
         self.counted(status == 200, f"dynamic key authenticates: {body}")
         codes = [game["game_code"] for game in body["data"]["games"]]
-        self.counted(codes == ["greedy-monkey"], f"scoped catalog: {codes}")
+        self.counted(codes == ["monkey_wheel"], f"scoped catalog: {codes}")
 
         status, body = signed_call(
-            "POST", "/api/v1/greedy-monkey/tables/monkey-wheel-low/action",
+            "POST", "/api/v1/baby-king/tables/baby-king-low/action",
             issued["key_id"], issued["key_secret"],
-            {"action": "bet", "option_id": "banana", "amount": 20},
+            {"action": "bet", "option_id": "teddy", "amount": 20},
             {"Idempotency-Key": f"scope-{secrets.token_hex(4)}"})
         self.counted(status == 403 and body["code"] == "FORBIDDEN",
                       f"out-of-scope game refused before money: {body}")
 
-        status, body = signed_call("GET", "/api/v1/staging/api-keys",
+        status, body = wsgi_call("GET", "/api/v1/staging/api-keys",
                                    headers=SUPERADMIN)
         self.counted(status == 200, f"superadmin lists keys: {body}")
         listed = {row["key_id"]: row for row in body["data"]["keys"]}

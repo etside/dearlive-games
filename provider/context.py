@@ -11,7 +11,7 @@ from typing import Optional
 
 from provider.auth import (MemoryNonceStore, NonceStore, RateLimiter,
                            RedisNonceStore, load_api_keys)
-from provider.games import BINDINGS, TEEN_CODE
+from provider.games import BABY_KING_CODE, BINDINGS, MONKEY_CODE, TEEN_CODE
 from provider.ledger import (MemoryLedger, MemoryResultStore, ProviderWallet,
                              RedisLedger, RedisResultStore)
 from provider.router import DEFAULT_CLIENT_URL, DEFAULT_SESSION_TTL, ProviderContext
@@ -24,17 +24,17 @@ DEFAULT_TABLES = {
     TEEN_CODE: ("teen-patti-low:Low Stakes:10:100:6:COIN,"
                 "teen-patti-mid:Mid Stakes:100:1000:6:COIN,"
                 "teen-patti-high:High Stakes:1000:10000:6:COIN"),
-    "greedy_lion": ("greedy-lion-low:Low Stakes:10:100:6:COIN,"
-                    "greedy-lion-mid:Mid Stakes:100:1000:6:COIN,"
-                    "greedy-lion-high:High Stakes:1000:10000:6:COIN"),
-    "monkey_wheel": ("monkey-wheel-low:Low Stakes:10:100:6:COIN,"
-                     "monkey-wheel-mid:Mid Stakes:100:1000:6:COIN,"
-                     "monkey-wheel-high:High Stakes:1000:10000:6:COIN"),
+    MONKEY_CODE: ("greedy-monkey-low:Low Stakes:10:100:6:COIN,"
+                  "greedy-monkey-mid:Mid Stakes:100:1000:6:COIN,"
+                  "greedy-monkey-high:High Stakes:1000:10000:6:COIN"),
+    BABY_KING_CODE: ("baby-king-low:Low Stakes:10:100:6:COIN,"
+                     "baby-king-mid:Mid Stakes:100:1000:6:COIN,"
+                     "baby-king-high:High Stakes:1000:10000:6:COIN"),
 }
 DEFAULT_CLIENT_PATHS = {
     TEEN_CODE: "/teen-patti-pro/?session=",
-    "greedy_lion": "/greedy-lion/?session=",
-    "monkey_wheel": "/monkey-wheel/?session=",
+    MONKEY_CODE: "/greedy-monkey/?session=",
+    BABY_KING_CODE: "/baby-king/?session=",
 }
 
 

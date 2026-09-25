@@ -264,13 +264,13 @@
     }
    ]
   },
-  "greedy-lion": {
-   "audio": [],
-   "animations": [],
-   "gifs": [],
-   "fallback": "No lion pack supplied. Deterministic fallback: teen-patti-pro generic UI sounds (click/bet/coin WAVs) where the host plays UI audio + procedural canvas FX. Must NOT be labeled as lion-original assets."
-  },
-  "monkey-wheel": {
+   "baby-king": {
+    "audio": [],
+    "animations": [],
+    "gifs": [],
+    "fallback": "No king pack supplied. Deterministic fallback: teen-patti-pro generic UI sounds (click/bet/coin WAVs) where the host plays UI audio + procedural canvas FX. Must NOT be labeled as king-original assets."
+   },
+   "monkey-wheel": {
    "audio": [],
    "animations": [],
    "gifs": [],

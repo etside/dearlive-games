@@ -62,7 +62,7 @@ class AdminConsoleTest(CountedCase):
         self.counted(status == 200, f"whoami ok: {body}")
         self.counted(body["data"]["role"] == "superadmin", "role reported")
         self.counted(set(body["data"]["games"]) ==
-                      {"teen_patti_pro", "greedy_monkey", "baby_king"},
+                      {"teen_patti_pro", "monkey_wheel", "baby_king"},
                       "unrestricted key sees all V1 games")
         self.counted("dev-super-key" not in json.dumps(body),
                       "secret is not echoed")

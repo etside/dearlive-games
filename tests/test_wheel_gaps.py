@@ -14,20 +14,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.wallet import MemoryWallet, WalletError
-from games.wheel_common.configs import greedy_lion_config
+from games.wheel_common.configs import greedy_config
 from games.wheel_common.service import ServiceError, WheelService
 from provider import auth as PA
 from provider.context import build_context
 from provider.router import dispatch
 
-GAME = "greedy_lion"
-SLUG = "greedy-lion"
+GAME = "monkey_wheel"
+SLUG = "greedy-monkey"
 KEY = "tp_gaps"
 SECRET = "gaps-secret"
 
 
 def service(confirmed=True, fund=20000):
-    cfg = greedy_lion_config()
+    cfg = greedy_config()
     cfg.confirmed = confirmed
     wallet = MemoryWallet()
     wallet.fund("p1", fund)
@@ -77,7 +77,7 @@ class SettlementDurabilityTest(unittest.TestCase):
         svc, wallet = service()
         room = "dur-2"
         svc.start_round(room)
-        svc.place_bet(room, "p1", "cub", 20, "k1")
+        svc.place_bet(room, "p1", "banana", 20, "k1")
         svc.close_betting(room)
         svc.publish_result(room)
         first = svc.settle(room)
@@ -101,22 +101,22 @@ class ConfirmedGateTest(unittest.TestCase):
     def test_set_autobet_is_blocked_while_unconfirmed(self):
         svc, _ = service(confirmed=False)
         with self.assertRaises(ServiceError) as caught:
-            svc.set_autobet("gate-2", "p1", "cub", 20, 3)
+            svc.set_autobet("gate-2", "p1", "banana", 20, 3)
         self.assertIn("TBC", str(caught.exception).upper())
 
     def test_set_autobet_allowed_once_confirmed(self):
-        cfg = greedy_lion_config()
+        cfg = greedy_config()
         cfg.confirmed = True
         cfg.auto_allowed = True
         svc = WheelService(config=cfg, wallet=MemoryWallet())
-        saved = svc.set_autobet("gate-3", "p1", "cub", 20, 3)
+        saved = svc.set_autobet("gate-3", "p1", "banana", 20, 3)
         self.assertEqual(saved["rounds_left"], 3)
 
     def test_place_bet_still_blocked_while_unconfirmed(self):
         svc, _ = service(confirmed=False)
         svc.start_round("gate-4")
         with self.assertRaises(ServiceError):
-            svc.place_bet("gate-4", "p1", "cub", 20, "k1")
+            svc.place_bet("gate-4", "p1", "banana", 20, "k1")
 
 
 class ValidationTest(unittest.TestCase):
@@ -128,7 +128,7 @@ class ValidationTest(unittest.TestCase):
         for bad in ("20", 20.5, True, None):
             with self.subTest(amount=bad):
                 with self.assertRaises(ServiceError) as caught:
-                    self.svc.place_bet("v-1", "p1", "cub", bad, f"k-{bad}")
+                    self.svc.place_bet("v-1", "p1", "banana", bad, f"k-{bad}")
                 self.assertIn("integer", str(caught.exception).lower() + " "
                               if "integer" in str(caught.exception).lower()
                               else "amount")
@@ -138,10 +138,10 @@ class ValidationTest(unittest.TestCase):
         for bad in (0, -20):
             with self.subTest(amount=bad):
                 with self.assertRaises(ServiceError):
-                    self.svc.place_bet("v-2", "p1", "cub", bad, f"k-neg-{bad}")
+                    self.svc.place_bet("v-2", "p1", "banana", bad, f"k-neg-{bad}")
 
     def test_no_active_options_refuses_result_cleanly(self):
-        cfg = greedy_lion_config()
+        cfg = greedy_config()
         cfg.confirmed = True
         svc = WheelService(config=cfg, wallet=MemoryWallet())
         room = "v-3"
@@ -155,13 +155,13 @@ class ValidationTest(unittest.TestCase):
         self.assertNotIsInstance(caught.exception, ValueError)
 
     def test_skipped_autobet_is_audited(self):
-        cfg = greedy_lion_config()
+        cfg = greedy_config()
         cfg.confirmed = True
         cfg.auto_allowed = True
         wallet = MemoryWallet()  # deliberately unfunded
         svc = WheelService(config=cfg, wallet=wallet)
         room = "v-4"
-        svc.set_autobet(room, "p1", "cub", 20, 2)
+        svc.set_autobet(room, "p1", "banana", 20, 2)
         svc.start_round(room)
         actions = [entry["action"] for entry in svc.audit.entries]
         self.assertIn("autobet.skipped", actions)
@@ -171,7 +171,7 @@ class ProviderTableLimitTest(unittest.TestCase):
     """The provider promises table limits; the action route must enforce them."""
 
     def setUp(self):
-        cfg = greedy_lion_config()
+        cfg = greedy_config()
         cfg.confirmed = True
         wheel = WheelService(config=cfg, wallet=MemoryWallet())
         wheel.wallet.fund("p1", 50000)
@@ -180,7 +180,7 @@ class ProviderTableLimitTest(unittest.TestCase):
         teen = TeenPattiService(config=TeenPattiConfig(confirmed=True),
                                 wallet=MemoryWallet())
         self.ctx = build_context(teen, teen.wallet, keys={KEY: SECRET})
-        self.ctx.attach_games(teen, {"greedy-lion": wheel})
+        self.ctx.attach_games(teen, {"greedy-monkey": wheel})
         self.wheel = wheel
 
     def call(self, method, path, body=None, extra=None, query=""):
@@ -197,13 +197,13 @@ class ProviderTableLimitTest(unittest.TestCase):
         status, _h, payload = self.call(
             "POST", "/api/v1/sessions",
             {"player_id": "p1", "game_code": GAME, "currency": "COIN",
-             "table_id": "greedy-lion-low"})
+             "table_id": "greedy-monkey-low"})
         self.assertEqual(status, 201, payload)
         session = payload["data"]
         status, _h, payload = self.call(
-            "POST", f"/api/v1/{SLUG}/tables/greedy-lion-low/action",
+            "POST", f"/api/v1/{SLUG}/tables/greedy-monkey-low/action",
             {"action": "bet", "session_id": session["session_id"],
-             "option_id": "cub", "amount": 100000},
+             "option_id": "banana", "amount": 100000},
             {"Idempotency-Key": "limit-1"})
         self.assertEqual(status, 422, payload)
         self.assertIn("between", payload["message"])
@@ -212,12 +212,12 @@ class ProviderTableLimitTest(unittest.TestCase):
         status, _h, payload = self.call(
             "POST", "/api/v1/sessions",
             {"player_id": "p1", "game_code": GAME, "currency": "COIN",
-             "table_id": "greedy-lion-low"})
+             "table_id": "greedy-monkey-low"})
         session = payload["data"]
         status, _h, payload = self.call(
-            "POST", f"/api/v1/{SLUG}/tables/greedy-lion-low/action",
+            "POST", f"/api/v1/{SLUG}/tables/greedy-monkey-low/action",
             {"action": "bet", "session_id": session["session_id"],
-             "option_id": "cub", "amount": 100},
+             "option_id": "banana", "amount": 100},
             {"Idempotency-Key": "limit-2"})
         self.assertEqual(status, 200, payload)
 

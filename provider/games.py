@@ -12,20 +12,25 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
 TEEN_CODE = "teen_patti_pro"
-LION_CODE = "greedy_lion"
 MONKEY_CODE = "monkey_wheel"
+BABY_KING_CODE = "baby_king"
+# LION_CODE removed: greedy-lion archived per 3-game scope lock
+# (teen-patti-pro, greedy-monkey, baby-king). Keep the alias mapping so
+# stale lion references resolve to a clear 404/410 instead of 500.
 
 # URL segment per game, plus the aliases the existing clients use.
-SLUGS = {TEEN_CODE: "teen-patti", LION_CODE: "greedy-lion", MONKEY_CODE: "monkey-wheel"}
+SLUGS = {TEEN_CODE: "teen-patti", MONKEY_CODE: "greedy-monkey",
+         BABY_KING_CODE: "baby-king"}
 ALIASES = {
     TEEN_CODE: {TEEN_CODE, "teen-patti-pro", "teenpatti", "teen_patti"},
-    LION_CODE: {LION_CODE, "greedy-lion", "greedy_lion", "greedy-lion-pro"},
     MONKEY_CODE: {MONKEY_CODE, "monkey-wheel", "monkey_wheel", "greedy-monkey",
                   "greedy_monkey", "greedy"},
+    BABY_KING_CODE: {BABY_KING_CODE, "baby-king", "baby_king", "babyking",
+                     "animal-wheel", "animal_wheel"},
 }
 # canonical internal game_id used by the engines
-ENGINE_IDS = {TEEN_CODE: "teen-patti-pro", LION_CODE: "greedy-lion",
-              MONKEY_CODE: "greedy-monkey"}
+ENGINE_IDS = {TEEN_CODE: "teen-patti-pro", MONKEY_CODE: "greedy-monkey",
+              BABY_KING_CODE: "baby-king"}
 
 
 def canonical_code(raw: str) -> Optional[str]:
@@ -183,14 +188,14 @@ BINDINGS: Dict[str, GameBinding] = {
         game_code=TEEN_CODE, label="Teen Patti Pro", kind="table_game",
         action_field="position", choice_field="position",
         service=_teen_service),
-    LION_CODE: GameBinding(
-        game_code=LION_CODE, label="Greedy Lion", kind="wheel",
-        action_field="option_id", choice_field="option_id",
-        service=lambda ctx: _wheel_service(ctx, "greedy-lion")),
     MONKEY_CODE: GameBinding(
-        game_code=MONKEY_CODE, label="Monkey Wheel", kind="wheel",
+        game_code=MONKEY_CODE, label="Greedy Monkey", kind="wheel",
         action_field="option_id", choice_field="option_id",
         service=lambda ctx: _wheel_service(ctx, "greedy-monkey")),
+    BABY_KING_CODE: GameBinding(
+        game_code=BABY_KING_CODE, label="Baby King", kind="wheel",
+        action_field="option_id", choice_field="option_id",
+        service=lambda ctx: _wheel_service(ctx, "baby-king")),
 }
 
 
@@ -202,7 +207,8 @@ def binding_for_slug(slug: str) -> Optional[GameBinding]:
     for binding in BINDINGS.values():
         if slug == binding.slug:
             return binding
-    return None
+    # Legacy slugs (monkey-wheel) still route via canonical code aliases.
+    return BINDINGS.get(canonical_code(slug) or "")
 
 
 def all_bindings() -> List[GameBinding]:

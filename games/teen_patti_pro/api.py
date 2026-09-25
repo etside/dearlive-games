@@ -1049,8 +1049,7 @@ class Handler(BaseHTTPRequestHandler):
                 demo_store.close(session_id)
                 return self.ok({"session_id": session_id, "status": "CLOSED"}, "Demo session closed")
             
-            if path == "/api/v1/sessions":
-                m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/start", path)
+            m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/start", path)
             if m:
                 denied = self.require_role("operator", "teen-patti-pro")
                 if denied:
@@ -1105,6 +1104,21 @@ class Handler(BaseHTTPRequestHandler):
                 except ServiceError as exc:
                     return self.fail(exc)
             # --- cross-game contract: POST /api/v1/games/{gameId}/... ---
+            if path == "/api/v1/sessions":
+                body, err = parse_body(self)
+                if err:
+                    return self.send(422, err)
+                token = body.get("launch_token", "")
+                for svc in [self.svc, *self.wheels.values()]:
+                    if svc is None:
+                        continue
+                    try:
+                        return self.ok(svc.open_session(token),
+                                       "Session opened")
+                    except ServiceError:
+                        continue
+                return self.send(404, E.err("Unknown launch token",
+                                            E.E_NOT_FOUND))
             m = re.fullmatch(r"/api/v1/games/(\S+)/sessions", path)
             if m:
                 svc = self.game_check(m.group(1))

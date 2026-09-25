@@ -139,7 +139,7 @@ class TestServiceIdempotencyx10(unittest.TestCase):
                            sessions=MockDearLiveSessions())
         svc.open_session(svc.tokens.mint("p", "rw", "baby-king").token)
         svc.start_round("rw")
-        results, errors = _run10(lambda: svc.place_bet("rw", "p", "cub", 100, "conc-key-3"))
+        results, errors = _run10(lambda: svc.place_bet("rw", "p", "teddy", 100, "conc-key-3"))
         self.assertEqual(len(errors), 0, f"errors: {errors[:2]}")
         self.assertEqual(len({r["bet_id"] for r in results}), 1)
         self.assertEqual(w.get_balance("p").available, 50000 - 100)
