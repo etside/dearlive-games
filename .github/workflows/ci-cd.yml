@@ -113,7 +113,6 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-win.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-spin.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-apple.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-banana.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-grapes.svg
@@ -125,7 +124,6 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-win.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-spin.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-apple.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-banana.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-grapes.svg
