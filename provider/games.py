@@ -22,7 +22,7 @@ BABY_KING_CODE = "baby_king"
 SLUGS = {TEEN_CODE: "teen-patti-pro", MONKEY_CODE: "greedy-monkey",
          BABY_KING_CODE: "baby-king"}
 ALIASES = {
-    TEEN_CODE: {TEEN_CODE, "teen-patti-pro", "teenpatti", "teen_patti"},
+    TEEN_CODE: {TEEN_CODE, "teen-patti-pro", "teen-patti", "teenpatti", "teen_patti"},
     MONKEY_CODE: {MONKEY_CODE, "monkey-wheel", "monkey_wheel", "greedy-monkey",
                   "greedy_monkey", "greedy"},
     BABY_KING_CODE: {BABY_KING_CODE, "baby-king", "baby_king", "babyking",
