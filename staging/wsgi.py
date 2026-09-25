@@ -256,6 +256,85 @@ def _run_handler(method, path, query, headers, body):
     return status, resp_headers, payload
 
 
+def _http_phrase(status):
+    return {200: "OK", 201: "Created", 401: "Unauthorized", 403: "Forbidden",
+            404: "Not Found", 405: "Method Not Allowed", 409: "Conflict",
+            422: "Unprocessable Entity", 429: "Too Many Requests",
+            500: "Internal Server Error", 503: "Service Unavailable"}.get(status, "OK")
+
+
+def _phase1_response(status, payload):
+    return status, {"Content-Type": "application/json"}, json.dumps(payload).encode()
+
+
+def _phase1_auth(method, path, headers, body, environ):
+    from common import envelope as E
+    from provider.operator_auth import (AuthConfigurationError, AuthError,
+                                        PinAuth, _client_ip, _country,
+                                        require_operator, require_superadmin)
+    clean_path = path.rstrip("/") or "/"
+    auth_paths = {
+        "/api/v1/operator/auth": "operator",
+        "/api/v1/superadmin/auth": "superadmin",
+    }
+    scope = auth_paths.get(clean_path)
+    if scope:
+        if method != "POST":
+            return _phase1_response(405, E.err("method not allowed", E.E_VALIDATION))
+        redis = None
+        try:
+            data = _staging_json(body)
+            ip = _client_ip(headers, environ.get("REMOTE_ADDR", ""))
+            user_agent = str(headers.get("User-Agent", ""))
+            country = _country(headers)
+            try:
+                redis = ST._redis()
+            except Exception:
+                return _phase1_response(503, E.err("auth backend unavailable", "UNAVAILABLE"))
+            auth = PinAuth(scope, redis_client=redis, remote_addr=environ.get("REMOTE_ADDR", ""))
+            token, claims = auth.authenticate(data.get("pin"), ip, user_agent, country)
+        except ValueError as exc:
+            return _phase1_response(422, E.err(str(exc), E.E_VALIDATION))
+        except AuthError as exc:
+            return _phase1_response(exc.status, E.err(str(exc), exc.code))
+        except AuthConfigurationError:
+            return _phase1_response(503, E.err("auth is not configured", "UNAVAILABLE"))
+        finally:
+            if redis is not None:
+                redis.close()
+        field = "operator_token" if scope == "operator" else "superadmin_token"
+        return _phase1_response(200, {
+            field: token,
+            "expires_at": claims["exp"],
+            "scope": scope,
+        })
+
+    if clean_path.startswith("/api/v1/operator/"):
+        claims = require_operator(headers)
+        if claims is None:
+            return _phase1_response(401, E.err("operator token required", "INVALID_TOKEN"))
+        environ["operator"] = {
+            "scope": claims["scope"],
+            "issued_at": claims["iat"],
+            "exp": claims["exp"],
+        }
+        environ["operator_id"] = claims.get("operator_id", "global")
+        if method == "GET" and clean_path == "/api/v1/operator/sessions":
+            return _phase1_response(200, {"sessions": [],
+                                          "operator_id": environ["operator_id"]})
+    elif clean_path.startswith("/api/v1/superadmin/"):
+        claims = require_superadmin(headers)
+        if claims is None:
+            return _phase1_response(401, E.err("superadmin token required", "INVALID_TOKEN"))
+        environ["operator"] = {
+            "scope": claims["scope"],
+            "issued_at": claims["iat"],
+            "exp": claims["exp"],
+        }
+        environ["operator_id"] = claims.get("operator_id", "global")
+    return None
+
+
 def _staging_json(body, max_bytes=8192):
     from common import envelope as E
     if len(body or b"") > max_bytes:
@@ -682,6 +761,12 @@ def app(environ, start_response):
         length = 0
     headers["Content-Length"] = str(length)
     body = environ["wsgi.input"].read(length) if length > 0 else b""
+    phase1 = _phase1_auth(method, path, headers, body, environ)
+    if phase1 is not None:
+        status, resp_headers, payload = phase1
+        start_response(f"{status} {_http_phrase(status)}",
+                       [(k, v) for k, v in resp_headers.items()])
+        return [payload]
     try:
         status, resp_headers, payload = _run_handler(method, path, query, headers, body)
     except Exception as exc:  # noqa: BLE001 - classify, then envelope
