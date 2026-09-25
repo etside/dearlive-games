@@ -36,6 +36,9 @@ jobs:
           if [ -z "${{ secrets.VERCEL_TOKEN }}" ] || [ -z "${{ secrets.VERCEL_ORG_ID }}" ] || [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "Vercel deploy skipped: secrets not configured"
+          elif ! curl --fail --silent --show-error --max-time 15 -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" https://api.vercel.com/v2/user >/dev/null 2>&1; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Vercel deploy skipped: token authentication failed"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi

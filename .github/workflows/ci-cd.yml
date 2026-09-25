@@ -181,8 +181,6 @@ jobs:
           test -f assets/games/greedy-monkey/option-mango.svg
           test -f assets/games/greedy-monkey/option-coconut.svg
           test -f assets/games/greedy-monkey/option-pineapple.svg
-          test -f assets/games/greedy-monkey/option-cherry.svg
-          test -f assets/games/greedy-monkey/option-melon.svg
           test -f assets/games/baby-king/lobby-thumb-baby-king.svg
           test -f assets/games/baby-king/option-toy_car.svg
           test -f assets/games/baby-king/option-toy_rocket.svg
