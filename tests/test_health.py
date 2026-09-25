@@ -24,9 +24,9 @@ class HealthEndpointTests(unittest.TestCase):
         return response, json.loads(body)
 
     def test_health_returns_json(self):
-        with patch("staging.wsgi._probe_database", return_value="ok"), \
-             patch("staging.wsgi._probe_redis", return_value="ok"), \
-             patch("staging.wsgi._probe_websocket", return_value="ok"):
+        with patch("staging.wsgi._probe_database", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_redis", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_websocket", return_value={"status": "ok"}):
             response, payload = self.call_health()
         self.assertEqual(response["status"], 200)
         self.assertEqual(set(payload), {
@@ -36,23 +36,28 @@ class HealthEndpointTests(unittest.TestCase):
         self.assertEqual(payload["test_count"], 198)
 
     def test_health_reports_services(self):
-        with patch("staging.wsgi._probe_database", return_value="ok"), \
-             patch("staging.wsgi._probe_redis", return_value="ok"), \
-             patch("staging.wsgi._probe_websocket", return_value="ok"):
+        with patch("staging.wsgi._probe_database", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_redis", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_websocket", return_value={"status": "ok"}):
             _, payload = self.call_health()
         self.assertEqual(payload["services"], {
-            "database": "ok", "redis": "ok", "websocket": "ok"
+            "database": {"status": "ok"},
+            "redis": {"status": "ok"},
+            "websocket": {"status": "ok"},
         })
         self.assertEqual(payload["status"], "ok")
 
     def test_health_status_code_matches_service_state(self):
-        with patch("staging.wsgi._probe_database", return_value="unavailable"), \
-             patch("staging.wsgi._probe_redis", return_value="ok"), \
-             patch("staging.wsgi._probe_websocket", return_value="ok"):
+        with patch("staging.wsgi._probe_database", return_value={
+            "status": "unavailable", "reason": "DATABASE_URL is not configured"
+        }), patch("staging.wsgi._probe_redis", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_websocket", return_value={"status": "ok"}):
             response, payload = self.call_health()
         self.assertEqual(response["status"], 503)
         self.assertEqual(payload["status"], "degraded")
-        self.assertEqual(payload["services"]["database"], "unavailable")
+        self.assertEqual(payload["services"]["database"], {
+            "status": "unavailable", "reason": "DATABASE_URL is not configured"
+        })
 
 
 if __name__ == "__main__":

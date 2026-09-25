@@ -279,45 +279,61 @@ def _git_short_sha():
         return "unknown"
 
 
+def _service_result(status, reason=""):
+    result = {"status": status}
+    if reason:
+        result["reason"] = reason[:200]
+    return result
+
+
 def _probe_redis():
     from integrations.redis_store import MinimalRedis, RedisConnectionError
     try:
         client = MinimalRedis(timeout=2.0)
         try:
-            return "ok" if client.command("PING") in (b"PONG", "PONG") else "error"
+            if client.command("PING") in (b"PONG", "PONG"):
+                return _service_result("ok")
+            return _service_result("error", "Redis PING returned an unexpected response")
         finally:
             client.close()
-    except RedisConnectionError:
-        return "unavailable"
-    except Exception:
-        return "error"
+    except RedisConnectionError as exc:
+        return _service_result("unavailable", type(exc).__name__)
+    except Exception as exc:
+        return _service_result("error", type(exc).__name__)
 
 
 def _probe_database():
     if not os.environ.get("DATABASE_URL"):
-        return "unavailable"
+        return _service_result("unavailable", "DATABASE_URL is not configured")
     try:
         import psycopg
         with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=2) as connection:
             connection.execute("SELECT 1")
-        return "ok"
+        return _service_result("ok")
     except ModuleNotFoundError:
-        return "unavailable"
-    except Exception:
-        return "error"
+        return _service_result("unavailable", "psycopg driver is not installed")
+    except Exception as exc:
+        return _service_result("error", type(exc).__name__)
 
 
 def _probe_websocket():
-    host = os.environ.get("GAME_API_HOST", "").strip()
-    port = os.environ.get("GAME_WS_PORT", "").strip()
-    if not host or not port:
-        return "unavailable"
     import socket
+    from urllib.parse import urlparse
+    url = os.environ.get("WEBSOCKET_URL", "").strip()
+    if url:
+        parsed = urlparse(url if "://" in url else "ws://" + url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme in ("wss", "https") else 80)
+    else:
+        host = os.environ.get("GAME_API_HOST", "").strip()
+        port = os.environ.get("GAME_WS_PORT", "").strip()
+    if not host or not port:
+        return _service_result("unavailable", "WEBSOCKET_URL is not configured")
     try:
         with socket.create_connection((host, int(port)), timeout=2):
-            return "ok"
-    except (OSError, ValueError):
-        return "error"
+            return _service_result("ok")
+    except (OSError, ValueError) as exc:
+        return _service_result("error", type(exc).__name__)
 
 
 def _health_payload():
@@ -325,9 +341,10 @@ def _health_payload():
     import time
     services = {"database": _probe_database(), "redis": _probe_redis(),
                 "websocket": _probe_websocket()}
-    if all(value == "ok" for value in services.values()):
+    statuses = {name: service["status"] for name, service in services.items()}
+    if all(value == "ok" for value in statuses.values()):
         status = "ok"
-    elif any(value == "error" for value in services.values()):
+    elif any(value == "error" for value in statuses.values()):
         status = "down"
     else:
         status = "degraded"
