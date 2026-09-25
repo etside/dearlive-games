@@ -15,7 +15,10 @@ from typing import Any, Dict, List
 EVENTS = ("game.session.created", "player.joined", "player.left",
           "round.started", "bet.accepted", "bet.rejected", "betting.closed",
           "result.published", "settlement.completed", "session.completed",
-          "round.cancelled", "error")
+          "round.cancelled", "error",
+          # Settlement-failure lifecycle (money safety). Consumers should
+          # alert on settlement.failed; settlement.pending is retryable.
+          "settlement.pending", "settlement.failed")
 
 
 def sign(secret: str, body: bytes) -> str:

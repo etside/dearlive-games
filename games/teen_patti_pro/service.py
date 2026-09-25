@@ -17,7 +17,7 @@ from typing import Any, Dict, List
 from common import envelope as E
 from common.audit import AuditLog
 from common.idempotency import IdempotencyStore, MemoryIdempotencyStore, IdempotencyConflict
-from common.lifecycle import RoundStatus
+from common.lifecycle import (RoundStatus, SETTLE_MAX_ATTEMPTS, needs_settlement_retry)
 from common.session import TokenStore, MemoryTokenStore, SessionStore, MemorySessionStore, TokenError
 from common.wallet import WalletAdapter, MemoryWallet, InsufficientBalance, WalletError
 from common.webhooks import build_event, MemoryDeliveryLog
@@ -63,6 +63,7 @@ class TeenPattiService:
         self.settled_bet_ids = set()  # UNIQUE settlement.bet_id guard
         self.round_history: Dict[str, List[dict]] = {}
         self.event_log: List[dict] = []
+        self.settlement_alerts: List[dict] = []  # never dropped: operator must see stranded pots
         self.HISTORY_CAP = 200
         self._settle_lock = threading.Lock()  # check-add-credit must be atomic
         self.skills = skills
@@ -230,18 +231,31 @@ class TeenPattiService:
         room = self._room(room_id)
         rows = room.settle(self._now())
         credited = []
-        with self._settle_lock:  # atomic check-add-credit per bet
-            for row in rows:
-                if row["bet_id"] in self.settled_bet_ids:
-                    continue  # UNIQUE settlement.bet_id: never pay twice
-                if row["payout"] > 0:
-                    self.wallet.credit(row["player_id"], row["payout"],
-                                       ref=f"settle:{row['bet_id']}",
-                                       idempotency_key=f"settle:{row['bet_id']}")
-                self.settled_bet_ids.add(row["bet_id"])
-                credited.append(row)
-                self.audit.record("system", "settlement.credit", "settlement",
-                                  row["settlement_id"], after=row)
+        try:
+            with self._settle_lock:  # atomic check-add-credit per bet
+                for row in rows:
+                    if row["bet_id"] in self.settled_bet_ids:
+                        continue  # UNIQUE settlement.bet_id: never pay twice
+                    if row["payout"] > 0:
+                        self.wallet.credit(row["player_id"], row["payout"],
+                                           ref=f"settle:{row['bet_id']}",
+                                           idempotency_key=f"settle:{row['bet_id']}")
+                    self.settled_bet_ids.add(row["bet_id"])
+                    credited.append(row)
+                    self.audit.record("system", "settlement.credit", "settlement",
+                                      row["settlement_id"], after=row)
+        except (WalletError, ServiceError) as exc:
+            # engine.settle() has already marked the round CLOSED and set
+            # _settled, so a credit failure here leaves a TERMINAL round with a
+            # PARTIAL payout. Park it so the retry sweep can finish paying.
+            # Re-raised so the caller still sees the failure.
+            self._park_settlement(room_id, room, exc, self._now())
+            self.audit.record("system", "settlement.credit_failed", "round",
+                              room.round.round_id,
+                              after={"error": str(exc), "paid": len(credited),
+                                     "owed": len(rows) - len(credited),
+                                     **room.settlement_health(self._now())})
+            raise
         self._fire("settlement.completed", {"round_id": room.round.round_id,
                                             "room_id": room_id,
                                             "settlements": len(rows)})
@@ -280,14 +294,42 @@ class TeenPattiService:
 
     def sweep(self, now_ms: int = 0) -> List[dict]:
         """Timer-expiry driver (call every second from scheduler/operator loop).
-        For each room with an expired BETTING_OPEN window: close -> result ->
-        settle, all idempotent and audited. Never fails the sweep on one room's
-        error (records and continues). Returns per-room action reports."""
+
+        Two passes, in order:
+          1. Re-drive rounds parked in SETTLED_PENDING (settlement retry).
+          2. Drive BETTING_OPEN rounds past their window: close -> result ->
+             settle, all idempotent and audited.
+
+        A round that fails settlement is NEVER abandoned: it is parked in
+        SETTLED_PENDING and re-driven here with exponential backoff until it
+        settles or exhausts SETTLE_MAX_ATTEMPTS (-> SETTLE_FAILED + alert).
+        Never fails the sweep on one room's error (records and continues).
+        """
         now = now_ms or self._now()
         reports = []
         for room_id, room in list(self.rooms.items()):
             r = room.round
-            if r is None or r.status != RoundStatus.BETTING_OPEN:
+            if r is None:
+                continue
+            if r.status == RoundStatus.SETTLED_PENDING:
+                rep = {"room_id": room_id, "round_id": r.round_id, "actions": []}
+                try:
+                    if room.settle_attempts_exhausted():
+                        room.mark_settle_failed(now)
+                        self._alert_settle_failed(room_id, room, now)
+                        rep["actions"].append("settle_failed")
+                    elif room.settle_retry_due(now):
+                        self._retry_settlement(room_id, room, now)
+                        rep["actions"].append("settlement_retried")
+                    else:
+                        rep["actions"].append("settlement_backoff")
+                except (LifecycleError, ServiceError, WalletError) as exc:
+                    rep["error"] = f"{type(exc).__name__}: {exc}"
+                    self.audit.record("system", "settlement.retry_failed", "round",
+                                      r.round_id, after={"error": str(exc)})
+                reports.append(rep)
+                continue
+            if r.status != RoundStatus.BETTING_OPEN:
                 continue
             if now < r.betting_end_at_ms:
                 continue
@@ -301,11 +343,98 @@ class TeenPattiService:
                 self.settle(room_id, r.round_id)
                 rep["actions"].append("settled")
             except (LifecycleError, ServiceError, WalletError) as exc:
+                # Park for retry. Previously this only recorded the error and
+                # left the round outside BETTING_OPEN, so no future sweep could
+                # ever reach it again and the pot was stranded permanently.
                 rep["error"] = f"{type(exc).__name__}: {exc}"
+                self._park_settlement(room_id, room, exc, now)
                 self.audit.record("system", "sweep.failed", "round", r.round_id,
-                                  after={"error": str(exc)})
+                                  after={"error": str(exc),
+                                         "parked": room.settlement_health(now)})
             reports.append(rep)
         return reports
+
+    def _park_settlement(self, room_id: str, room, exc: Exception, now: int) -> None:
+        """Move a round into SETTLED_PENDING, preserving the resume point."""
+        try:
+            room.mark_settle_pending(f"{type(exc).__name__}: {exc}", now)
+        except LifecycleError:
+            # Already parked or no round; nothing further to do here. The audit
+            # row written by the caller still records the failure.
+            return
+        self._fire("settlement.pending", {
+            "round_id": room.round.round_id, "room_id": room_id,
+            "error": str(exc), **room.settlement_health(now)})
+
+    def _retry_settlement(self, room_id: str, room, now: int) -> None:
+        """Re-drive one parked round from its recorded resume point.
+
+        Safe to run repeatedly: calculate_result() is only re-run when the
+        resume point is BETTING_CLOSED, room.settle() is _settled-guarded, and
+        the credit loop skips bet_ids already in settled_bet_ids. A round that
+        failed during the credit loop resumes at CLOSED, so this reduces to
+        re-entering the (idempotent) credit loop.
+        """
+        resumed = room.restore_resume_status()
+        if resumed == RoundStatus.BETTING_CLOSED:
+            # publish_result() drives calculate_result() itself; calling both
+            # would raise (the second call needs BETTING_CLOSED, not RESULT).
+            self.publish_result(room_id)
+        self.settle(room_id, room.round.round_id)
+        self._record_history(room)
+
+    def _unpaid_winnings(self, room) -> int:
+        """Money owed to players but not yet credited for this round.
+
+        This is the figure an operator must act on: the sum of settlement
+        payouts whose bet_id has not been through the exactly-once credit loop.
+        """
+        r = room.round
+        if r is None or not r.settlements:
+            return 0
+        return sum(row["payout"] for row in r.settlements
+                   if row.get("payout", 0) > 0
+                   and row["bet_id"] not in self.settled_bet_ids)
+
+    def _alert_settle_failed(self, room_id: str, room, now: int) -> None:
+        """Operator alert for a settlement that exhausted its retry budget."""
+        health = room.settlement_health(now)
+        owed = self._unpaid_winnings(room)
+        self.audit.record("system", "settlement.failed", "round", room.round.round_id,
+                          after={**health, "unpaid_winnings": owed})
+        self._fire("settlement.failed", {
+            "round_id": room.round.round_id, "room_id": room_id,
+            "severity": "critical", "unpaid_winnings": owed, **health})
+        self.settlement_alerts.append({
+            "round_id": room.round.round_id, "room_id": room_id,
+            "attempts": health["settle_attempts"], "error": health["settle_error"],
+            "unpaid_winnings": owed,
+            "pending_age_ms": health["pending_age_ms"], "at": now})
+
+    def settlement_health_report(self, now_ms: int = 0) -> dict:
+        """Operator dashboard counters. Pending/failed rounds are never hidden."""
+        now = now_ms or self._now()
+        pending, failed = [], []
+        for room_id, room in self.rooms.items():
+            r = room.round
+            if r is None:
+                continue
+            if r.status == RoundStatus.SETTLED_PENDING:
+                pending.append((room_id, {**room.settlement_health(now),
+                                          "unpaid_winnings": self._unpaid_winnings(room)}))
+            elif r.status == RoundStatus.SETTLE_FAILED:
+                failed.append((room_id, {**room.settlement_health(now),
+                                         "unpaid_winnings": self._unpaid_winnings(room)}))
+        oldest = max([h["pending_age_ms"] for _rid, h in pending], default=0)
+        return {
+            "settled_pending": len(pending),
+            "settle_failed": len(failed),
+            "oldest_pending_age_ms": oldest,
+            "unpaid_winnings_total": sum(h["unpaid_winnings"] for _rid, h in pending + failed),
+            "settle_max_attempts": SETTLE_MAX_ATTEMPTS,
+            "pending": [{"room_id": rid, **h} for rid, h in pending],
+            "failed": [{"room_id": rid, **h} for rid, h in failed],
+        }
 
     def cancel_round(self, room_id: str, reason: str, actor: str) -> dict:
         room = self._room(room_id)

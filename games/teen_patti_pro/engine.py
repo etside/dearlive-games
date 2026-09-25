@@ -17,7 +17,8 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from common.lifecycle import RoundStatus, transition, LifecycleError
+from common.lifecycle import (RoundStatus, transition, LifecycleError,
+                              SETTLE_MAX_ATTEMPTS, settle_backoff_ms)
 from .config import TeenPattiConfig, DEFAULT_CONFIG
 
 SUITS = ("S", "H", "D", "C")  # spades hearts diamonds clubs
@@ -179,6 +180,14 @@ class Round:
     events: List[dict] = field(default_factory=list)
     _seq: int = 0
     _settled: bool = False
+    # --- settlement-failure bookkeeping (see common.lifecycle) ---
+    _settle_attempts: int = 0
+    _settle_error: str = ""
+    _settle_pending_since_ms: int = 0
+    _settle_last_attempt_ms: int = 0
+    # The real status to restore before a retry. SETTLED_PENDING cannot say
+    # whether calculate_result() or settle() still needs to run.
+    _settle_resume_from: Optional[str] = None
 
     def emit(self, kind: str, data: dict, now_ms: int) -> dict:
         self._seq += 1
@@ -385,6 +394,118 @@ class Room:
             r.status = RoundStatus.CLOSED
             r.emit("session.completed", {"round_id": r.round_id}, now_ms)
             return rows
+
+    # ---- settlement-failure retry (money safety) ----
+    # A round whose result/settlement raised must never be silently abandoned.
+    # These methods only move status + bookkeeping; the service layer owns the
+    # re-drive, because only it knows how to re-run the wallet credit loop.
+
+    def mark_settle_pending(self, error: str, now_ms: int) -> Round:
+        """Record a settlement failure and park the round in SETTLED_PENDING.
+
+        Preserves the current status in _settle_resume_from so a retry knows
+        which step to re-run. Increments the attempt counter.
+        """
+        with self.lock:
+            r = self.round
+            if r is None:
+                raise LifecycleError("No active round")
+            if r.status in (RoundStatus.SETTLED_PENDING, RoundStatus.SETTLE_FAILED):
+                return r  # already parked; do not double-count or clobber resume point
+            r._settle_resume_from = r.status.value
+            transition(r.status, RoundStatus.SETTLED_PENDING)
+            r.status = RoundStatus.SETTLED_PENDING
+            r._settle_attempts += 1
+            r._settle_error = str(error)
+            if r._settle_pending_since_ms == 0:
+                r._settle_pending_since_ms = now_ms
+            r._settle_last_attempt_ms = now_ms
+            r.emit("settlement.pending", {
+                "round_id": r.round_id,
+                "attempt": r._settle_attempts,
+                "max_attempts": SETTLE_MAX_ATTEMPTS,
+                "resume_from": r._settle_resume_from,
+                "error": str(error),
+                "pending_since": r._settle_pending_since_ms,
+            }, now_ms)
+            return r
+
+    def settle_retry_due(self, now_ms: int) -> bool:
+        """True when a parked round is past its backoff and attempts remain."""
+        with self.lock:
+            r = self.round
+            if r is None or r.status != RoundStatus.SETTLED_PENDING:
+                return False
+            if r._settle_attempts >= SETTLE_MAX_ATTEMPTS:
+                return False
+            if r._settle_last_attempt_ms == 0:
+                return True
+            wait = settle_backoff_ms(r._settle_attempts)
+            return (now_ms - r._settle_last_attempt_ms) >= wait
+
+    def settle_attempts_exhausted(self) -> bool:
+        with self.lock:
+            r = self.round
+            return (r is not None and r.status == RoundStatus.SETTLED_PENDING
+                    and r._settle_attempts >= SETTLE_MAX_ATTEMPTS)
+
+    def restore_resume_status(self) -> RoundStatus:
+        """Restore the pre-failure status so calculate_result()/settle() accept it.
+
+        No transition() validation here: we are undoing our own SETTLED_PENDING
+        marker, and the resumed step validates the restored status itself.
+        """
+        with self.lock:
+            r = self.round
+            if r is None:
+                raise LifecycleError("No active round")
+            if r.status != RoundStatus.SETTLED_PENDING:
+                return r.status
+            resume = r._settle_resume_from or RoundStatus.RESULT.value
+            r.status = RoundStatus(resume)
+            return r.status
+
+    def mark_settle_failed(self, now_ms: int) -> Round:
+        """Give up after SETTLE_MAX_ATTEMPTS and alert. Never silently closes."""
+        with self.lock:
+            r = self.round
+            if r is None:
+                raise LifecycleError("No active round")
+            if r.status != RoundStatus.SETTLED_PENDING:
+                return r
+            transition(r.status, RoundStatus.SETTLE_FAILED)
+            r.status = RoundStatus.SETTLE_FAILED
+            r.emit("settlement.failed", {
+                "round_id": r.round_id,
+                "attempts": r._settle_attempts,
+                "error": r._settle_error,
+                "pending_since": r._settle_pending_since_ms,
+                "pot_at_risk": sum(b.amount for b in r.bets if b.status in ("accepted", "won")),
+            }, now_ms)
+            return r
+
+    def settlement_health(self, now_ms: int) -> dict:
+        """Per-round settlement-failure state.
+
+        `stake_at_risk` is context only; the authoritative "money owed but
+        unpaid" figure is computed by the service, which alone knows which
+        settlement rows have actually been credited.
+        """
+        with self.lock:
+            r = self.round
+            if r is None:
+                return {"status": None, "settle_attempts": 0, "settle_error": "",
+                        "pending_since_ms": 0, "pending_age_ms": 0,
+                        "stake_at_risk": 0, "resume_from": None}
+            stake = sum(b.amount for b in r.bets if b.status in ("accepted", "won"))
+            age = (now_ms - r._settle_pending_since_ms) if r._settle_pending_since_ms else 0
+            return {"status": r.status.value,
+                    "settle_attempts": r._settle_attempts,
+                    "settle_error": r._settle_error,
+                    "pending_since_ms": r._settle_pending_since_ms,
+                    "pending_age_ms": max(0, age),
+                    "stake_at_risk": stake,
+                    "resume_from": r._settle_resume_from}
 
     def cancel(self, reason: str, now_ms: int) -> List[Bet]:
         """Void path: accepted bets -> voided (service layer compensates wallet).

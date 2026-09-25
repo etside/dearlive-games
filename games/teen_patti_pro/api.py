@@ -810,7 +810,9 @@ class Handler(BaseHTTPRequestHandler):
                     "total_bets_24h": sum(len([b for b in room.round.bets if b.decision_time_ms > time.time()*1000 - 86400000]) for room in self.svc.rooms.values() if room.round),
                     "net_revenue_24h": sum(sum(b.amount for b in room.round.bets if b.status == "won") - sum(b.amount for b in room.round.bets if b.status == "lost") for room in self.svc.rooms.values() if room.round),
                     "online_players": len(self.svc.sessions),
-                    "pending_withdrawals": 0  # TODO: implement
+                    "pending_withdrawals": 0,  # TODO: implement
+                    # Settlement safety: stranded pots are never hidden.
+                    **self.svc.settlement_health_report(),
                 })
             
             if path == "/api/v1/operator/admin/dashboard/charts":
