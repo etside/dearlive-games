@@ -12,7 +12,9 @@ from games.wheel_common.service import WheelService
 @engine_plugin("greedy-monkey", "Greedy Monkey", "greedy-monkey-1.0.0-tbc", status="live",
                tbc=("G1-BR-03", "G1-BR-04", "G1-BR-05"),
                description="Monkey wheel betting (BRD Game 1). Full service: rounds, bets, auto-bet, settlement.",
-               entry="/greedy-monkey/", dearlive_code="greedy_monkey")
+               entry="/greedy-monkey/", dearlive_code="greedy_monkey",
+               game_type="wheel-betting",
+               variant=(("type", "wheel-option-betting"),))
 def make_room(*args, **kwargs):
     """Factory for WheelService — used by teen_patti_pro API handler."""
     room_id = args[0] if args else kwargs.get('room_id', 'default')

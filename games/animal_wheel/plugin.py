@@ -13,7 +13,9 @@ from games.wheel_common.service import WheelService
 @engine_plugin("baby-king", "Baby King", "baby-king-1.0.0-tbc", status="live",
                tbc=("G2-BR-02", "G2-BR-03", "G2-BR-04", "G2-BR-05"),
                description="Baby King wheel betting (wheel slot). Full service: rounds, bets, auto-bet, settlement.",
-               entry="/baby-king/", dearlive_code="food_wheel")
+               entry="/baby-king/", dearlive_code="food_wheel",
+               game_type="wheel-betting",
+               variant=(("type", "wheel-option-betting"),))
 def make_room(*args, **kwargs):
     """Factory for WheelService — used by teen_patti_pro API handler."""
     room_id = args[0] if args else kwargs.get('room_id', 'default')

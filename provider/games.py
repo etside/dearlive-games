@@ -53,6 +53,16 @@ class GameBinding:
     choice_field: str              # response field echoing the choice
     service: Callable[[object], object] = field(repr=False, default=None)
     default_tables: tuple = ()
+    # --- declared game shape (metadata only; drives no engine behaviour) ---
+    # Mirrors common.plugins.EnginePlugin.game_type / variant so the B2B
+    # catalog and the in-game catalog describe a game identically.
+    game_type: str = ""
+    variant: tuple = ()            # tuple of (key, value) pairs
+    rules_status: str = "BUSINESS_CONFIRMATION_REQUIRED"
+
+    @property
+    def variant_dict(self) -> dict:
+        return dict(self.variant)
 
     @property
     def slug(self) -> str:
@@ -187,15 +197,25 @@ BINDINGS: Dict[str, GameBinding] = {
     TEEN_CODE: GameBinding(
         game_code=TEEN_CODE, label="Teen Patti Pro", kind="table_game",
         action_field="position", choice_field="position",
-        service=_teen_service),
+        service=_teen_service,
+        # Seat-betting highest-hand. NOT the traditional multi-round Teen
+        # Patti betting sequence: Blind / Chaal / Pack / Show / Side Show are
+        # deliberately out of scope. See games/teen_patti_pro/plugin.py.
+        game_type="three-seat-card-comparison",
+        variant=(("type", "seat-betting-highest-hand"), ("seats", 3),
+                 ("positions", ("A", "B", "C")), ("cardsPerSeat", 3))),
     MONKEY_CODE: GameBinding(
         game_code=MONKEY_CODE, label="Greedy Monkey", kind="wheel",
         action_field="option_id", choice_field="option_id",
-        service=lambda ctx: _wheel_service(ctx, "greedy-monkey")),
+        service=lambda ctx: _wheel_service(ctx, "greedy-monkey"),
+        game_type="wheel-betting",
+        variant=(("type", "wheel-option-betting"),)),
     BABY_KING_CODE: GameBinding(
         game_code=BABY_KING_CODE, label="Baby King", kind="wheel",
         action_field="option_id", choice_field="option_id",
-        service=lambda ctx: _wheel_service(ctx, "baby-king")),
+        service=lambda ctx: _wheel_service(ctx, "baby-king"),
+        game_type="wheel-betting",
+        variant=(("type", "wheel-option-betting"),)),
 }
 
 

@@ -8,7 +8,7 @@ Each plugin declares: id, name, version, status (live|planned|disabled),
 config schema (TBC flags), and engine factory. Unknown ids NEVER fall back to
 another game (fail closed).
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, List, Optional
 
 
@@ -23,20 +23,39 @@ class EnginePlugin:
     description: str = ""
     entry: str = ""
     dearlive_code: str = ""
+    # --- declared game shape (metadata only; drives no engine behaviour) ---
+    # game_type is the MECHANISM class, e.g. three-seat-card-comparison.
+    # `variant` describes the concrete rule shape and is deliberately data, not
+    # code, so a future confirmed rule set can change it without touching the
+    # engine, UI, API, wallet, settlement, WebSocket or admin surface.
+    game_type: str = ""
+    variant: tuple = ()          # tuple of (key, value) pairs -> frozen/hashable
+    # BUSINESS_CONFIRMATION_REQUIRED until the business signs the rule set off.
+    # Emitted as `rulesStatus` in the public catalog.
+    rules_status: str = "BUSINESS_CONFIRMATION_REQUIRED"
+
+    @property
+    def variant_dict(self) -> dict:
+        return dict(self.variant)
 
 
 _REGISTRY: Dict[str, EnginePlugin] = {}
 
+RULES_STATUS_CONFIRMED = "CONFIRMED"
+RULES_STATUS_TBC = "BUSINESS_CONFIRMATION_REQUIRED"
+
 
 def engine_plugin(game_id: str, name: str, version: str, status: str = "live",
                   tbc: tuple = (), description: str = "", entry: str = "",
-                  dearlive_code: str = ""):
+                  dearlive_code: str = "", game_type: str = "",
+                  variant: tuple = (), rules_status: str = RULES_STATUS_TBC):
     def deco(factory: Callable):
         if game_id in _REGISTRY:
             raise ValueError(f"duplicate engine plugin: {game_id}")
         _REGISTRY[game_id] = EnginePlugin(game_id, name, version, status, tbc,
                                           factory if status == "live" else None,
-                                          description, entry, dearlive_code)
+                                          description, entry, dearlive_code,
+                                          game_type, variant, rules_status)
         return factory
     return deco
 
@@ -63,10 +82,11 @@ def alias(new_id: str, existing_id: str):
     src = get(existing_id)
     if new_id in _REGISTRY:
         raise ValueError(f"duplicate engine plugin: {new_id}")
-    _REGISTRY[new_id] = EnginePlugin(new_id, src.name, src.version,
-                                     src.status, src.tbc, src.engine_factory,
-                                     src.description + f" (alias of {existing_id})",
-                                     src.entry, src.dearlive_code)
+    # replace() so an alias inherits the declared game shape (game_type,
+    # variant, rules_status) instead of silently dropping it.
+    _REGISTRY[new_id] = replace(
+        src, game_id=new_id,
+        description=src.description + f" (alias of {existing_id})")
 
 
 def create(game_id: str, *args, **kwargs):
@@ -77,10 +97,14 @@ def create(game_id: str, *args, **kwargs):
 
 
 def catalog() -> List[dict]:
+    """Public game metadata. gameType/variant are declared shape, not rules
+    behaviour; rulesStatus tells a buyer whether the rule set is signed off."""
     return [{"game_id": p.game_id, "name": p.name, "version": p.version,
              "status": p.status, "tbc": list(p.tbc),
              "description": p.description, "entry": p.entry,
-             "dearlive_code": p.dearlive_code} for p in _REGISTRY.values()]
+             "dearlive_code": p.dearlive_code,
+             "gameType": p.game_type, "variant": p.variant_dict,
+             "rulesStatus": p.rules_status} for p in _REGISTRY.values()]
 
 
 def import_builtin_games():
