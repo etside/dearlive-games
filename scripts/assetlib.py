@@ -103,6 +103,52 @@ def flood_background(rgb: np.ndarray, seeds: Sequence[np.ndarray], tolerance: in
            (arr[:, :, 2] == marker[2])
 
 
+def background_mask_for_image(im, tolerances: Sequence[int] = TOLERANCE_LADDER,
+                              seed_hint: Optional[Sequence[int]] = None,
+                              max_remove: float = MAX_REMOVE_FRACTION,
+                              allow_large: bool = False) -> dict:
+    """Same ladder as remove_background(), but takes an open Image.
+
+    Phase 3 needs this because it works on already-modified in-memory images
+    (watermark removed) rather than re-reading the source file.
+    """
+    im = im.convert("RGBA")
+    rgb = np.asarray(im.convert("RGB"), dtype=np.uint8)
+    alpha_in = np.asarray(im.getchannel("A"), dtype=np.uint8)
+    had_alpha = bool(alpha_in.min() < 255)
+
+    seeds = corner_seeds(rgb)
+    if seed_hint is not None:
+        seeds = seeds + [np.asarray(seed_hint, dtype=np.float64)]
+    seed = np.mean(np.stack(seeds), axis=0)
+
+    attempts = []
+    best = None
+    for tol in tolerances:
+        bg = flood_background(rgb, seeds, tol)
+        frac = float(bg.mean())
+        attempts.append({"tolerance": int(tol), "removed_fraction": round(frac, 4)})
+        if frac <= 0.0005:
+            continue
+        if frac > max_remove and not allow_large:
+            continue
+        best = (tol, bg, frac)
+        break
+
+    if best is None:
+        return {"ok": False, "seed": [round(float(v), 1) for v in seed],
+                "attempts": attempts, "reason": "no safe tolerance found"}
+
+    tol, bg, frac = best
+    out = im.copy()
+    a = np.asarray(out.getchannel("A"), dtype=np.uint8).copy()
+    a[bg] = 0
+    out.putalpha(Image.fromarray(a, "L"))
+    return {"ok": True, "tolerance": int(tol), "removed_fraction": round(frac, 4),
+            "had_alpha": had_alpha, "seed": [round(float(v), 1) for v in seed],
+            "attempts": attempts, "rgba": out, "rgb": rgb, "bg_mask": bg}
+
+
 def remove_background(path: str, tolerances: Sequence[int] = TOLERANCE_LADDER,
                       seed_hint: Optional[Sequence[int]] = None,
                       max_remove: float = MAX_REMOVE_FRACTION,
