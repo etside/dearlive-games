@@ -14,7 +14,7 @@ import hashlib
 import random
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from common.lifecycle import RoundStatus, transition, LifecycleError
@@ -175,6 +175,7 @@ class Round:
     carry_in: int = 0
     carry_out: int = 0
     config_version: str = ""
+    config_snapshot: dict = field(default_factory=dict)
     events: List[dict] = field(default_factory=list)
     _seq: int = 0
     _settled: bool = False
@@ -222,8 +223,9 @@ class Room:
                       round_no=self._round_no, created_at_ms=now_ms,
                       betting_end_at_ms=now_ms + self.config.guess_ms,
                       seed_hex=seed_hex or secrets.token_hex(16),
-                      carry_in=self.carry_over,
-                      config_version=self.config.version)
+                       carry_in=self.carry_over,
+                       config_version=self.config.version,
+                       config_snapshot=asdict(self.config))
             deck = shuffle_deck(r.seed_hex, self.config.jokers)
             r.deck_commit = deck_commitment(deck)
             r.hands = {p: deck[i * 3:(i + 1) * 3] for i, p in enumerate(self.config.seats)}

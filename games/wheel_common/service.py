@@ -23,7 +23,7 @@ import hashlib
 import secrets
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 from common import envelope as E
@@ -107,6 +107,7 @@ class WheelRound:
     bets: List[WheelBet] = field(default_factory=list)
     settlements: List[dict] = field(default_factory=list)
     config_version: str = ""
+    config_snapshot: dict = field(default_factory=dict)
     events: List[dict] = field(default_factory=list)
     _seq: int = 0
     _settled: bool = False
@@ -155,6 +156,7 @@ class WheelService:
         self.webhook_secret = webhook_secret
         self.rooms: Dict[str, WheelRoom] = {}
         self.settled_bet_ids = set()
+        self.event_log: List[dict] = []
         self._settle_lock = threading.Lock()
         self._now = lambda: int(time.time() * 1000)
 
@@ -166,6 +168,7 @@ class WheelService:
 
     def _fire(self, kind: str, data: dict):
         ev = build_event(kind, data)
+        self.event_log.append(ev)
         for dest in self.webhook_destinations:
             self.webhooks.record(dest, ev, "queued")
         return ev
@@ -199,6 +202,7 @@ class WheelService:
     # -- rounds --
     def start_round(self, room_id: str, actor: str = "system") -> dict:
         room = self._room(room_id)
+        room.config = self.config
         with room.lock:
             if room.round is not None and room.round.status not in (
                     RoundStatus.SETTLED, RoundStatus.CLOSED):
@@ -212,7 +216,8 @@ class WheelService:
                 betting_end_at_ms=now + room.config.betting_duration_ms,
                 server_seed=server_seed,
                 server_seed_hash=hashlib.sha256(server_seed.encode()).hexdigest(),
-                nonce=room._round_no, config_version=room.config.version)
+                 nonce=room._round_no, config_version=room.config.version,
+                 config_snapshot=asdict(room.config))
             transition(r.status, RoundStatus.BETTING_OPEN)
             r.status = RoundStatus.BETTING_OPEN
             r.emit("round.started", {"round_id": r.round_id,
@@ -252,7 +257,7 @@ class WheelService:
                 transition(r.status, RoundStatus.BETTING_CLOSED)
                 r.status = RoundStatus.BETTING_CLOSED
                 r.emit("betting.closed", {"round_id": r.round_id}, self._now())
-        self._fire("betting.closed", {"round_id": r.round_id})
+        self._fire("betting.closed", {"round_id": r.round_id, "room_id": room_id})
         return {"round_id": r.round_id, "status": r.status.value}
 
     # -- bets --
@@ -387,7 +392,7 @@ class WheelService:
             r.emit("result.published", {"round_id": r.round_id, **w,
                                         "server_seed": r.server_seed}, now)
         self.audit.record("system", "result.publish", "round", r.round_id, after=w)
-        self._fire("result.published", {"round_id": r.round_id, **w})
+        self._fire("result.published", {"round_id": r.round_id, "room_id": room_id, **w})
         return {"round_id": r.round_id, **w, "server_seed": r.server_seed,
                 "server_seed_hash": r.server_seed_hash}
 
@@ -467,6 +472,7 @@ class WheelService:
                                "multiplier": mult, "angle": r.winner["angle"]})
         room.recent[:] = room.recent[:20]
         self._fire("settlement.completed", {"round_id": r.round_id,
+                                            "room_id": room_id,
                                             "settlements": len(rows)})
         return {"round_id": r.round_id, "settlements": rows,
                 "winner": r.winner}
@@ -541,7 +547,8 @@ class WheelService:
                                idempotency_key=f"cancel:{b.bet_id}")
         self.audit.record(actor, "round.cancel", "round", r.round_id,
                           after={"reason": reason, "voided": len(voided)})
-        self._fire("round.cancelled", {"round_id": r.round_id, "reason": reason})
+        self._fire("round.cancelled", {"round_id": r.round_id, "room_id": room_id,
+                                       "reason": reason})
         return {"voided": len(voided)}
 
     # -- autobet / autoplay (only where approved) --

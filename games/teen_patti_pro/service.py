@@ -62,6 +62,7 @@ class TeenPattiService:
         self.rooms: Dict[str, Room] = {}
         self.settled_bet_ids = set()  # UNIQUE settlement.bet_id guard
         self.round_history: Dict[str, List[dict]] = {}
+        self.event_log: List[dict] = []
         self.HISTORY_CAP = 200
         self._settle_lock = threading.Lock()  # check-add-credit must be atomic
         self.skills = skills
@@ -84,6 +85,7 @@ class TeenPattiService:
 
     def _fire(self, kind: str, data: dict):
         ev = build_event(kind, data)
+        self.event_log.append(ev)
         for dest in self.webhook_destinations:
             self.webhooks.record(dest, ev, "queued")
         return ev
@@ -113,7 +115,9 @@ class TeenPattiService:
 
     # ---- rounds ----
     def start_round(self, room_id: str, actor: str = "system") -> dict:
-        r = self._room(room_id).start_round(self._now())
+        room = self._room(room_id)
+        room.config = self.config
+        r = room.start_round(self._now())
         self.audit.record(actor, "round.start", "round", r.round_id)
         self._fire("round.started", {"round_id": r.round_id, "room_id": room_id,
                                      "betting_end_at": r.betting_end_at_ms})
@@ -140,7 +144,7 @@ class TeenPattiService:
 
     def close_betting(self, room_id: str) -> dict:
         r = self._room(room_id).close_betting(self._now())
-        self._fire("betting.closed", {"round_id": r.round_id})
+        self._fire("betting.closed", {"round_id": r.round_id, "room_id": room_id})
         self._skill("on_close", {"room_id": room_id, "round_id": r.round_id})
         return {"round_id": r.round_id, "status": r.status.value}
 
@@ -212,7 +216,7 @@ class TeenPattiService:
         r = room.calculate_result(self._now())
         self.audit.record("system", "result.publish", "round", r.round_id,
                           after={"winners": r.winner_positions})
-        self._fire("result.published", {"round_id": r.round_id,
+        self._fire("result.published", {"round_id": r.round_id, "room_id": room_id,
                                         "winners": r.winner_positions})
         self._skill("on_result", {"room_id": room_id, "round_id": r.round_id})
         from .engine import fmt_card
@@ -230,15 +234,16 @@ class TeenPattiService:
             for row in rows:
                 if row["bet_id"] in self.settled_bet_ids:
                     continue  # UNIQUE settlement.bet_id: never pay twice
-                self.settled_bet_ids.add(row["bet_id"])
                 if row["payout"] > 0:
                     self.wallet.credit(row["player_id"], row["payout"],
                                        ref=f"settle:{row['bet_id']}",
                                        idempotency_key=f"settle:{row['bet_id']}")
+                self.settled_bet_ids.add(row["bet_id"])
                 credited.append(row)
                 self.audit.record("system", "settlement.credit", "settlement",
                                   row["settlement_id"], after=row)
         self._fire("settlement.completed", {"round_id": room.round.round_id,
+                                            "room_id": room_id,
                                             "settlements": len(rows)})
         self._skill("on_settle", {"room_id": room_id, "round_id": room.round.round_id})
         self._record_history(room)
@@ -290,7 +295,7 @@ class TeenPattiService:
             try:
                 room.close_betting(now)
                 rep["actions"].append("closed")
-                self._fire("betting.closed", {"round_id": r.round_id})
+                self._fire("betting.closed", {"round_id": r.round_id, "room_id": room_id})
                 self.publish_result(room_id)  # audited + webhooked result path
                 rep["actions"].append("result")
                 self.settle(room_id, r.round_id)
@@ -311,7 +316,7 @@ class TeenPattiService:
         self.audit.record(actor, "round.cancel", "round", room.round.round_id,
                           after={"reason": reason, "voided": len(voided)})
         self._fire("round.cancelled", {"round_id": room.round.round_id,
-                                       "reason": reason})
+                                       "room_id": room_id, "reason": reason})
         self._skill("on_cancel", {"room_id": room_id, "reason": reason,
                                   "voided": len(voided)})
         return {"voided": len(voided)}
