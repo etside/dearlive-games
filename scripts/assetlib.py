@@ -321,6 +321,92 @@ def restore_eroded_edges(rgb: np.ndarray, bg: np.ndarray, seeds: Sequence[np.nda
     return fg
 
 
+def strip_flat_border_debris(fg: np.ndarray, rgb: np.ndarray,
+                            flat_std: float = 9.0, erode_px: int = 3) -> np.ndarray:
+    """Remove flat, border-touching regions that are not artwork.
+
+    The beige wedge carried from the Phase 2 grid bands is FUSED to the asset --
+    the largest connected island is 60-78% of the canvas and the next blobs are
+    under 3% -- so a connected-component filter cannot remove it. What does
+    separate it is that it is (a) flat and (b) touching the canvas edge, while
+    the button body has a gradient and interior detail.
+
+    Method: erode the foreground, then flood the eroded-away margin from the
+    border through pixels whose local colour variance is below `flat_std`.
+    A real gradient or a glyph never satisfies that, so only backdrop survives.
+    """
+    h, w = fg.shape
+    if not fg.any():
+        return fg
+    g = rgb.astype(np.float32).mean(axis=2)
+    # local variance in a 5x5 window, via a box sum (no scipy)
+    k = 2
+    acc = np.zeros_like(g)
+    acc2 = np.zeros_like(g)
+    p = np.pad(g, k, mode="edge")
+    for dy in range(-k, k + 1):
+        for dx in range(-k, k + 1):
+            s = p[k + dy:k + dy + h, k + dx:k + dx + w]
+            acc += s
+            acc2 += s * s
+    n = (2 * k + 1) ** 2
+    var = np.maximum(acc2 / n - (acc / n) ** 2, 0.0)
+    flat = var <= (flat_std ** 2)
+
+    margin = _erode_np(fg, erode_px)
+    border = np.zeros_like(fg)
+    border[0, :] = border[-1, :] = True
+    border[:, 0] = border[:, -1] = True
+    removable = (~margin) & flat & border
+    # grow the removal through connected flat regions
+    out = removable.copy()
+    for _ in range(6):
+        grown = out.copy()
+        grown[1:, :] |= out[:-1, :]
+        grown[:-1, :] |= out[1:, :]
+        grown[:, 1:] |= out[:, :-1]
+        grown[:, :-1] |= out[:, 1:]
+        grown &= flat & (~margin)
+        if grown.sum() == out.sum():
+            break
+        out = grown
+    return fg & ~out
+
+
+def _erode_np(mask: np.ndarray, px: int) -> np.ndarray:
+    m = mask.copy()
+    for _ in range(max(0, px)):
+        p = np.pad(m, 1, mode="constant", constant_values=False)
+        m = (p[1:-1, 1:-1] & p[:-2, 1:-1] & p[2:, 1:-1] &
+             p[1:-1, :-2] & p[1:-1, 2:])
+    return m
+
+
+def apply_shape_mask(im: Image.Image, shape: str, inset: float = 0.0) -> Image.Image:
+    """Force the alpha channel to a shape, for assets a flood fill cannot save.
+
+    Four assets share a failure mode: a thin light ornate element (gold frame,
+    navy oval) on a backdrop of similar tone, which the fill eats. Re-processing
+    them with a manual shape mask keeps the element because nothing is inferred.
+    """
+    w, h = im.size
+    ix, iy = int(w * inset), int(h * inset)
+    x0, y0, x1, y1 = ix, iy, w - ix, h - iy
+    mask = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(mask)
+    if shape == "ellipse":
+        d.ellipse([x0, y0, x1, y1], fill=255)
+    elif shape == "rounded-rect":
+        r = int(min(x1 - x0, y1 - y0) * 0.28)
+        d.rounded_rectangle([x0, y0, x1, y1], radius=r, fill=255)
+    else:
+        raise ValueError(f"unknown mask shape {shape!r}")
+    out = im.convert("RGBA")
+    a = out.getchannel("A")
+    out.putalpha(Image.fromarray(np.minimum(np.asarray(a), np.asarray(mask))))
+    return out
+
+
 def save_rgba_crop(im: Image.Image, box: dict, out_path: str) -> None:
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     im.crop((box["x0"], box["y0"], box["x1"], box["y1"])).save(out_path, "PNG")

@@ -106,6 +106,29 @@ CATEGORY_SIZES = {
     "chair":        (1024, 1024),
 }
 
+# Assets the flood fill cannot save. A thin light ornate element sitting on a
+# backdrop of similar tone gets eaten: panel-pot lost its gold frame entirely,
+# panel-you lost its navy oval, panel-balance got its top edge chewed,
+# avatar-placeholder was eroded into a blob. Same failure mode as the Phase 2
+# glow halos, so same fix: an explicit shape mask instead of a heuristic.
+# (shape, inset_fraction) -> scripts.assetlib.apply_shape_mask
+SHAPE_MASK = {
+    "panel-pot":          ("rounded-rect", 0.06),
+    "panel-you":          ("rounded-rect", 0.06),
+    "panel-balance":      ("rounded-rect", 0.06),
+    "avatar-placeholder": ("ellipse",      0.02),
+}
+
+# These two must SKIP flood-fill removal entirely.
+#  - avatar-placeholder: its white silhouette is the same tone as the near-white
+#    background, so any background keying on near-white eats the silhouette.
+#    The first attempt combined flood + inset ellipse and produced an arch, not
+#    a disc; circle mask on the untouched source is the only correct treatment.
+#  - panel-pot: the ornate gold frame is destroyed by the fill (dark grey
+#    background 88,88,90 sits close to the frame's shadow tones), leaving a
+#    gold smear with "POT: 2.22K" illegible. Shape mask only.
+NO_BG_FLOOD = {"avatar-placeholder", "panel-pot"}
+
 # Explicitly dropped, with reason. Copied to working/dropped/ by Phase 3, never
 # deleted from the source directory.
 DROPPED = {

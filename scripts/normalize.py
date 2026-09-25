@@ -27,8 +27,10 @@ import numpy as np
 from PIL import Image
 
 from asset_manifest import (ASSETS, CATEGORY_SIZES, DROPPED, GENERATED, SOURCE,
-                            WATERMARKED, WATERMARK_CLEAN)
-from assetlib import background_mask_for_image
+                            NO_BG_FLOOD, SHAPE_MASK, WATERMARKED,
+                            WATERMARK_CLEAN)
+from assetlib import (apply_shape_mask, background_mask_for_image,
+                      strip_flat_border_debris)
 from watermark import Mark, detect_mark, remove_watermark
 
 TRIM_PAD = 8
@@ -156,7 +158,9 @@ def main() -> int:
         # Order matters: the watermark is removed FIRST, while the backdrop is
         # still present to inpaint against, because the mark is composited onto
         # that backdrop and would otherwise survive as a content island.
-        if kind == "individual":
+        if aid in NO_BG_FLOOD:
+            bg_note = "skipped (silhouette matches background tone)"
+        elif kind == "individual":
             bg = background_mask_for_image(clean, tolerances=(8, 12, 15, 25),
                                           max_remove=0.92)
             if bg["ok"]:
@@ -167,6 +171,23 @@ def main() -> int:
                 bg_note = "REJECTED (tolerance would eat artwork)"
         else:
             bg_note = "done in phase 2"
+
+        # --- 3.3 background completion + flat-debris strip -----------------
+        # The beige wedge from the Phase 2 grid bands is fused to the artwork
+        # (largest island 60-78% of canvas, next blobs <3%), so connectivity
+        # cannot separate it. It is flat and border-touching, which can.
+        a0 = np.asarray(clean.getchannel("A"))
+        if (a0 > 0).any():
+            fg2 = strip_flat_border_debris(a0 > 0, np.asarray(clean.convert("RGB")),
+                                          flat_std=22.0, erode_px=2)
+            a1 = a0.copy()
+            a1[~fg2] = 0
+            clean.putalpha(Image.fromarray(a1, "L"))
+
+        # --- manual shape mask for the 4 assets the fill destroys ---------
+        if aid in SHAPE_MASK:
+            shape, inset = SHAPE_MASK[aid]
+            clean = apply_shape_mask(clean, shape, inset)
 
         post = detect_mark(clean) if known_marked else Mark(False, None, 0)
 
