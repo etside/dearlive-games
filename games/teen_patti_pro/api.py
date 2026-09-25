@@ -169,8 +169,6 @@ class Handler(BaseHTTPRequestHandler):
         /api/v1/games and /api/v1/sessions unchanged.
         """
         from provider.router import dispatch, is_provider_path
-        if method == "GET" and path == "/api/v1/games":
-            return False
         if self.provider_ctx is None:
             return False
         body = b""
