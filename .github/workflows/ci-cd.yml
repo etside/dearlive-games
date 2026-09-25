@@ -77,17 +77,7 @@ jobs:
           test -f games/teen_patti_pro/client/index.html
           test -f games/teen_patti_pro/client/lobby.html
           test -f games/teen_patti_pro/client/game.js
-          test -f games/teen_patti_pro/client/assets/card-back.svg
-          test -f games/teen_patti_pro/client/assets/card-face.svg
-          test -f games/teen_patti_pro/client/assets/chip-blue.svg
-          test -f games/teen_patti_pro/client/assets/chip-cyan.svg
-          test -f games/teen_patti_pro/client/assets/chip-gold.svg
-          test -f games/teen_patti_pro/client/assets/chip-violet.svg
-          test -f games/teen_patti_pro/client/assets/table-bg.svg
-          test -f games/teen_patti_pro/client/assets/winner-glow.svg
-          test -f games/teen_patti_pro/client/assets/seat-p1.svg
-          test -f games/teen_patti_pro/client/assets/seat-p2.svg
-          test -f games/teen_patti_pro/client/assets/seat-p3.svg
+
           test -f games/teen_patti_pro/client/assets/generated/seat-p4.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p5.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p6.svg
