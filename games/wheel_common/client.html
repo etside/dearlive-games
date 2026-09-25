@@ -26,8 +26,21 @@
   let W = 0, H = 0, DPR = 1, toastTimer = null;
   let SAFE = { t: 0, b: 0, l: 0, r: 0 };
   const S = { snap: null, selDenom: 100, selOpt: null, connected: false,
+    art: {},
     msg: '', msgKind: 'info', panel: null, hist: [], recent: [], earn: null, auto: null };
   const REDUCED = !!(motionQuery && motionQuery.matches);
+  S.art.background = new Image();
+  S.art.background.src = '/assets/games/' + GAME + '/background-' + GAME + '.svg';
+  function optionImage(option) {
+    const key = String(option && option.icon || '');
+    if (!key.startsWith('asset://')) return null;
+    const name = key.split('/').pop();
+    if (!S.art[name]) {
+      S.art[name] = new Image();
+      S.art[name].src = '/assets/games/' + GAME + '/' + name + '.svg';
+    }
+    return S.art[name];
+  }
   function readSafeAreas() {
     try {
       const cs = getComputedStyle(document.documentElement);
@@ -92,6 +105,9 @@
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#0a1220'); g.addColorStop(1, '#16243f');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (S.art.background && S.art.background.complete && S.art.background.naturalWidth) {
+      ctx.drawImage(S.art.background, 0, 0, W, H);
+    }
     const geo = wheel(), s = S.snap, u = U();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
@@ -136,8 +152,13 @@
       ctx.font = u.f(12); ctx.fillStyle = '#ffe9a8';
       ctx.fillText(secs < 5 ? 'CLOSING SOON' : (s.status === 'BETTING_OPEN' ? 'GUESSING' : s.status), geo.cx, geo.cy + 34);
     }
-    const icon = GAME === 'greedy-lion' ? '🦁' : GAME.startsWith('greedy') || GAME.startsWith('monkey') ? '🐵' : '👑';
-    ctx.font = u.f(34); ctx.fillText(icon, geo.cx, geo.cy);
+    ctx.save();
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath(); ctx.arc(geo.cx, geo.cy, 34, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff7d6'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#312e81'; ctx.font = 'bold ' + u.f(11);
+    ctx.fillText(GAME === 'baby-king' ? 'BABY KING' : 'GREEDY MONKEY', geo.cx, geo.cy);
+    ctx.restore();
     const opts = (s && s.options) || [];
     S._opts = [];
     opts.forEach((o, i) => {
@@ -155,7 +176,12 @@
       ctx.beginPath(); ctx.arc(ox, oy, 34, 0, 7); ctx.fill();
       ctx.shadowColor = 'transparent';
       ctx.lineWidth = win || sel ? 3 : 1.5; ctx.strokeStyle = win || sel ? '#ffd54a' : o.color_hex || '#fff'; ctx.stroke();
-      ctx.font = u.f(24); ctx.fillStyle = '#fff'; ctx.fillText(o.icon || '🎡', ox, oy - 9);
+      const art = optionImage(o);
+      if (art && art.complete && art.naturalWidth) ctx.drawImage(art, ox - 22, oy - 32, 44, 44);
+      else {
+        ctx.strokeStyle = o.color_hex || '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(ox, oy - 10, 18, 0, 7); ctx.stroke();
+      }
       ctx.font = 'bold ' + u.f(12);
       ctx.fillText(o.name + ' ×' + o.multiplier, ox, oy + 13);
       const tot = (s && s.totals && s.totals[o.option_id]) || 0;

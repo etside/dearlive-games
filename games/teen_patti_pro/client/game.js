@@ -77,6 +77,17 @@
               msg: '', msgKind: 'info' };
   const DENOMS = [20, 100, 500, 1000];
   const POS = ['A', 'B', 'C'];
+  const SEAT_LABELS = { A: 'YOU', B: 'PLAYER A', C: 'ONLINE' };
+  const SEAT_ASSETS = [
+    'assets/generated/seat-p4.svg',
+    'assets/generated/seat-p5.svg',
+    'assets/generated/seat-p6.svg'
+  ];
+  const seatImages = SEAT_ASSETS.map(src => {
+    const image = new Image();
+    image.src = src;
+    return image;
+  });
   // Common HUD state (BRD common UI): panel overlay, sound/music toggle.
   S.panel = null; // null | 'help' | 'menu' | 'history'
   try { S.sound = localStorage.getItem('tpp_sound') !== 'off'; } catch (e) { S.sound = true; }
@@ -275,7 +286,7 @@
       cardEl.style.height = cardH + 'px';
       cardEl.style.pointerEvents = 'none';
       cardEl.style.zIndex = 1000 + i;
-      cardEl.innerHTML = '<div style="width:100%;height:100%;background:#0b5fa5;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ffd54a;font-weight:bold;font-size:' + (cardW * 0.32) + 'px">TP</div>';
+      cardEl.innerHTML = renderCardBack();
       cv.parentElement.appendChild(cardEl);
       const ctrlX = (deckPos.x + targetX) / 2;
       const ctrlY = Math.min(deckPos.y, targetY) - 120;
@@ -315,7 +326,7 @@
   }
 
   function renderCardBack() {
-    return '<div style="width:100%;height:100%;background:#0b5fa5;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ffd54a;font-weight:bold">TP</div>';
+    return '<div style="width:100%;height:100%;background:#0b5fa5;border-radius:8px;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 48 64" width="70%" height="70%" aria-hidden="true"><path d="M10 42 8 18l10 9 6-14 6 14 10-9-2 24Z" fill="none" stroke="#ffd54a" stroke-width="3" stroke-linejoin="round"/><path d="M10 47h28" stroke="#ffd54a" stroke-width="3" stroke-linecap="round"/></svg></div>';
   }
   function renderCardFace(card) {
     if (!card || card === '**') return renderCardBack();
@@ -520,6 +531,15 @@
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
+  function cardLabel(face) {
+    if (!face || face === '**') return '';
+    if (face === 'JOK') return 'JOK';
+    const match = String(face).match(/^(\\d+)([SHDC])$/);
+    if (!match) return String(face);
+    const rank = { '11': 'J', '12': 'Q', '13': 'K', '14': 'A' }[match[1]] || match[1];
+    const suit = { S: '♠', H: '♥', D: '♦', C: '♣' }[match[2]] || match[2];
+    return rank + suit;
+  }
   function card(x, y, w, h, face) {
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
@@ -531,23 +551,35 @@
     if (face === '**' || !face) {
       ctx.fillStyle = '#0b5fa5';
       rr(x + 6, y + 6, w - 12, h - 12, 5); ctx.fill();
-      ctx.fillStyle = '#ffd54a'; ctx.font = `bold ${w * 0.32}px system-ui`;
-      ctx.fillText('TP', x + w / 2, y + h / 2);
+      ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = Math.max(1, w * .05);
+      ctx.beginPath();
+      ctx.moveTo(x + w * .28, y + h * .62); ctx.lineTo(x + w * .25, y + h * .34);
+      ctx.lineTo(x + w * .4, y + h * .49); ctx.lineTo(x + w * .5, y + h * .27);
+      ctx.lineTo(x + w * .6, y + h * .49); ctx.lineTo(x + w * .75, y + h * .34);
+      ctx.lineTo(x + w * .72, y + h * .62); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + w * .28, y + h * .68); ctx.lineTo(x + w * .72, y + h * .68); ctx.stroke();
     } else {
+      const label = cardLabel(face);
       ctx.font = `bold ${w * 0.30}px system-ui`;
-      const red = /[HD]$/.test(face);
+      const red = /[♥♦]/.test(label);
       ctx.fillStyle = red ? '#b71c1c' : '#212121';
-      ctx.fillText(face, x + w / 2, y + h / 2);
+      ctx.fillText(label, x + w / 2, y + h / 2);
     }
     ctx.restore();
   }
 
   function draw(now) {
     ctx.clearRect(0, 0, W, H);
-    // felt
-    const g = ctx.createRadialGradient(W / 2, H * 0.42, 60, W / 2, H * 0.42, Math.max(W, H) * 0.75);
-    g.addColorStop(0, THEME.feltA); g.addColorStop(1, THEME.feltB);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#160b2d'); g.addColorStop(0.5, '#3b123f'); g.addColorStop(1, '#100617');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(124,58,237,.28)';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * .22, 0); ctx.lineTo(W * .12, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * .78, 0); ctx.lineTo(W * .88, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    const table = ctx.createRadialGradient(W / 2, H * .43, 20, W / 2, H * .43, Math.max(W, H) * .65);
+    table.addColorStop(0, '#7c3aed'); table.addColorStop(.68, '#3b1b68'); table.addColorStop(1, '#1b0d35');
+    ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, H * .43, W * .44, H * .34, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = THEME.gold; ctx.lineWidth = Math.max(2, W * .008); ctx.stroke();
     const L = layout(), s = S.snap, u = U();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
@@ -608,29 +640,31 @@
     ctx.fillText('POT ' + pot + '   ·   YOU ' + mine, W / 2, H * 0.115);
 
     // seats
-    POS.forEach(p => {
+    POS.forEach((p, i) => {
       const pt = L.seats[p], sel = S.selPos === p;
+      const active = !!(s && (s.turn_position === p || s.active_position === p));
       const win = s && s.winners && s.winners.indexOf(p) >= 0;
-      if (win) {
+      if (active || win) {
         ctx.save();
         if (!REDUCED) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 26; }
-        ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 4;
+        ctx.strokeStyle = active ? '#fbbf24' : '#ffd54a'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(pt.x, pt.y, 66, 0, 7); ctx.stroke(); ctx.restore();
       }
-      // avatar
-      ctx.save();
-      ctx.fillStyle = sel ? '#ffd54a' : '#123f31';
-      ctx.beginPath(); ctx.arc(pt.x, pt.y - 62, 22, 0, 7); ctx.fill();
-      ctx.lineWidth = sel ? 3 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#ffd54a'; ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(16); ctx.fillText(p, pt.x, pt.y - 62);
-      ctx.restore();
-      // cards
+      if (seatImages[i] && seatImages[i].complete) ctx.drawImage(seatImages[i], pt.x - 60, pt.y - 38, 120, 72);
       const hands = (s && s.hands && s.hands[p]) || ['**', '**', '**'];
-      hands.forEach((f, i) => card(pt.x - L.cw * 1.15 + i * (L.cw + 5), pt.y - L.ch / 2, L.cw, L.ch, f));
-      // pot per position
-      ctx.fillStyle = '#d7f5dd'; ctx.font = u.f(13);
+      hands.forEach((f, j) => card(pt.x - L.cw * 1.15 + j * (L.cw + 5), pt.y - L.ch / 2, L.cw, L.ch, f));
+      const avatarY = pt.y + L.ch / 2 + 28;
+      ctx.save();
+      ctx.fillStyle = sel ? '#fbbf24' : '#e2e8f0';
+      ctx.beginPath(); ctx.arc(pt.x, avatarY, 15, 0, 7); ctx.fill();
+      ctx.strokeStyle = active ? '#fbbf24' : '#64748b'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#312e81'; ctx.font = 'bold ' + u.f(10); ctx.fillText('YOU', pt.x, avatarY + 1);
+      ctx.restore();
+      ctx.fillStyle = active ? '#fbbf24' : '#f8fafc'; ctx.font = 'bold ' + u.f(12);
+      ctx.fillText(SEAT_LABELS[p], pt.x, avatarY + 28);
+      ctx.fillStyle = '#e2e8f0'; ctx.font = u.f(12);
       const pv = (s && s.pots && s.pots[p]) || 0;
-      ctx.fillText(p + ' · ' + pv, pt.x, pt.y + L.ch / 2 + 16);
+      ctx.fillText('POT ' + pv, pt.x, avatarY + 45);
     });
 
     // winners banner
@@ -666,13 +700,29 @@
     ctx.save(); ctx.fillStyle = '#155e43'; ctx.beginPath(); ctx.arc(S._repeat.x, S._repeat.y, 24, 0, 7); ctx.fill();
     ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('RPT', S._repeat.x, S._repeat.y); ctx.restore();
+    S._actions = [];
+    const actionLabels = ['BLIND', 'CHAAL', 'PACK', 'SHOW', 'SIDESHOW'];
+    const actionEnabled = !!(s && (s.turn_player === S.snap.player_id || s.can_act === true));
+    const actionW = Math.min(68, (W - 24) / actionLabels.length - 4);
+    actionLabels.forEach((label, i) => {
+      const x = 12 + i * (actionW + 4), y = by + 72;
+      ctx.save();
+      ctx.globalAlpha = actionEnabled ? 1 : .42;
+      ctx.fillStyle = i === 0 ? '#166534' : '#312e81';
+      rr(x, y, actionW, 30, 8); ctx.fill();
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#fef3c7'; ctx.font = 'bold ' + u.f(9);
+      ctx.fillText(label, x + actionW / 2, y + 16);
+      ctx.restore();
+      S._actions.push({ label, x: x + actionW / 2, y: y + 15, r: Math.min(24, actionW / 2), enabled: actionEnabled });
+    });
     if (S.msg) {
       ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : (S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8');
       ctx.font = u.f(13);
-      ctx.fillText(S.msg, W / 2, by + 84);
+      ctx.fillText(S.msg, W / 2, by + 118);
     }
     ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = u.f(12);
-    ctx.fillText('tap a seat, then tap again to bet · server-authoritative', W / 2, H - 12 - SAFE.b);
+    ctx.fillText('server-authoritative table state', W / 2, H - 12 - SAFE.b);
 
     // first-load and connection states, so the table is never a blank felt
     if (!S.snap && !S._everConnected) {
@@ -701,12 +751,12 @@
     ctx.fillStyle = '#fff'; ctx.font = u.f(13);
     let lines = [];
     if (S.panel === 'help') lines = [
-      'Tap a seat (A/B/C), tap again to bet.',
+      'Choose a seat, then tap again to bet.',
       'Chips: 20 / 100 / 500 / 1K.',
       'RPT repeats your last bets.',
       'Timer is server time. Results are',
       'server-dealt and auditable.',
-      'Keys: 1-4 chip, A/B/C seat, Enter bet.',
+      'Keys: 1-4 chip, Enter bet.',
       'Tap outside to close.'];
     else if (S.panel === 'menu') lines = [
       'Sound: ' + (S.sound ? 'ON (tap ♪ to mute)' : 'OFF (tap ✕ to unmute)'),
@@ -748,6 +798,12 @@
         if (c.act === 'history') { openHistory(); return; }
       }
     }
+    for (const a of (S._actions || [])) {
+      if ((x - a.x) ** 2 + (y - a.y) ** 2 < a.r * a.r) {
+        status(a.enabled ? (a.label + ' is waiting for the server action') : 'Actions are disabled until it is your turn', a.enabled ? 'info' : 'error');
+        return;
+      }
+    }
     for (const c of (S._chips || [])) {
       if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
         S.selDenom = c.d; status('Chip ' + c.d + ' selected', 'info'); return;
@@ -760,7 +816,7 @@
       const pt = L.seats[p];
       if (Math.hypot(x - pt.x, y - pt.y) < 110) {
         if (S.selPos === p) { placeBet(p); S.selPos = null; }
-        else { S.selPos = p; status('Seat ' + p + ' selected — tap again to bet ' + S.selDenom, 'info'); }
+        else { S.selPos = p; status('Seat selected — tap again to bet ' + S.selDenom, 'info'); }
         return;
       }
     }
