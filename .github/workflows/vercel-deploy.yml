@@ -26,14 +26,22 @@ jobs:
       - name: Install dependencies
         run: npm ci --workspaces
 
-      - name: Build all workspaces
-        run: npm run build:all
+      - name: Check Vercel configuration
+        id: check
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ] || [ -z "${{ secrets.VERCEL_ORG_ID }}" ] || [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Vercel deploy skipped: secrets not configured"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Deploy to Vercel
+        if: github.ref == 'refs/heads/main' && steps.check.outputs.configured == 'true'
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
-        if: github.ref == 'refs/heads/main'

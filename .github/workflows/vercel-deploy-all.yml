@@ -24,9 +24,20 @@ jobs:
       - name: Build super-admin
         run: npm run build:super-admin
 
+      - name: Check Super Admin Vercel configuration
+        id: check
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ] || [ -z "${{ secrets.VERCEL_ORG_ID }}" ] || [ -z "${{ secrets.SUPER_ADMIN_PROJECT_ID }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Super Admin deploy skipped: secrets not configured"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy Super Admin to Vercel
         uses: amondnet/vercel-action@v25
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.check.outputs.configured == 'true'
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
@@ -52,9 +63,20 @@ jobs:
       - name: Build admin
         run: npm run build:admin
 
+      - name: Check Admin Vercel configuration
+        id: check
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ] || [ -z "${{ secrets.VERCEL_ORG_ID }}" ] || [ -z "${{ secrets.ADMIN_PROJECT_ID }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Admin deploy skipped: secrets not configured"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy Admin to Vercel
         uses: amondnet/vercel-action@v25
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.check.outputs.configured == 'true'
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
@@ -80,9 +102,20 @@ jobs:
       - name: Build player
         run: npm run build:player
 
+      - name: Check Player Vercel configuration
+        id: check
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ] || [ -z "${{ secrets.VERCEL_ORG_ID }}" ] || [ -z "${{ secrets.PLAYER_PROJECT_ID }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Player deploy skipped: secrets not configured"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy Player to Vercel
         uses: amondnet/vercel-action@v25
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.check.outputs.configured == 'true'
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
