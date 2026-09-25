@@ -113,20 +113,20 @@ class AdminConsoleTest(CountedCase):
                                  headers=OPERATOR)
         self.counted(status == 403, f"webhook changes need superadmin: {body}")
 
-def test_cross_game_wallet_requires_matching_credential(self):
+    def test_cross_game_wallet_requires_matching_credential(self):
         player = "console-wallet-player"
         status, body = wsgi_call(
             "POST", "/api/v1/staging/test-login",
             {"player": player, "room": "console-wallet-room",
-             "game": "greedy_monkey"})
+             "game": "monkey_wheel"})
         self.counted(status == 200, f"wheel login ok: {body}")
         status, body = wsgi_call(
-            "POST", "/api/v1/games/greedy_monkey/sessions",
+            "POST", "/api/v1/games/monkey_wheel/sessions",
             {"launch_token": body["data"]["launch_token"]})
         self.counted(status == 200, f"wheel session ok: {body}")
         sid = body["data"]["session_id"]
         status, body = wsgi_call(
-            "GET", "/api/v1/games/greedy_monkey/rooms/console-wallet-room/wallet",
+            "GET", "/api/v1/games/monkey_wheel/rooms/console-wallet-room/wallet",
             headers={"Authorization": f"Bearer {sid}"})
         self.counted(status == 200, f"wheel balance readable: {body}")
         self.counted(body["data"]["available"] == 20000, "welcome funds visible")
@@ -135,7 +135,7 @@ def test_cross_game_wallet_requires_matching_credential(self):
             headers={"Authorization": f"Bearer {sid}"})
         self.counted(status in (401, 403), "wheel session cannot read another game")
         status, body = wsgi_call(
-            "GET", "/api/v1/games/greedy_monkey/rooms/console-wallet-room/wallet",
+            "GET", "/api/v1/games/monkey_wheel/rooms/console-wallet-room/wallet",
             headers=AUDITOR, query=f"player={player}")
         self.counted(status == 200, f"scoped admin wallet read ok: {body}")
 

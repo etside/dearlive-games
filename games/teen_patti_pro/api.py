@@ -177,6 +177,13 @@ class Handler(BaseHTTPRequestHandler):
         from provider.router import dispatch, is_provider_path
         if self.provider_ctx is None:
             return False
+        # Only hand over paths the provider contract actually owns. Without this
+        # guard every request was forwarded to the provider router whenever a
+        # provider context existed, and any path outside its route table came
+        # back 404 "no such provider route" -- which silently killed every local
+        # admin/game route (whoami, round start, per-room wallet) on staging.
+        if not is_provider_path(path):
+            return False
         body = b""
         if method in ("POST", "PUT", "PATCH", "DELETE"):
             try:
