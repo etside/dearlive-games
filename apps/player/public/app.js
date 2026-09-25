@@ -35,10 +35,10 @@
     }
   } catch (e) { /* storage unavailable: stay in memory */ }
   function persist() {
-    try { sessionStorage.setItem("dl-player", JSON.stringify(S)); } catch (e) {}
+    try { sessionStorage.setItem("dl-player", JSON.stringify(S)); } catch (e) { void e; }
   }
   function clearPersist() {
-    try { sessionStorage.removeItem("dl-player"); } catch (e) {}
+    try { sessionStorage.removeItem("dl-player"); } catch (e) { void e; }
   }
 
   function $(id) { return document.getElementById(id); }
@@ -309,7 +309,7 @@
     try {
       var st = JSON.parse($("state").textContent || "null");
       if (st && st.round_id) rid = st.round_id;
-    } catch (e) {}
+    } catch (e) { rid = "current"; }
     api("/api/v1/games/" + encodeURIComponent(S.game) + "/rounds/" +
       encodeURIComponent(rid) + "/bets" + roomQ(), {
         method: "POST", body: body,

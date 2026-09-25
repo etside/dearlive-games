@@ -2,8 +2,6 @@
  * Games Service - Manages game engines and tables
  * Supports Teen Patti Pro, Greedy Monkey, and Baby King
  */
-import { GameCode, GameBinding, BINDINGS, canonical_code } from '../types';
-import { ProviderContext } from './context';
 
 export interface GameBinding {
   game_code: string;

@@ -41,16 +41,6 @@ export interface ProviderConfig {
     sessionTtlSeconds: number;
   };
 
-  // Redis
-  redis: {
-    host: string;
-    port: number;
-    username?: string;
-    password?: string;
-    tls: boolean;
-    db: number;
-  };
-
   // Webhooks
   webhooks: {
     secret: string;
@@ -58,18 +48,6 @@ export interface ProviderConfig {
     maxRetries: number;
     retryDelayMs: number;
   };
-
-  // Rate Limiting
-  rateLimit: {
-    windowMs: number;
-    maxRequests: number;
-    perKey: boolean;
-  };
-
-  // Webhooks
-  webhookSecret: string;
-  webhookDeliveryTimeoutMs: number;
-  webhookMaxRetries: number;
 
   // Wallet
   wallet: {
@@ -156,28 +134,6 @@ export function loadConfig(): ProviderConfig {
       providerPrefix: '/api/v1/provider',
       defaultCurrency: env.COIN_CURRENCY || 'COIN',
       sessionTtlSeconds: parseInt(env.SESSION_TTL_SECONDS || '1800', 10),
-    },
-
-    redis: {
-      host: env.REDIS_HOST || 'localhost',
-      port: parseInt(env.REDIS_PORT || '6379', 10),
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
-      tls: env.REDIS_TLS === 'true',
-      db: parseInt(env.REDIS_DB || '0', 10),
-    },
-
-    webhooks: {
-      secret: env.WEBHOOK_SECRET || 'dev-webhook-secret',
-      deliveryTimeoutMs: parseInt(env.WEBHOOK_DELIVERY_TIMEOUT_MS || '8000', 10),
-      maxRetries: parseInt(env.WEBHOOK_MAX_RETRIES || '3', 10),
-      retryDelayMs: parseInt(env.WEBHOOK_RETRY_DELAY_MS || '1000', 10),
-    },
-
-    rateLimit: {
-      windowMs: parseInt(env.RATE_LIMIT_WINDOW_MS || '60000', 10),
-      maxRequests: parseInt(env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
-      perKey: env.RATE_LIMIT_PER_KEY !== 'false',
     },
 
     webhooks: {
