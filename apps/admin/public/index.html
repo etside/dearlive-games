@@ -1,131 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DearLive Staging — Admin</title>
-<link rel="stylesheet" href="styles.css">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DearLive Operator Console</title>
+<link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<header class="top">
-  <h1>DearLive Staging · Admin</h1>
-  <p class="sub">X-Admin-Key is kept in memory only — never stored. Same-origin <code>/api/…</code>.</p>
-</header>
-
-<div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
-
-<main class="wrap">
-
-  <section class="card" aria-labelledby="h-key">
-    <h2 id="h-key">Admin key</h2>
-    <form id="key-form">
-      <div class="grid">
-        <label>X-Admin-Key
-          <input id="adminkey" name="adminkey" type="password" autocomplete="off"
-                 placeholder="paste key, kept in memory only" required>
-        </label>
-      </div>
-      <div class="row">
-        <button type="submit" id="key-btn">Use key</button>
-        <button type="button" id="key-clear" class="ghost">Forget key</button>
-      </div>
-    </form>
-    <dl class="kv" id="key-out" hidden>
-      <div><dt>key</dt><dd id="o-keyfp">–</dd></div>
-      <div><dt>admin reads</dt><dd id="o-reads">–</dd></div>
-      <div><dt>games visible</dt><dd id="o-games">–</dd></div>
-    </dl>
-    <p class="hint">The backend exposes no key-role lookup endpoint, so the role is inferred:
-      a successful <code>GET /api/v1/admin/games</code> proves a valid key with auditor rank or higher.
-      Write attempts surface the exact <code>FORBIDDEN</code> reason when the key lacks rank or game scope.</p>
-  </section>
-
-  <section class="card" aria-labelledby="h-games">
-    <h2 id="h-games">Games · enable / disable &amp; config</h2>
-    <div class="row">
-      <button type="button" id="inv-btn" class="ghost">Reload inventory</button>
-    </div>
-    <div class="tbl"><table id="games-tbl">
-      <thead><tr><th>game_id</th><th>name</th><th>status</th><th>enabled</th><th>actions</th></tr></thead>
-      <tbody><tr><td colspan="5">Enter a key and reload.</td></tr></tbody>
-    </table></div>
-    <h3>Config detail</h3>
-    <pre id="config" class="out">–</pre>
-  </section>
-
-  <section class="card" aria-labelledby="h-rounds">
-    <h2 id="h-rounds">Tables · state &amp; round controls</h2>
-    <form id="round-form">
-      <div class="grid">
-        <label>Game
-          <select id="r-game">
-            <option value="teen-patti-pro">teen-patti-pro</option>
-            <option value="greedy-lion">greedy-lion</option>
-            <option value="greedy-monkey">greedy-monkey</option>
-            <option value="baby-king">baby-king</option>
-          </select>
-        </label>
-        <label>Room / table
-          <input id="r-room" value="staging-room" maxlength="64" autocomplete="off" required>
-        </label>
-        <label>Player Bearer (read-only state views)
-          <input id="r-bearer" autocomplete="off" placeholder="optional player session_id">
-        </label>
-      </div>
-      <div class="row">
-        <button type="button" data-op="start">Start</button>
-        <button type="button" data-op="close">Close</button>
-        <button type="button" data-op="result">Result</button>
-        <button type="button" data-op="settle">Settle</button>
-        <button type="button" id="r-state" class="ghost">View state</button>
-        <button type="button" id="r-hist" class="ghost">View history</button>
-      </div>
-    </form>
-    <p class="hint">Round operations use the admin key only. State/history reads require a player
-      Bearer token (the backend has no admin-key state endpoint); without one the exact
-      authorization error is shown.</p>
-    <pre id="round-out" class="out">–</pre>
-  </section>
-
-  <section class="card" aria-labelledby="h-wallet">
-    <h2 id="h-wallet">Wallet lookup</h2>
-    <p class="hint">The backend exposes no admin-key wallet balance/transactions endpoint
-      (provider wallet routes need HMAC operator credentials). For Teen Patti you may still
-      read the existing player wallet view by supplying that player's room + Bearer session:</p>
-    <form id="wallet-form">
-      <div class="grid">
-        <label>Room
-          <input id="w-room" value="staging-room" maxlength="64" autocomplete="off">
-        </label>
-        <label>Player Bearer
-          <input id="w-bearer" autocomplete="off" placeholder="player session_id">
-        </label>
-      </div>
-      <div class="row">
-        <button type="submit" id="w-btn">View TEST balance</button>
-      </div>
-    </form>
-    <pre id="wallet-out" class="out">–</pre>
-  </section>
-
-  <section class="card" aria-labelledby="h-audit">
-    <h2 id="h-audit">Audit &amp; webhooks</h2>
-    <div class="row">
-      <button type="button" id="audit-btn" class="ghost">Reload audit</button>
-      <button type="button" id="wh-btn" class="ghost">Reload webhooks</button>
-    </div>
-    <h3>Audit entries</h3>
-    <pre id="audit" class="out">–</pre>
-    <h3>Webhook deliveries</h3>
-    <pre id="webhooks" class="out">–</pre>
-  </section>
-
-</main>
-
-<footer class="foot">
-  <a href="./">Home</a> · static build, no dependencies · keys never leave memory except per-request headers
-</footer>
-
-<script src="app.js"></script>
+<header class="shell-header"><a class="brand" href="/admin/dashboard">DearLive Operator</a><button id="logout" class="ghost" hidden>Sign out</button></header>
+<nav class="shell-nav" aria-label="Operator sections">
+<a href="/admin/dashboard">Dashboard</a><a href="/admin/economy/currency">Currency</a><a href="/admin/economy/coin-config">Coin config</a><a href="/admin/economy/packages">Packages</a><a href="/admin/economy/wallets">Wallets</a><a href="/admin/economy/players">Players</a><a href="/admin/economy/transactions">Transactions</a><a href="/admin/audit">Audit</a>
+</nav>
+<main id="app" class="shell-main"><div class="state loading">Loading…</div></main>
+<script src="/app.js"></script>
 </body>
 </html>

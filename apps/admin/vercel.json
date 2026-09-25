@@ -6,7 +6,8 @@
   "buildCommand": "echo 'static frontend: no build step'",
   "regions": ["iad1"],
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://dearlive-games.vercel.app/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://dearlive-games.vercel.app/api/:path*" },
+    { "source": "/admin/:path*", "destination": "/index.html" }
   ],
   "headers": [
     {

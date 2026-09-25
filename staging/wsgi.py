@@ -767,6 +767,23 @@ def app(environ, start_response):
         start_response(f"{status} {_http_phrase(status)}",
                        [(k, v) for k, v in resp_headers.items()])
         return [payload]
+    if (path.startswith("/api/v1/superadmin/") or
+            path.startswith("/api/v1/operator/admin/")):
+        from staging.economy import dispatch as phase3_dispatch
+        redis = None
+        try:
+            redis = ST._redis()
+            phase3 = phase3_dispatch(method, path, query, headers, body, environ, redis)
+        finally:
+            if redis is not None:
+                redis.close()
+        if phase3 is not None:
+            status, payload = phase3
+            response = json.dumps(payload).encode()
+            start_response(f"{status} {_http_phrase(status)}",
+                           [("Content-Type", "application/json"),
+                            ("Content-Length", str(len(response)))])
+            return [response]
     try:
         status, resp_headers, payload = _run_handler(method, path, query, headers, body)
     except Exception as exc:  # noqa: BLE001 - classify, then envelope
