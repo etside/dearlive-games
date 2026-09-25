@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+<defs>
+<linearGradient id="thumb-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f1c3a"/><stop offset="0.4" stop-color="#081230"/><stop offset="1" stop-color="#05081a"/></linearGradient>
+<linearGradient id="king-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="0.5" stop-color="#8b5cf6"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+<linearGradient id="king-face" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9d5ff"/><stop offset="1" stop-color="#c084fc"/></linearGradient>
+<linearGradient id="king-dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#581c87"/><stop offset="1" stop-color="#4c1d95"/></linearGradient>
+<linearGradient id="king-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+<linearGradient id="king-cape" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+<radialGradient id="king-glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#a78bfa" stop-opacity="0.4"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient>
+<filter id="king-shadow"><feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#581c87" flood-opacity="0.3"/></filter>
+</defs>
+<rect width="512" height="512" fill="url(#thumb-bg)"/>
+<ellipse cx="256" cy="360" rx="192" ry="152" fill="url(#king-body)" filter="url(#king-shadow)"/>
+<path d="M96 280 Q256 200 416 280 Q416 400 256 440 Q96 400 96 280 Z" fill="url(#king-cape)" opacity="0.9"/>
+<ellipse cx="256" cy="200" rx="128" ry="112" fill="url(#king-face)"/>
+<ellipse cx="184" cy="160" rx="32" ry="32" fill="url(#king-dark)"/>
+<ellipse cx="328" cy="160" rx="32" ry="32" fill="url(#king-dark)"/>
+<ellipse cx="184" cy="160" rx="12" ry="12" fill="#2e1065"/>
+<ellipse cx="328" cy="160" rx="12" ry="12" fill="#2e1065"/>
+<path d="M176 272 Q256 232 336 272" stroke="url(#king-dark)" stroke-width="12" stroke-linecap="round" fill="none"/>
+<ellipse cx="256" cy="120" rx="112" ry="80" fill="url(#king-gold)"/>
+<path d="M256 56 L256 24 M200 112 L312 112 M216 64 L304 64" stroke="url(#king-gold)" stroke-width="8" stroke-linecap="round" fill="none"/>
+<ellipse cx="208" cy="352" rx="40" ry="24" fill="url(#king-dark)" opacity="0.3"/>
+<ellipse cx="304" cy="352" rx="40" ry="24" fill="url(#king-dark)" opacity="0.3"/>
+<ellipse cx="256" cy="440" rx="96" ry="56" fill="url(#king-dark)" opacity="0.2"/>
+<text x="256" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="36" font-weight="800" fill="url(#king-gold)">BABY KING</text>
+</svg>

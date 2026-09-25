@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="mane-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="0.5" stop-color="#f59e0b"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+<linearGradient id="mane-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+<linearGradient id="mane-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="1" stop-color="#fef3c7"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<ellipse cx="32" cy="54" rx="24" ry="18" fill="url(#mane-body)" filter="url(#drop-shadow)"/>
+<path d="M12 42 Q32 28 52 42 Q52 58 32 68 Q12 58 12 42" fill="url(#mane-body)" opacity="0.9"/>
+<path d="M14 38 Q32 26 50 38" fill="url(#mane-highlight)" opacity="0.5"/>
+<path d="M18 44 Q32 34 46 44" fill="#ca8a04" opacity="0.4"/>
+<path d="M22 50 Q32 42 42 50" fill="#ca8a04" opacity="0.3"/>
+<ellipse cx="32" cy="20" r="10" fill="#fbbf24" opacity="0.8"/>
+<ellipse cx="32" cy="20" r="6" fill="#fef08a" opacity="0.6"/>
+<path d="M24 20 Q32 14 40 20" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+<defs>
+<linearGradient id="thumb-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a1a1a"/><stop offset="0.4" stop-color="#0d0d0d"/><stop offset="1" stop-color="#080808"/></linearGradient>
+<linearGradient id="lion-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="0.5" stop-color="#f59e0b"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+<linearGradient id="lion-face" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff8e7"/><stop offset="1" stop-color="#fef3c7"/></linearGradient>
+<linearGradient id="lion-dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#92400e"/><stop offset="1" stop-color="#78350f"/></linearGradient>
+<linearGradient id="lion-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="1" stop-color="#fbbf24"/></linearGradient>
+<linearGradient id="lion-mane" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+<radialGradient id="lion-glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fbd42a" stop-opacity="0.4"/><stop offset="1" stop-color="#fbd42a" stop-opacity="0"/></radialGradient>
+<filter id="lion-shadow"><feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#92400e" flood-opacity="0.3"/></filter>
+</defs>
+<rect width="512" height="512" fill="url(#thumb-bg)"/>
+<ellipse cx="256" cy="360" rx="192" ry="152" fill="url(#lion-body)" filter="url(#lion-shadow)"/>
+<path d="M96 280 Q256 200 416 280 Q416 400 256 440 Q96 400 96 280 Z" fill="url(#lion-mane)" opacity="0.9"/>
+<ellipse cx="256" cy="200" rx="128" ry="112" fill="url(#lion-face)"/>
+<ellipse cx="184" cy="160" rx="32" ry="32" fill="url(#lion-dark)"/>
+<ellipse cx="328" cy="160" rx="32" ry="32" fill="url(#lion-dark)"/>
+<ellipse cx="184" cy="160" rx="12" ry="12" fill="#422006"/>
+<ellipse cx="328" cy="160" rx="12" ry="12" fill="#422006"/>
+<path d="M176 272 Q256 232 336 272" stroke="url(#lion-dark)" stroke-width="12" stroke-linecap="round" fill="none"/>
+<ellipse cx="256" cy="120" rx="112" ry="80" fill="url(#lion-gold)"/>
+<path d="M256 56 L256 24 M200 112 L312 112 M216 64 L304 64" stroke="url(#lion-gold)" stroke-width="8" stroke-linecap="round" fill="none"/>
+<ellipse cx="208" cy="352" rx="40" ry="24" fill="url(#lion-dark)" opacity="0.3"/>
+<ellipse cx="304" cy="352" rx="40" ry="24" fill="url(#lion-dark)" opacity="0.3"/>
+<ellipse cx="256" cy="440" rx="96" ry="56" fill="url(#lion-dark)" opacity="0.2"/>
+<text x="256" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="36" font-weight="800" fill="url(#lion-gold)">GREEDY LION</text>
+</svg>

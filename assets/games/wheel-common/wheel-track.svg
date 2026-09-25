@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+<defs>
+<linearGradient id="track-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a1a1a"/><stop offset="1" stop-color="#0d0d0d"/></linearGradient>
+<linearGradient id="track-accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fbbf24"/><stop offset="0.5" stop-color="#f59e0b"/><stop offset="1" stop-color="#fbbf24"/></linearGradient>
+<linearGradient id="track-divider" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#374151"/><stop offset="0.5" stop-color="#4b5563"/><stop offset="1" stop-color="#374151"/></linearGradient>
+</defs>
+<circle cx="64" cy="64" r="58" fill="url(#track-bg)" stroke="#374151" stroke-width="2"/>
+<circle cx="64" cy="64" r="46" fill="none" stroke="url(#track-divider)" stroke-width="1" stroke-dasharray="8 4"/>
+<circle cx="64" cy="64" r="34" fill="none" stroke="url(#track-divider)" stroke-width="1" stroke-dasharray="4 4"/>
+<circle cx="64" cy="64" r="12" fill="#1a1a1a" stroke="url(#track-accent)" stroke-width="1.5"/>
+<circle cx="64" cy="64" r="4" fill="url(#track-accent)"/>
+</svg>

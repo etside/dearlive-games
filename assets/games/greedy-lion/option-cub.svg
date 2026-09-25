@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="cub-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde047"/><stop offset="0.5" stop-color="#facc15"/><stop offset="1" stop-color="#eab308"/></linearGradient>
+<linearGradient id="cub-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eab308"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+<linearGradient id="cub-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="1" stop-color="#fef9c3"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<ellipse cx="32" cy="78" rx="28" ry="22" fill="url(#cub-body)" filter="url(#drop-shadow)"/>
+<ellipse cx="32" cy="38" rx="22" ry="18" fill="url(#cub-face)"/>
+<ellipse cx="42" cy="28" rx="8" ry="8" fill="url(#cub-dark)"/>
+<ellipse cx="22" cy="28" rx="8" ry="8" fill="url(#cub-dark)"/>
+<ellipse cx="42" cy="28" rx="3" ry="3" fill="#422006"/>
+<ellipse cx="22" cy="28" rx="3" ry="3" fill="#422006"/>
+<path d="M42 54 Q32 48 22 54" stroke="#78350f" stroke-width="3" stroke-linecap="round" fill="none"/>
+<ellipse cx="42" cy="74" rx="8" ry="5" fill="#166534" opacity="0.3"/>
+<ellipse cx="22" cy="74" rx="8" ry="5" fill="#166534" opacity="0.3"/>
+<ellipse cx="32" cy="90" rx="18" ry="10" fill="#166534" opacity="0.2"/>
+<circle cx="32" cy="32" r="2" fill="#fbbf24" opacity="0.7"/>
+</svg>

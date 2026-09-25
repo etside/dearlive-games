@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="lc-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="0.5" stop-color="#fbbf24"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+<linearGradient id="lc-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+<linearGradient id="lc-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="1" stop-color="#fef9c3"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<ellipse cx="32" cy="44" rx="22" ry="20" fill="url(#lc-gold)" filter="url(#drop-shadow)"/>
+<path d="M16 38 Q32 22 48 38 Q48 50 32 58 Q16 50 16 38" fill="url(#lc-gold)" filter="url(#drop-shadow)"/>
+<path d="M20 34 Q32 24 44 34 Q44 46 32 54 Q20 46 20 34" fill="url(#lc-shade)" opacity="0.4"/>
+<ellipse cx="32" cy="28" r="18" ry="14" fill="url(#lc-gold)" opacity="0.3"/>
+<path d="M28 16 L32 8 L36 16" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M24 20 Q32 14 40 20" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+<path d="M28 22 Q32 16 36 22" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.5"/>
+<ellipse cx="32" cy="30" r="4" fill="#fff" opacity="0.8"/>
+</svg>
