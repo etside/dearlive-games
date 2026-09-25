@@ -129,11 +129,13 @@ class Handler(BaseHTTPRequestHandler):
         return svc
 
     # -- helpers --
-    def send(self, status, payload):
+    def send(self, status, payload, headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -145,8 +147,12 @@ class Handler(BaseHTTPRequestHandler):
                  E.E_VALIDATION: 422, E.E_WINDOW_CLOSED: 409, E.E_INSUFFICIENT: 402,
                  E.E_DUPLICATE: 409, E.E_CONFLICT: 409, E.E_RATE_LIMIT: 429,
                  "INVALID_TOKEN": 401, E.E_TBC_BLOCKED: 403}
+        headers = {}
+        if getattr(exc, "retry_after", 0):
+            headers["Retry-After"] = str(exc.retry_after)
         self.send(table.get(exc.code, 500),
-                  E.err(str(exc), exc.code if exc.code in table else E.E_INTERNAL))
+                  E.err(str(exc), exc.code if exc.code in table else E.E_INTERNAL),
+                  headers=headers)
 
     def raw_body(self, max_bytes=1 << 20) -> bytes:
         """Read the request body verbatim. The provider HMAC is computed over

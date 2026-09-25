@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 from common import envelope as E
 from common.audit import AuditLog
 from common.idempotency import (IdempotencyConflict, IdempotencyStore,
-                                MemoryIdempotencyStore)
+                                MemoryIdempotencyStore, ClaimResult)
 from common.lifecycle import RoundStatus, LifecycleError, transition
 from common.session import (MemorySessionStore, MemoryTokenStore, SessionStore,
                             TokenError, TokenStore)
@@ -313,19 +313,32 @@ class WheelService:
             raise ServiceError(E.E_INSUFFICIENT, "Insufficient balance")
         payload_hash = _h({"room": room_id, "player": player_id,
                            "opt": option_id, "amt": amount})
+        key = f"bet:{idempotency_key}"
         try:
-            replay = self.idempotency.claim(f"bet:{idempotency_key}", payload_hash)
+            outcome = self.idempotency.claim(key, payload_hash)
         except IdempotencyConflict:
             raise ServiceError(E.E_DUPLICATE, "Idempotency key reused with different payload")
-        if replay is not None:
-            return replay
+        if outcome.state is ClaimResult.REPLAY:
+            return outcome.result
+        if outcome.state in (ClaimResult.IN_FLIGHT, ClaimResult.NOT_SEEN):
+            # Another worker holds this key; proceeding would double-debit.
+            raise ServiceError(E.E_CONFLICT,
+                               "A request with this Idempotency-Key is in flight",
+                               retry_after=1)
         try:
             self.wallet.debit(player_id, amount, ref=f"bet:{room_id}:{idempotency_key}",
-                              idempotency_key=f"bet:{idempotency_key}")
+                              idempotency_key=key)
         except InsufficientBalance:
+            self.idempotency.release(key, payload_hash)  # no money moved
             raise ServiceError(E.E_INSUFFICIENT, "Insufficient balance")
         except WalletError as exc:
+            self.idempotency.release(key, payload_hash)
             raise ServiceError(E.E_INTERNAL, f"Wallet debit failed: {exc}")
+        except Exception as exc:
+            # Non-WalletError from a real adapter must still release the key.
+            self.idempotency.release(key, payload_hash)
+            raise ServiceError(E.E_INTERNAL,
+                               f"Wallet debit failed: {type(exc).__name__}: {exc}")
         with room.lock:
             r = room.round
             for b in r.bets:  # idempotent replay under lock
@@ -334,7 +347,7 @@ class WheelService:
                         raise ServiceError(E.E_CONFLICT, "DUPLICATE_REQUEST")
                     result = {"bet_id": b.bet_id, "round_id": b.round_id,
                               "option_id": option_id, "amount": amount}
-                    self.idempotency.complete(f"bet:{idempotency_key}", result)
+                    self.idempotency.complete(key, result)
                     return result
             decision_time = self._now()
             if not (r.status == RoundStatus.BETTING_OPEN
@@ -342,6 +355,7 @@ class WheelService:
                 self.wallet.credit(player_id, amount,
                                    ref=f"bet-void:{room_id}:{idempotency_key}",
                                    idempotency_key=f"bet-void:{idempotency_key}")
+                self.idempotency.release(key, payload_hash)  # no bet was created
                 self._fire("bet.rejected", {"room_id": room_id, "player_id": player_id,
                                             "reason": "BETTING_CLOSED_RACE_REFUNDED"})
                 raise ServiceError(E.E_WINDOW_CLOSED, "Betting closed (stake refunded)")
@@ -359,7 +373,7 @@ class WheelService:
         result = {"bet_id": bet.bet_id, "round_id": bet.round_id,
                   "option_id": option_id, "amount": amount,
                   "decision_time": bet.decision_time_ms}
-        self.idempotency.complete(f"bet:{idempotency_key}", result)
+        self.idempotency.complete(key, result)
         self.audit.record(player_id, "bet.place", "bet", bet.bet_id, after=result)
         self._fire("bet.accepted", {"bet_id": bet.bet_id, "room_id": room_id, **result})
         return result

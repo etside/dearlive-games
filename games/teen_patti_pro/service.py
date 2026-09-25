@@ -16,7 +16,8 @@ from typing import Any, Dict, List
 
 from common import envelope as E
 from common.audit import AuditLog
-from common.idempotency import IdempotencyStore, MemoryIdempotencyStore, IdempotencyConflict
+from common.idempotency import (IdempotencyStore, MemoryIdempotencyStore,
+                                IdempotencyConflict, ClaimResult)
 from common.lifecycle import (RoundStatus, SETTLE_MAX_ATTEMPTS, needs_settlement_retry)
 from common.session import TokenStore, MemoryTokenStore, SessionStore, MemorySessionStore, TokenError
 from common.wallet import WalletAdapter, MemoryWallet, InsufficientBalance, WalletError
@@ -30,9 +31,10 @@ def _h(payload: dict) -> str:
 
 
 class ServiceError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, retry_after: int = 0):
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
 
 
 class TeenPattiService:
@@ -170,25 +172,45 @@ class TeenPattiService:
             self._fire("bet.rejected", {"room_id": room_id, "player_id": player_id,
                                         "reason": "INSUFFICIENT_BALANCE"})
             raise ServiceError(E.E_INSUFFICIENT, "Insufficient balance")
-        # 8: idempotency claim BEFORE money moves
+        # 8: idempotency claim BEFORE money moves. claim() returns an explicit
+        # state so a fresh claim can never be confused with an in-flight
+        # duplicate (the old contract returned None for both).
         payload_hash = _h({"room": room_id, "player": player_id, "pos": position, "amt": amount})
+        key = f"bet:{idempotency_key}"
         try:
-            replay = self.idempotency.claim(f"bet:{idempotency_key}", payload_hash)
+            outcome = self.idempotency.claim(key, payload_hash)
         except IdempotencyConflict:
             raise ServiceError(E.E_DUPLICATE, "Idempotency key reused with different payload")
-        if replay is not None:
-            return replay  # exact replay, no second debit
+        if outcome.state is ClaimResult.REPLAY:
+            return outcome.result  # exact replay, no second debit
+        if outcome.state in (ClaimResult.IN_FLIGHT, ClaimResult.NOT_SEEN):
+            # Another worker holds this key. Do NOT execute: proceeding here is
+            # what allowed a duplicate debit. Client should retry.
+            raise ServiceError(E.E_CONFLICT,
+                               "A request with this Idempotency-Key is in flight",
+                               retry_after=1)
         # 9: atomic debit (adapter idempotent on key too)
         try:
             self.wallet.debit(player_id, amount, ref=f"bet:{room_id}:{idempotency_key}",
-                              idempotency_key=f"bet:{idempotency_key}")
+                              idempotency_key=key)
         except InsufficientBalance:
+            # No money moved: release so the client can retry this key.
+            self.idempotency.release(key, payload_hash)
             raise ServiceError(E.E_INSUFFICIENT, "Insufficient balance")
         except WalletError as exc:
+            self.idempotency.release(key, payload_hash)
             raise ServiceError(E.E_INTERNAL, f"Wallet debit failed: {exc}")
+        except Exception as exc:
+            # An adapter that leaks a non-WalletError (transport error, timeout)
+            # must still release, or the player is locked out of this key for
+            # the full TTL even though no money moved.
+            self.idempotency.release(key, payload_hash)
+            raise ServiceError(E.E_INTERNAL,
+                               f"Wallet debit failed: {type(exc).__name__}: {exc}")
         # 10: create bet under room lock (re-checks window; race-fixed).
         # ANY failure here happens AFTER debit -> always compensate (append-only
-        # credit); a lost debit is worse than a redundant refund row.
+        # credit); a lost debit is worse than a redundant refund row. The bet
+        # was NOT created, so the key is safe to release and let them retry.
         try:
             bet = room.place_bet(player_id, position, amount, idempotency_key, self._now())
         except LifecycleError as exc:
@@ -196,6 +218,7 @@ class TeenPattiService:
             self.wallet.credit(player_id, amount,
                                ref=f"bet-void:{room_id}:{idempotency_key}",
                                idempotency_key=f"bet-void:{idempotency_key}")
+            self.idempotency.release(key, payload_hash)
             if "BETTING_CLOSED" in msg:
                 self._fire("bet.rejected", {"room_id": room_id, "player_id": player_id,
                                             "reason": "BETTING_CLOSED_RACE_REFUNDED"})
@@ -205,7 +228,9 @@ class TeenPattiService:
             raise ServiceError(E.E_CONFLICT, msg + " (stake refunded)")
         result = {"bet_id": bet.bet_id, "round_id": bet.round_id, "position": position,
                   "amount": amount, "decision_time": bet.decision_time_ms}
-        self.idempotency.complete(f"bet:{idempotency_key}", result)
+        # Past this point the bet EXISTS and money moved: do NOT release the
+        # key, or a retry could place a second bet against the same stake.
+        self.idempotency.complete(key, result)
         self.audit.record(player_id, "bet.place", "bet", bet.bet_id, after=result)
         self._fire("bet.accepted", {"bet_id": bet.bet_id, "room_id": room_id, **result})
         self._skill("on_bet", {"room_id": room_id, "bet_id": bet.bet_id})

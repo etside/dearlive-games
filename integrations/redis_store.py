@@ -21,7 +21,8 @@ import ssl
 import time
 from typing import Any, Dict, Optional
 
-from common.idempotency import IdempotencyConflict, IdempotencyStore
+from common.idempotency import (IdempotencyConflict, IdempotencyStore, ClaimResult,
+                                ClaimOutcome)
 from common.session import (LaunchToken, Session, SessionStore, TokenError,
                             TokenStore)
 
@@ -257,24 +258,46 @@ class RedisSessionStore(SessionStore):
 
 
 class RedisIdempotencyStore(IdempotencyStore):
-    """SET NX PX claim + result attach. Prefix dearlive:idem:."""
+    """SET NX EX claim + result attach. Prefix dearlive:idem:.
+
+    Mirrors MemoryIdempotencyStore's explicit ClaimResult contract. The
+    previous version returned a bare None for both a fresh claim and an
+    in-flight duplicate, which is the same ambiguity the memory store had.
+    """
 
     def __init__(self, redis: Optional[MinimalRedis] = None, prefix: str = "dearlive:idem:"):
         self.redis = redis or MinimalRedis()
         self.prefix = prefix
 
-    def claim(self, key: str, payload_hash: str, ttl_s: int = 86400) -> Optional[Dict[str, Any]]:
+    def _read(self, key: str):
         raw = self.redis.command("GET", self.prefix + key)
-        if raw is not None:
-            ent = json.loads(raw)
-            if ent.get("payload_hash") != payload_hash:
-                raise IdempotencyConflict(key)
-            return ent.get("result")
-        ent = json.dumps({"payload_hash": payload_hash, "result": None})
-        ok = self.redis.command("SET", self.prefix + key, ent, "NX", "EX", str(ttl_s))
-        if ok is None:  # raced
+        return json.loads(raw) if raw is not None else None
+
+    def _check_payload(self, key: str, ent: dict, payload_hash: str) -> None:
+        if ent.get("payload_hash") != payload_hash:
+            raise IdempotencyConflict(key)
+
+    def peek(self, key: str, payload_hash: str) -> ClaimOutcome:
+        ent = self._read(key)
+        if ent is None:
+            return ClaimOutcome(ClaimResult.NOT_SEEN)
+        self._check_payload(key, ent, payload_hash)
+        if ent.get("result") is None:
+            return ClaimOutcome(ClaimResult.IN_FLIGHT)
+        return ClaimOutcome(ClaimResult.REPLAY, ent.get("result"))
+
+    def claim(self, key: str, payload_hash: str, ttl_s: int = 86400) -> ClaimOutcome:
+        ent = self._read(key)
+        if ent is not None:
+            self._check_payload(key, ent, payload_hash)
+            if ent.get("result") is None:
+                return ClaimOutcome(ClaimResult.IN_FLIGHT)
+            return ClaimOutcome(ClaimResult.REPLAY, ent.get("result"))
+        new = json.dumps({"payload_hash": payload_hash, "result": None})
+        ok = self.redis.command("SET", self.prefix + key, new, "NX", "EX", str(ttl_s))
+        if ok is None:  # raced: another worker inserted between GET and SET
             return self.claim(key, payload_hash, ttl_s)
-        return None
+        return ClaimOutcome(ClaimResult.CLAIMED)
 
     def complete(self, key: str, result: Dict[str, Any]) -> None:
         raw = self.redis.command("GET", self.prefix + key)
@@ -283,3 +306,20 @@ class RedisIdempotencyStore(IdempotencyStore):
         ent = json.loads(raw)
         ent["result"] = result
         self.redis.command("SET", self.prefix + key, json.dumps(ent), "EX", "86400")
+
+    def release(self, key: str, payload_hash: Optional[str] = None) -> bool:
+        """Drop an in-flight claim. Never drops a completed result.
+
+        GET-then-DEL is not atomic, so this is a best-effort release: a worker
+        that completes between the read and the delete would lose its result.
+        Callers only release on failure paths where nothing completed, and the
+        read guard makes that safe in practice. A Lua CAS would be stronger if
+        the Redis client grows EVAL support.
+        """
+        ent = self._read(key)
+        if ent is None or ent.get("result") is not None:
+            return False
+        if payload_hash is not None and ent.get("payload_hash") != payload_hash:
+            return False
+        self.redis.command("DEL", self.prefix + key)
+        return True
