@@ -36,20 +36,6 @@ BABY_KING_DEFAULT_OPTIONS = (
                 icon="asset://baby-king/baby_crown", color_hex="#facc15", hot=True),
 )
 
-GREEDY_LION_DEFAULT_OPTIONS = (
-    WheelOption("cub", "Lion Cub", weight=30, multiplier=2.0,
-                icon="asset://greedy-lion/cub", color_hex="#fde68a"),
-    WheelOption("mane", "Golden Mane", weight=25, multiplier=2.5,
-                icon="asset://greedy-lion/mane", color_hex="#f59e0b"),
-    WheelOption("pride", "Pride", weight=20, multiplier=3.0,
-                icon="asset://greedy-lion/pride", color_hex="#f97316", hot=True),
-    WheelOption("savanna", "Savanna King", weight=15, multiplier=5.0,
-                icon="asset://greedy-lion/savanna", color_hex="#ef4444"),
-    WheelOption("lion_crown", "Lion Crown", weight=5, multiplier=20.0,
-                icon="asset://greedy-lion/lion_crown", color_hex="#facc15", hot=True),
-)
-
-
 def _fresh(defaults: tuple) -> tuple:
     """Copy the option template so callers cannot mutate shared state.
 
@@ -68,8 +54,3 @@ def greedy_config() -> WheelConfig:
 def baby_king_config() -> WheelConfig:
     return WheelConfig(game_id="baby-king", version="baby-king-1.0.0-tbc",
                        options=_fresh(BABY_KING_DEFAULT_OPTIONS))
-
-
-def greedy_lion_config() -> WheelConfig:
-    return WheelConfig(game_id="greedy-lion", version="greedy-lion-1.0.0-tbc",
-                       options=_fresh(GREEDY_LION_DEFAULT_OPTIONS))

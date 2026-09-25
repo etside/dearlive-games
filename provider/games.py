@@ -19,7 +19,7 @@ BABY_KING_CODE = "baby_king"
 # stale lion references resolve to a clear 404/410 instead of 500.
 
 # URL segment per game, plus the aliases the existing clients use.
-SLUGS = {TEEN_CODE: "teen-patti", MONKEY_CODE: "greedy-monkey",
+SLUGS = {TEEN_CODE: "teen-patti-pro", MONKEY_CODE: "greedy-monkey",
          BABY_KING_CODE: "baby-king"}
 ALIASES = {
     TEEN_CODE: {TEEN_CODE, "teen-patti-pro", "teenpatti", "teen_patti"},

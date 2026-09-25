@@ -4,15 +4,15 @@
 import { ProviderContext, buildContext } from './context';
 import { authenticateRequest, AuthError } from '../auth';
 import { ProviderWallet } from '../wallet/provider_wallet';
-import { canonical_code, BINDINGS, binding_for_slug, binding_for_code, TEEN_CODE, LION_CODE, MONKEY_CODE } from './games';
+import { canonical_code, BINDINGS } from './games';
 import { TableCatalog, list_tables, table_detail, room_status, select_table, seat_count } from './tables';
 import { ProviderError, ProviderErrorCode } from './errors';
 import { ProviderContext, buildContext } from './context';
 import { Request, Response } from './types';
 
 const PROVIDER_PREFIX = '/api/v1/provider';
-const GAME_SLUGS = ['teen-patti', 'greedy-lion', 'monkey-wheel'];
-const GAME_SLUG_PATTERN = '(teen-patti|greedy-lion|monkey-wheel)';
+const GAME_SLUGS = ['teen-patti-pro', 'greedy-monkey', 'baby-king'];
+const GAME_SLUG_PATTERN = '(teen-patti-pro|greedy-monkey|baby-king)';
 
 export async function handleRequest(
   method: string,
@@ -75,7 +75,7 @@ function isProviderPath(path: string): boolean {
   if (path === '/openapi.json') return true;
   if (path.startsWith('/api/v1/provider/')) return true;
   if (path === '/api/v1/games') return true;
-  if (path.match(/^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\//)) return true;
+  if (path.match(/^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\//)) return true;
   if (path === '/api/v1/sessions' || path.match(/^\/api\/v1\/sessions\/[^/]+$/)) return true;
   if (path.startsWith('/api/v1/players/')) return true;
   if (path.startsWith('/api/v1/wallet/')) return true;
@@ -98,14 +98,14 @@ function matchRoute(method: string, path: string): Route | null {
     { method: 'POST', pattern: /^\/api\/v1\/sessions$/, handler: h_create_session, auth: 'hmac_or_token' },
     { method: 'GET', pattern: /^\/api\/v1\/sessions\/([^/]+)$/, handler: h_get_session, auth: 'hmac_or_token' },
     { method: 'DELETE', pattern: /^\/api\/v1\/sessions\/([^/]+)$/, handler: h_delete_session, auth: 'hmac' },
-    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables$/, handler: h_list_tables, auth: 'hmac' },
-    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)$/, handler: h_table_detail, auth: 'hmac' },
-    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)\/choices$/, handler: h_choices, auth: 'hmac' },
-    { method: 'POST', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)\/join$/, handler: h_join, auth: 'hmac' },
-    { method: 'POST', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)\/leave$/, handler: h_leave, auth: 'hmac' },
-    { method: 'POST', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)\/action$/, handler: h_action, auth: 'hmac' },
-    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)\/state$/, handler: h_state, auth: 'hmac' },
-    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti|greedy-lion|monkey-wheel)\/tables\/([^/]+)\/history$/, handler: h_history, auth: 'hmac' },
+    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables$/, handler: h_list_tables, auth: 'hmac' },
+    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)$/, handler: h_table_detail, auth: 'hmac' },
+    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)\/choices$/, handler: h_choices, auth: 'hmac' },
+    { method: 'POST', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)\/join$/, handler: h_join, auth: 'hmac' },
+    { method: 'POST', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)\/leave$/, handler: h_leave, auth: 'hmac' },
+    { method: 'POST', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)\/action$/, handler: h_action, auth: 'hmac' },
+    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)\/state$/, handler: h_state, auth: 'hmac' },
+    { method: 'GET', pattern: /^\/api\/v1\/(teen-patti-pro|greedy-monkey|baby-king)\/tables\/([^/]+)\/history$/, handler: h_history, auth: 'hmac' },
     { method: 'GET', pattern: /^\/api\/v1\/players\/([^/]+)\/balance$/, handler: h_balance, auth: 'hmac' },
     { method: 'POST', pattern: /^\/api\/v1\/wallet\/debit$/, handler: h_debit, auth: 'hmac' },
     { method: 'POST', pattern: /^\/api\/v1\/wallet\/credit$/, handler: h_credit, auth: 'hmac' },

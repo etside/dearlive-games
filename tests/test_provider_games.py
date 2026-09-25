@@ -29,7 +29,7 @@ from provider.router import dispatch, is_provider_path
 
 API_KEY = "tp_multi"
 API_SECRET = "multi-game-secret"
-GAMES = [(TEEN_CODE, "teen-patti", "position"),
+GAMES = [(TEEN_CODE, "teen-patti-pro", "position"),
          (MONKEY_CODE, "greedy-monkey", "option_id"),
          (BABY_KING_CODE, "baby-king", "option_id")]
 DENOMS = (20, 100, 500, 1000)
@@ -77,6 +77,18 @@ class GameRegistryTest(unittest.TestCase):
         for code, slug, _ in GAMES:
             self.assertEqual(binding_for_slug(slug).game_code, code)
         self.assertIsNone(binding_for_slug("poker"))
+
+    def test_registry_has_exactly_three_required_slugs(self):
+        self.assertEqual(
+            [binding.slug for binding in BINDINGS.values()],
+            ["teen-patti-pro", "greedy-monkey", "baby-king"],
+        )
+
+    def test_games_response_has_no_stale_slugs(self):
+        games = [binding.slug for binding in BINDINGS.values()]
+        self.assertEqual(games, ["teen-patti-pro", "greedy-monkey", "baby-king"])
+        self.assertNotIn("greedy-lion", games)
+        self.assertNotIn("monkey-wheel", games)
 
     def test_unknown_game_path_is_not_a_provider_path(self):
         self.assertFalse(is_provider_path("/api/v1/poker/tables"))

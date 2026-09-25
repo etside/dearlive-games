@@ -88,12 +88,12 @@ export interface ProviderConfig {
       confirmed: boolean;
       tableCatalog: string;
     };
-    greedy_lion: {
+    greedy_monkey: {
       enabled: boolean;
       confirmed: boolean;
       tableCatalog: string;
     };
-    monkey_wheel: {
+    baby_king: {
       enabled: boolean;
       confirmed: boolean;
       tableCatalog: string;
@@ -202,15 +202,15 @@ export function loadConfig(): ProviderConfig {
         confirmed: env.TEEN_PATTI_CONFIRMED === 'true',
         tableCatalog: env.TEEN_PATTI_TABLE_CATALOG || 'default',
       },
-      greedy_lion: {
-        enabled: env.GREEDY_LION_ENABLED !== 'false',
-        confirmed: env.GREEDY_LION_CONFIRMED === 'true',
-        tableCatalog: env.GREEDY_LION_TABLE_CATALOG || 'default',
+      greedy_monkey: {
+        enabled: env.GREEDY_MONKEY_ENABLED !== 'false',
+        confirmed: env.GREEDY_MONKEY_CONFIRMED === 'true',
+        tableCatalog: env.GREEDY_MONKEY_TABLE_CATALOG || 'default',
       },
-      monkey_wheel: {
-        enabled: env.MONKEY_WHEEL_ENABLED !== 'false',
-        confirmed: env.MONKEY_WHEEL_CONFIRMED === 'true',
-        tableCatalog: env.MONKEY_WHEEL_TABLE_CATALOG || 'default',
+      baby_king: {
+        enabled: env.BABY_KING_ENABLED !== 'false',
+        confirmed: env.BABY_KING_CONFIRMED === 'true',
+        tableCatalog: env.BABY_KING_TABLE_CATALOG || 'default',
       },
     },
 

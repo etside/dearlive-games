@@ -3,7 +3,7 @@
  */
 
 // Game identification
-export type GameCode = 'teen_patti_pro' | 'greedy_lion' | 'monkey_wheel';
+export type GameCode = 'teen_patti_pro' | 'greedy_monkey' | 'baby_king';
 export type GameKind = 'table_game' | 'wheel';
 
 export interface GameInfo {

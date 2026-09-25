@@ -1,6 +1,6 @@
 /**
  * Games Service - Manages game engines and tables
- * Supports Teen Patti Pro, Greedy Lion, and Monkey Wheel
+ * Supports Teen Patti Pro, Greedy Monkey, and Baby King
  */
 import { GameCode, GameBinding, BINDINGS, canonical_code } from '../types';
 import { ProviderContext } from './context';
@@ -37,29 +37,29 @@ export const BINDINGS: Record<string, any> = {
     choice_field: 'position',
     default_tables: ['teen-patti-low', 'teen-patti-mid', 'teen-patti-high'],
   },
-  greedy_lion: {
-    game_code: 'greedy_lion',
-    label: 'Greedy Lion',
+  greedy_monkey: {
+    game_code: 'greedy_monkey',
+    label: 'Greedy Monkey',
     kind: 'wheel',
     action_field: 'option_id',
     choice_field: 'option_id',
-    default_tables: ['greedy-lion-low', 'greedy-lion-mid', 'greedy-lion-high'],
+    default_tables: ['greedy-monkey-low', 'greedy-monkey-mid', 'greedy-monkey-high'],
   },
-  monkey_wheel: {
-    game_code: 'monkey_wheel',
-    label: 'Monkey Wheel',
+  baby_king: {
+    game_code: 'baby_king',
+    label: 'Baby King',
     kind: 'wheel',
     action_field: 'option_id',
     choice_field: 'option_id',
-    default_tables: ['monkey-wheel-low', 'monkey-wheel-mid', 'monkey-wheel-high'],
+    default_tables: ['baby-king-low', 'baby-king-mid', 'baby-king-high'],
   },
 };
 
 export function canonical_code(raw: string): string {
   const code = String(raw || 'teen_patti_pro').toLowerCase();
   if (['teen_patti_pro', 'teen-patti-pro', 'teenpatti'].includes(code)) return 'teen_patti_pro';
-  if (['greedy-lion', 'greedy_lion'].includes(code)) return 'greedy_lion';
-  if (['monkey-wheel', 'monkey_wheel', 'greedy-monkey', 'greedy_monkey'].includes(code)) return 'monkey_wheel';
+  if (['greedy-monkey', 'greedy_monkey'].includes(code)) return 'greedy_monkey';
+  if (['baby-king', 'baby_king'].includes(code)) return 'baby_king';
   return 'teen_patti_pro';
 }
 

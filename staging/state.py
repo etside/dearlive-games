@@ -67,8 +67,7 @@ def build_services():
     from common.config import Settings
     from games.teen_patti_pro.config import TeenPattiConfig
     from games.teen_patti_pro.service import TeenPattiService
-    from games.wheel_common.configs import (baby_king_config, greedy_config,
-                                            greedy_lion_config)
+    from games.wheel_common.configs import baby_king_config, greedy_config
     from games.wheel_common.service import WheelService
     from integrations.redis_store import (RedisIdempotencyStore,
                                           RedisSessionStore, RedisTokenStore)
@@ -86,7 +85,7 @@ def build_services():
                             sessions=sessions, idempotency=idem,
                             webhook_secret="staging-secret")
     wheels = {}
-    for mk in (greedy_config, baby_king_config, greedy_lion_config):
+    for mk in (greedy_config, baby_king_config):
         wc = mk()
         wc.confirmed = True
         wheels[wc.game_id] = WheelService(

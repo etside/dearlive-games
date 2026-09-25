@@ -544,6 +544,7 @@ class Handler(BaseHTTPRequestHandler):
                 import_builtin_games()
                 games = catalog()
                 for g in games:
+                    g["slug"] = g["game_id"]
                     if g["game_id"] == "teen-patti-pro":
                         g["config_version"] = self.svc.config.version
                 return self.ok(games)

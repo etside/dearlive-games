@@ -295,6 +295,7 @@ def h_games(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
         seats = [t["max_players"] for t in tables]
         games.append({
             "game_code": code,
+            "slug": binding.slug,
             "name": binding.label,
             "status": "live",
             "kind": binding.kind,
@@ -723,7 +724,7 @@ def h_launch(ctx: ProviderContext, req: Request, token: str) -> Tuple[int, dict]
     return 302, {"__redirect__": location}
 
 
-GAME_SLUG = r"(teen-patti|greedy-monkey|baby-king|monkey-wheel)"
+GAME_SLUG = r"(teen-patti|teen-patti-pro|greedy-monkey|baby-king)"
 
 # ------------------------------------------------------------------ routes
 AUTH_HMAC = "hmac"
