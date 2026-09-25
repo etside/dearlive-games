@@ -9,12 +9,14 @@
     { "source": "/api/:path*", "destination": "https://dearlive-games.vercel.app/api/:path*" },
     { "source": "/teen-patti-pro", "destination": "https://dearlive-games.vercel.app/teen-patti-pro/" },
     { "source": "/teen-patti-pro/:path*", "destination": "https://dearlive-games.vercel.app/teen-patti-pro/:path*" },
-    { "source": "/greedy-lion", "destination": "https://dearlive-games.vercel.app/greedy-lion/" },
-    { "source": "/greedy-lion/:path*", "destination": "https://dearlive-games.vercel.app/greedy-lion/:path*" },
+    { "source": "/greedy-lion", "destination": "https://dearlive-games.vercel.app/greedy-monkey/" },
+    { "source": "/greedy-lion/:path*", "destination": "https://dearlive-games.vercel.app/greedy-monkey/:path*" },
     { "source": "/greedy-monkey", "destination": "https://dearlive-games.vercel.app/greedy-monkey/" },
     { "source": "/greedy-monkey/:path*", "destination": "https://dearlive-games.vercel.app/greedy-monkey/:path*" },
-    { "source": "/monkey-wheel", "destination": "https://dearlive-games.vercel.app/monkey-wheel/" },
-    { "source": "/monkey-wheel/:path*", "destination": "https://dearlive-games.vercel.app/monkey-wheel/:path*" }
+    { "source": "/monkey-wheel", "destination": "https://dearlive-games.vercel.app/greedy-monkey/" },
+    { "source": "/monkey-wheel/:path*", "destination": "https://dearlive-games.vercel.app/greedy-monkey/:path*" },
+    { "source": "/baby-king", "destination": "https://dearlive-games.vercel.app/baby-king/" },
+    { "source": "/baby-king/:path*", "destination": "https://dearlive-games.vercel.app/baby-king/:path*" }
   ],
   "headers": [
     {

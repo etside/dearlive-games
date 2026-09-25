@@ -701,22 +701,13 @@
     ctx.save(); ctx.fillStyle = '#155e43'; ctx.beginPath(); ctx.arc(S._repeat.x, S._repeat.y, 24, 0, 7); ctx.fill();
     ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('RPT', S._repeat.x, S._repeat.y); ctx.restore();
+    // Traditional Teen Patti action buttons (BLIND / CHAAL / PACK / SHOW /
+    // SIDESHOW) are deliberately NOT drawn. This game is a 3-seat
+    // highest-hand / seat-betting variant, per the naming decision recorded in
+    // games/teen_patti_pro/plugin.py; none of those mechanics exist in the
+    // engine and showing them implies a game that is not being played. The
+    // controls that do apply are seat selection, chip denomination and Repeat.
     S._actions = [];
-    const actionLabels = ['BLIND', 'CHAAL', 'PACK', 'SHOW', 'SIDESHOW'];
-    const actionEnabled = !!(s && (s.turn_player === S.snap.player_id || s.can_act === true));
-    const actionW = Math.min(68, (W - 24) / actionLabels.length - 4);
-    actionLabels.forEach((label, i) => {
-      const x = 12 + i * (actionW + 4), y = by + 72;
-      ctx.save();
-      ctx.globalAlpha = actionEnabled ? 1 : .42;
-      ctx.fillStyle = i === 0 ? '#166534' : '#312e81';
-      rr(x, y, actionW, 30, 8); ctx.fill();
-      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = '#fef3c7'; ctx.font = 'bold ' + u.f(9);
-      ctx.fillText(label, x + actionW / 2, y + 16);
-      ctx.restore();
-      S._actions.push({ label, x: x + actionW / 2, y: y + 15, r: Math.min(24, actionW / 2), enabled: actionEnabled });
-    });
     if (S.msg) {
       ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : (S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8');
       ctx.font = u.f(13);
@@ -799,12 +790,8 @@
         if (c.act === 'history') { openHistory(); return; }
       }
     }
-    for (const a of (S._actions || [])) {
-      if ((x - a.x) ** 2 + (y - a.y) ** 2 < a.r * a.r) {
-        status(a.enabled ? (a.label + ' is waiting for the server action') : 'Actions are disabled until it is your turn', a.enabled ? 'info' : 'error');
-        return;
-      }
-    }
+    // Traditional Teen Patti action buttons were removed (see the draw loop);
+    // only chips, Repeat and seat selection are hit-testable.
     for (const c of (S._chips || [])) {
       if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
         S.selDenom = c.d; status('Chip ' + c.d + ' selected', 'info'); return;
