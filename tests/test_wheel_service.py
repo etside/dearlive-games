@@ -47,14 +47,14 @@ class WheelFlow(unittest.TestCase):
         self.assertGreater(st["betting_end_at"], st["serverTime"])
         # bets: denomination + option validation
         b1 = svc.place_bet("r1", "a", "banana", 100, "k1")
-        b2 = svc.place_bet("r1", "b", "crown", 500, "k2")
+        b2 = svc.place_bet("r1", "b", "coconut", 500, "k2")
         self.assertNotEqual(b1["bet_id"], b2["bet_id"])
         self.assertEqual(w.get_balance("a").available, 4900)
         # totals: Total Bet + My Total Bet
         st = svc.state("r1", "a")
         self.assertEqual(st["total_bet"], 600)
         self.assertEqual(st["my_total_bet"], 100)
-        self.assertEqual(st["totals"], {"banana": 100, "crown": 500})
+        self.assertEqual(st["totals"], {"banana": 100, "coconut": 500})
         # idempotent replay: no second debit
         r = svc.place_bet("r1", "a", "banana", 100, "k1")
         self.assertEqual(r["bet_id"], b1["bet_id"])
@@ -110,7 +110,7 @@ class WheelFlow(unittest.TestCase):
         w.fund("p", 2000)
         svc.open_session(svc.tokens.mint("p", "rk", "baby-king").token)
         svc.start_round("rk")
-        svc.place_bet("rk", "p", "lion", 500, "kb1")
+        svc.place_bet("rk", "p", "toy_rocket", 500, "kb1")
         svc.close_betting("rk")
         res = svc.publish_result("rk")
         self.assertTrue(res["winning_label"])
@@ -146,7 +146,7 @@ class WheelFlow(unittest.TestCase):
         # unapproved game rejects
         svc2, _ = make("king")
         with self.assertRaises(ServiceError):
-            svc2.set_autobet("rx", "p", "lion", 100, 1)
+            svc2.set_autobet("rx", "p", "toy_rocket", 100, 1)
 
     def test_tbc_gate(self):
         svc, w = make("greedy", confirmed=False)

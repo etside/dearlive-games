@@ -8,43 +8,45 @@ from dataclasses import replace
 
 from .service import WheelConfig, WheelOption
 
+# Asset references point to generated SVG files (generated in Phase A3)
+# Format: "asset://greedy-monkey/banana" etc.
 GREEDY_DEFAULT_OPTIONS = (
-    WheelOption("banana", "Banana", weight=30, multiplier=2.0, icon="🍌",
-                color_hex="#fde68a"),
-    WheelOption("apple", "Apple", weight=25, multiplier=2.5, icon="🍎",
-                color_hex="#ef4444"),
-    WheelOption("grapes", "Grapes", weight=20, multiplier=3.0, icon="🍇",
-                color_hex="#8b5cf6"),
-    WheelOption("mango", "Mango", weight=15, multiplier=5.0, icon="🥭",
-                color_hex="#f97316", hot=True),
-    WheelOption("crown", "Crown", weight=5, multiplier=20.0, icon="👑",
-                color_hex="#facc15", hot=True),
+    WheelOption("banana", "Banana", weight=30, multiplier=2.0,
+                icon="asset://greedy-monkey/banana", color_hex="#fde68a"),
+    WheelOption("apple", "Apple", weight=25, multiplier=2.5,
+                icon="asset://greedy-monkey/apple", color_hex="#ef4444"),
+    WheelOption("grapes", "Grapes", weight=20, multiplier=3.0,
+                icon="asset://greedy-monkey/grapes", color_hex="#8b5cf6"),
+    WheelOption("mango", "Mango", weight=15, multiplier=5.0,
+                icon="asset://greedy-monkey/mango", color_hex="#f97316", hot=True),
+    WheelOption("coconut", "Coconut", weight=5, multiplier=20.0,
+                icon="asset://greedy-monkey/coconut", color_hex="#facc15", hot=True),
 )
 
 BABY_KING_DEFAULT_OPTIONS = (
-    WheelOption("tiger", "Tiger", weight=25, multiplier=2.0, icon="🐯",
-                color_hex="#f97316"),
-    WheelOption("lion", "Lion", weight=20, multiplier=3.0, icon="🦁",
-                color_hex="#f59e0b", hot=True),
-    WheelOption("panda", "Panda", weight=25, multiplier=2.5, icon="🐼",
-                color_hex="#e5e7eb"),
-    WheelOption("dragon", "Dragon", weight=10, multiplier=8.0, icon="🐲",
-                color_hex="#22c55e"),
-    WheelOption("crown", "Baby Crown", weight=5, multiplier=25.0, icon="👑",
-                color_hex="#facc15", hot=True),
+    WheelOption("toy_car", "Toy Car", weight=25, multiplier=2.0,
+                icon="asset://baby-king/toy_car", color_hex="#f97316"),
+    WheelOption("toy_rocket", "Toy Rocket", weight=20, multiplier=3.0,
+                icon="asset://baby-king/toy_rocket", color_hex="#f59e0b", hot=True),
+    WheelOption("teddy", "Teddy Bear", weight=25, multiplier=2.5,
+                icon="asset://baby-king/teddy", color_hex="#e5e7eb"),
+    WheelOption("gem", "Gem", weight=10, multiplier=8.0,
+                icon="asset://baby-king/gem", color_hex="#22c55e"),
+    WheelOption("baby_crown", "Baby Crown", weight=5, multiplier=25.0,
+                icon="asset://baby-king/baby_crown", color_hex="#facc15", hot=True),
 )
 
 GREEDY_LION_DEFAULT_OPTIONS = (
-    WheelOption("cub", "Lion Cub", weight=30, multiplier=2.0, icon="🦁",
-                color_hex="#fde68a"),
-    WheelOption("mane", "Golden Mane", weight=25, multiplier=2.5, icon="🦁",
-                color_hex="#f59e0b"),
-    WheelOption("pride", "Pride", weight=20, multiplier=3.0, icon="🐾",
-                color_hex="#f97316", hot=True),
-    WheelOption("savanna", "Savanna King", weight=15, multiplier=5.0, icon="🌅",
-                color_hex="#ef4444"),
-    WheelOption("crown", "Lion Crown", weight=5, multiplier=20.0, icon="👑",
-                color_hex="#facc15", hot=True),
+    WheelOption("cub", "Lion Cub", weight=30, multiplier=2.0,
+                icon="asset://greedy-lion/cub", color_hex="#fde68a"),
+    WheelOption("mane", "Golden Mane", weight=25, multiplier=2.5,
+                icon="asset://greedy-lion/mane", color_hex="#f59e0b"),
+    WheelOption("pride", "Pride", weight=20, multiplier=3.0,
+                icon="asset://greedy-lion/pride", color_hex="#f97316", hot=True),
+    WheelOption("savanna", "Savanna King", weight=15, multiplier=5.0,
+                icon="asset://greedy-lion/savanna", color_hex="#ef4444"),
+    WheelOption("lion_crown", "Lion Crown", weight=5, multiplier=20.0,
+                icon="asset://greedy-lion/lion_crown", color_hex="#facc15", hot=True),
 )
 
 

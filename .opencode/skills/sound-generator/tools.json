@@ -1,0 +1,49 @@
+{
+  "name": "sound-generator",
+  "repos": [
+    {
+      "name": "MMAudio",
+      "url": "https://github.com/hkchengrex/MMAudio",
+      "license": "Apache-2.0",
+      "path": "sound-generator/repo",
+      "type": "python-cli"
+    },
+    {
+      "name": "ai-sfx",
+      "url": "https://github.com/siliconjungle/ai-sfx",
+      "license": "MIT",
+      "path": "sound-generator-2/repo",
+      "type": "web-app"
+    }
+  ],
+  "requirements": {
+    "mmaudio": ["python>=3.10", "torch", "torchaudio", "huggingface_hub"],
+    "ai-sfx": ["node>=18", "npm"]
+  },
+  "model_weights": {
+    "mmaudio": {
+      "source": "huggingface",
+      "repo_id": "hkchengrex/MMAudio",
+      "size_gb": 1.5,
+      "download_cmd": "huggingface-cli download hkchengrex/MMAudio --local-dir ./weights"
+    },
+    "ai-sfx": {
+      "none_required": true
+    }
+  },
+  "hardware": {
+    "mmaudio": "gpu-8gb-recommended",
+    "ai-sfx": "cpu"
+  },
+  "example_prompts": [
+    "casino chip placing on felt, soft thud, 0.3s",
+    "card flip, paper snap, crisp, 0.2s",
+    "button click, subtle UI click, 0.1s",
+    "coin win, multiple coins dropping, 0.8s",
+    "round lose, descending tone, sad, 1s",
+    "round win, ascending chime, celebratory, 1.5s",
+    "roulette ball spinning, decelerating, 2s",
+    "timer tick, subtle electronic pulse, 0.1s loop"
+  ],
+  "fallback": "Use ai-sfx web editor or jsfxr.js procedural synthesis; existing WAV files in master pack"
+}

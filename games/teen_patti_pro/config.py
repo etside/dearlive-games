@@ -48,6 +48,7 @@ class TeenPattiConfig:
     ace_low_rank: str = "lowest"
     tie_policy: str = "carry_over"  # or "house" / "round_robin" (business choice)
     rake_bps: int = 0  # basis points taken from pot; 0 default (TBC)
+    max_win_cap: int = 100  # max win multiplier (e.g., 100 = 100x bet); 0 = no cap
     event_log_cap: int = 500
 
 

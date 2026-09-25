@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="apple-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="0.5" stop-color="#dc2626"/><stop offset="1" stop-color="#b91c1c"/></linearGradient>
+<linearGradient id="apple-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b91c1c"/><stop offset="1" stop-color="#991b1b"/></linearGradient>
+<linearGradient id="apple-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fecaca"/><stop offset="1" stop-color="#fecaca"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<path d="M32 8 Q50 18 50 36 Q50 50 32 58 Q14 50 14 36 Q14 18 32 8" fill="url(#apple-body)" filter="url(#drop-shadow)"/>
+<path d="M20 16 Q32 10 44 16 Q48 28 44 36 Q32 44 20 36 Q16 28 12 16 Q16 10 32 8" fill="url(#apple-highlight)" opacity="0.4"/>
+<path d="M32 12 Q42 20 42 28 Q38 36 32 44 Q26 36 22 28 Q22 20 32 12" fill="#b91c1c" opacity="0.3"/>
+<path d="M32 12 L32 18" stroke="#7f1d1d" stroke-width="2" stroke-linecap="round"/>
+<path d="M28 14 Q32 10 36 14" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>

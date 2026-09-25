@@ -43,18 +43,20 @@ class TestCatalogNames(unittest.TestCase):
                     "animal-food-wheel", "food-wheel", "food_wheel"):
             self.assertIn(old, games)
         self.assertEqual(games["teen-patti-pro"]["status"], "live")
-        self.assertEqual(games["greedy-monkey"]["status"], "planned")
-        self.assertEqual(games["baby-king"]["status"], "planned")
+        self.assertEqual(games["greedy-monkey"]["status"], "live")
+        self.assertEqual(games["baby-king"]["status"], "live")
 
     def test_alias_create_behaviour(self):
         plugins.import_builtin_games()
         from games.teen_patti_pro.config import TeenPattiConfig
         room = plugins.create("teen_patti", "r9", TeenPattiConfig(confirmed=True))
         self.assertEqual(room.room_id, "r9")
-        with self.assertRaises(plugins.GameDisabled):
-            plugins.create("greedy_monkey")
-        with self.assertRaises(plugins.GameDisabled):
-            plugins.create("baby-king")
+        # Greedy Monkey and Baby King are now live - no GameDisabled
+        # WheelService manages multiple rooms, so no single room_id
+        svc2 = plugins.create("greedy_monkey", "rm", None)
+        self.assertIsNotNone(svc2)
+        svc3 = plugins.create("baby-king", "rb", None)
+        self.assertIsNotNone(svc3)
 
 
 OPTS = [

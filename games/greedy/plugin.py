@@ -1,21 +1,26 @@
-"""Greedy Monkey engine plugin registration (Game 2, planned stub).
+"""Greedy Monkey engine plugin registration (Game 2, LIVE).
 
 DearLive current name "Greedy Monkey" (Uradhura internalCode `greedy_monkey`,
-WheelDriver: weighted HMAC pick + landing angle). Deterministic outcome logic
-lives in .engine (parity); betting/service integration stays planned until
-business confirms rules.
+WheelDriver: weighted HMAC pick + landing angle). Full service implementation
+via shared WheelService — betting, rounds, auto-bet, settlement, audit.
 """
 from common import plugins
 from common.plugins import engine_plugin
+from games.wheel_common.service import WheelService
 
 
-@engine_plugin("greedy-monkey", "Greedy Monkey", "0.1.0", status="planned",
+@engine_plugin("greedy-monkey", "Greedy Monkey", "greedy-monkey-1.0.0-tbc", status="live",
                tbc=("G1-BR-03", "G1-BR-04", "G1-BR-05"),
-               description="Monkey wheel betting (BRD Game 1). Outcome engine ready; not playable yet.",
+               description="Monkey wheel betting (BRD Game 1). Full service: rounds, bets, auto-bet, settlement.",
                entry="/greedy-monkey/", dearlive_code="greedy_monkey")
 def make_room(*args, **kwargs):
-    from .engine import GreedyMonkeyEngine  # noqa
-    raise NotImplementedError("Greedy Monkey not developed yet")
+    """Factory for WheelService — used by teen_patti_pro API handler."""
+    room_id = args[0] if args else kwargs.get('room_id', 'default')
+    config = kwargs.get('config')
+    if config is None:
+        from games.wheel_common.configs import greedy_config
+        config = greedy_config()
+    return WheelService(config=config)
 
 
 # Back-compat + DearLive-code aliases.

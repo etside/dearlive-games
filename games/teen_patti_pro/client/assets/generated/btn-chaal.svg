@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="44" viewBox="0 0 96 44" fill="none">
+<defs>
+<linearGradient id="btn-chaal-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e40af"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient>
+<linearGradient id="btn-chaal-glow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+<filter id="btn-shadow"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1e40af" flood-opacity="0.4"/></filter>
+</defs>
+<rect width="96" height="44" rx="10" fill="url(#btn-chaal-bg)" filter="url(#btn-shadow)"/>
+<rect width="92" height="40" x="2" y="2" rx="8" stroke="#2563eb" stroke-width="1" fill="none"/>
+<text x="48" y="28" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#93c5fd" letter-spacing="0.3">CHAAL</text>
+<text x="48" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#93c5fd" opacity="0.7">2× stake</text>
+</svg>

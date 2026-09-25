@@ -38,6 +38,10 @@ class ServiceError(Exception):
 class TeenPattiService:
     GAME_ID = "teen-patti-pro"
 
+    @property
+    def game_id(self) -> str:
+        return self.GAME_ID
+
     def __init__(self, config: TeenPattiConfig = DEFAULT_CONFIG,
                  wallet: WalletAdapter = None,
                  idempotency: IdempotencyStore = None,

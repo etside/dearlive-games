@@ -15,18 +15,22 @@ class TestRegistry(unittest.TestCase):
         plugins.import_builtin_games()
         games = {g["game_id"]: g for g in plugins.catalog()}
         self.assertEqual(games["teen-patti-pro"]["status"], "live")
-        self.assertEqual(games["greedy"]["status"], "planned")
-        self.assertEqual(games["animal-food-wheel"]["status"], "planned")
+        self.assertEqual(games["greedy-monkey"]["status"], "live")
+        self.assertEqual(games["baby-king"]["status"], "live")
+        self.assertEqual(games["greedy-lion"]["status"], "live")
 
     def test_unknown_game_fails_closed(self):
         plugins.import_builtin_games()
         with self.assertRaises(plugins.UnknownGame):
             plugins.create("blackjack")
 
-    def test_planned_game_not_playable(self):
+    def test_live_game_playable(self):
         plugins.import_builtin_games()
-        with self.assertRaises(plugins.GameDisabled):
-            plugins.create("greedy")
+        # These should be playable (no GameDisabled raised)
+        plugins.create("teen-patti-pro", "test-room")
+        plugins.create("greedy-monkey", "test-room")
+        plugins.create("baby-king", "test-room")
+        plugins.create("greedy-lion", "test-room")
 
     def test_live_factory(self):
         plugins.import_builtin_games()

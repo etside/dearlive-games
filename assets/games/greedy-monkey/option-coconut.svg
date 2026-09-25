@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="coconut-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a3a3a3"/><stop offset="0.5" stop-color="#8a8a8a"/><stop offset="1" stop-color="#737373"/></linearGradient>
+<linearGradient id="coconut-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#525252"/><stop offset="1" stop-color="#404040"/></linearGradient>
+<linearGradient id="coconut-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d4d4d4"/><stop offset="1" stop-color="#e5e5e5"/></linearGradient>
+<linearGradient id="coconut-inner" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1e6"/><stop offset="1" stop-color="#fef3c7"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<circle cx="32" cy="32" r="26" fill="url(#coconut-body)" filter="url(#drop-shadow)"/>
+<circle cx="32" cy="32" r="22" fill="url(#coconut-shade)" opacity="0.4"/>
+<circle cx="32" cy="32" r="18" fill="url(#coconut-inner)" opacity="0.8"/>
+<circle cx="32" cy="32" r="20" fill="url(#coconut-shade)" opacity="0.2"/>
+<circle cx="32" cy="32" r="14" fill="url(#coconut-inner)"/>
+<circle cx="32" cy="32" r="6" fill="#78716c" opacity="0.6"/>
+<ellipse cx="32" cy="20" rx="8" ry="4" fill="url(#coconut-highlight)" opacity="0.5"/>
+<path d="M24 28 Q32 24 40 28" stroke="#78716c" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.5"/>
+<path d="M26 36 Q32 32 38 36" stroke="#78716c" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.5"/>
+</svg>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="72" viewBox="0 0 120 72" fill="none">
+<defs>
+<linearGradient id="ug-main" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2e6bff" stop-opacity="1"/><stop offset="0.55" stop-color="#7c3aed" stop-opacity="1"/><stop offset="1" stop-color="#22d3ee" stop-opacity="1"/></linearGradient>
+<radialGradient id="ug-glow" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#7ae7ff" stop-opacity="0.85"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+<linearGradient id="ug-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe9b0" stop-opacity="1"/><stop offset="0.5" stop-color="#ffc24d" stop-opacity="1"/><stop offset="1" stop-color="#f59e0b" stop-opacity="1"/></linearGradient>
+<linearGradient id="ug-violet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa" stop-opacity="1"/><stop offset="1" stop-color="#7c3aed" stop-opacity="1"/></linearGradient>
+<linearGradient id="ug-navy" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16243f" stop-opacity="1"/><stop offset="1" stop-color="#0a1220" stop-opacity="1"/></linearGradient>
+<linearGradient id="ug-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/></linearGradient>
+<linearGradient id="ug-rose" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff6b9d" stop-opacity="1"/><stop offset="1" stop-color="#e11d48" stop-opacity="1"/></linearGradient>
+<linearGradient id="ug-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a1220" stop-opacity="1"/><stop offset="0.55" stop-color="#0f1c33" stop-opacity="1"/><stop offset="1" stop-color="#050914" stop-opacity="1"/></linearGradient>
+<radialGradient id="ug-orbs" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#7c3aed" stop-opacity="0.6"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></radialGradient>
+<linearGradient id="ug-seat-accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f43f5e" stop-opacity="1"/><stop offset="1" stop-color="#e11d48" stop-opacity="1"/></linearGradient>
+</defs>
+<rect width="120" height="72" rx="16" fill="url(#ug-bg)"/>
+<path d="M16 12h88v48h-88z" fill="url(#ug-navy)" stroke="url(#ug-gold)" stroke-width="1.5"/>
+<path d="M16 12h88v12h-88z" fill="url(#ug-main)" opacity="0.3"/>
+<ellipse cx="60" cy="36" rx="32" ry="20" fill="url(#ug-seat-accent)" opacity="0.15"/>
+<ellipse cx="60" cy="36" rx="28" ry="16" stroke="url(#ug-gold)" stroke-width="1" fill="none"/>
+<path d="M24 50h72" stroke="url(#ug-gold)" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+<circle cx="60" cy="36" r="8" fill="url(#ug-gold)" opacity="0.3"/>
+<path d="M60 32v8m-4-4h8" stroke="url(#ug-navy)" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,42 @@
+{
+  "name": "lottie-generator",
+  "repos": [
+    {
+      "name": "Lottie (diffusionstudio)",
+      "url": "https://github.com/diffusionstudio/lottie",
+      "license": "MIT",
+      "path": "lottie-generator/repo",
+      "type": "web-editor"
+    },
+    {
+      "name": "Kin3o",
+      "url": "https://github.com/affromero/kin3o",
+      "license": "MIT",
+      "path": "lottie-generator-2/repo",
+      "type": "web-editor"
+    }
+  ],
+  "requirements": {
+    "lottie": ["node>=18", "npm"],
+    "kin3o": ["node>=18", "npm"]
+  },
+  "model_weights": {
+    "none_required": true
+  },
+  "hardware": {
+    "lottie": "cpu",
+    "kin3o": "cpu"
+  },
+  "example_prompts": [
+    "character idle animation: subtle breathing, 2s loop, 60fps",
+    "wheel spin: 2s rotation with ease-out, lands on winner, highlight pulse",
+    "card deal: 3 cards fan out from deck to positions, stagger 100ms",
+    "chip bet: arc from seat to pot, scale pop on land, 500ms",
+    "win celebration: fireworks burst, 2s, gold particles",
+    "timer pulse: scale + color shift, speeds up at 5s, 1s loop",
+    "coin fly: arc from pot to wallet counter, 800ms, trail effect",
+    "character win: jump + cheer, 1.5s",
+    "character lose: slump + sigh, 1.5s"
+  ],
+  "fallback": "Use LottieFiles.com online editor or hand-code Lottie JSON with keyframes; GIF fallbacks available in master pack"
+}

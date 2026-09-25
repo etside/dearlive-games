@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="banana-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde047"/><stop offset="0.5" stop-color="#facc15"/><stop offset="1" stop-color="#eab308"/></linearGradient>
+<linearGradient id="banana-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eab308"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+<linearGradient id="banana-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="1" stop-color="#fef9c3"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<path d="M14 14 Q32 4 50 14 Q56 32 50 50 Q32 60 14 50 Q8 32 14 14" fill="url(#banana-body)" filter="url(#drop-shadow)"/>
+<path d="M18 18 Q32 10 46 18 Q50 32 46 46 Q32 54 18 46 Q12 32 18 18" fill="url(#banana-highlight)" opacity="0.5"/>
+<path d="M20 22 Q32 16 44 22 Q48 32 44 42 Q32 48 20 42 Q16 32 20 22" fill="url(#banana-shade)" opacity="0.3"/>
+<path d="M28 24 Q32 22 36 24 Q36 32 32 36 Q28 32 28 24" fill="#ca8a04" opacity="0.4"/>
+<ellipse cx="32" cy="50" rx="4" ry="3" fill="#a16207"/>
+</svg>

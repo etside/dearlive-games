@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<defs>
+<linearGradient id="pine-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde047"/><stop offset="0.5" stop-color="#facc15"/><stop offset="1" stop-color="#eab308"/></linearGradient>
+<linearGradient id="pine-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eab308"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+<linearGradient id="pine-highlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a"/><stop offset="1" stop-color="#fef9c3"/></linearGradient>
+<linearGradient id="pine-leaf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22c55e"/><stop offset="1" stop-color="#16a34a"/></linearGradient>
+<filter id="drop-shadow"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/></filter>
+</defs>
+<path d="M16 10 Q32 2 48 10 Q58 20 52 34 Q48 50 32 58 Q16 50 12 34 Q6 20 16 10" fill="url(#pine-body)" filter="url(#drop-shadow)"/>
+<g fill="#ca8a04" opacity="0.6">
+<path d="M24 18 L32 14 L40 18 L38 28 L26 28 Z"/>
+<path d="M26 24 L32 20 L38 24 L34 36 L30 36 Z"/>
+<path d="M28 30 L32 26 L36 30 L32 42 L30 42 Z"/>
+<path d="M30 36 L32 32 L34 36 L28 44 L28 44 Z"/>
+</g>
+<path d="M14 4 L20 0 L26 4 L22 12 L18 12 Z" fill="url(#pine-leaf)" filter="url(#drop-shadow)"/>
+<path d="M44 4 L50 0 L56 4 L50 12 L46 12 Z" fill="url(#pine-leaf)" filter="url(#drop-shadow)"/>
+<path d="M10 8 L18 4 L24 8 L20 16 L16 16 Z" fill="url(#pine-leaf)" filter="url(#drop-shadow)"/>
+<path d="M48 8 L56 4 L62 8 L58 16 L54 16 Z" fill="url(#pine-leaf)" filter="url(#drop-shadow)"/>
+<path d="M20 34 Q32 28 44 34 Q48 42 40 48 Q32 54 24 48 Q16 42 24 34" fill="url(#pine-shade)" opacity="0.3"/>
+</svg>

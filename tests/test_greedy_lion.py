@@ -66,7 +66,7 @@ class LionServiceFlow(unittest.TestCase):
         st = svc.state("rl", "a")
         self.assertTrue(all("multiplier" in o and "hot" in o for o in st["options"]))
         b1 = svc.place_bet("rl", "a", "cub", 100, "lk1")
-        b2 = svc.place_bet("rl", "b", "crown", 500, "lk2")
+        b2 = svc.place_bet("rl", "b", "lion_crown", 500, "lk2")
         self.assertNotEqual(b1["bet_id"], b2["bet_id"])
         self.assertEqual(w.get_balance("a").available, 4900)
         r = svc.place_bet("rl", "a", "cub", 100, "lk1")
@@ -151,7 +151,7 @@ class LionMonkeyHTTP(unittest.TestCase):
         self.assertEqual(st, 200, body)
         self.assertEqual(body["data"]["status"], "BETTING_OPEN")
         opts = {o["option_id"] for o in body["data"]["options"]}
-        self.assertTrue({"cub", "crown"} <= opts)
+        self.assertTrue({"cub", "lion_crown"} <= opts)
         st, body = call("POST", self.base + "/api/v1/games/greedy-lion/rounds/current/bets?room=rlion",
                         {"option_id": "cub", "amount": 100}, {"Idempotency-Key": "http-lk1",
                                                               **self.auth(sid)})

@@ -1,0 +1,43 @@
+{
+  "name": "svg-generator",
+  "repos": [
+    {
+      "name": "SVG-ORA-Studio",
+      "url": "https://github.com/seeb4coding/SVG-ORA-Studio",
+      "license": "MIT",
+      "path": "svg-generator/repo",
+      "type": "web-app"
+    },
+    {
+      "name": "OmniSVG",
+      "url": "https://github.com/OmniSVG/OmniSVG",
+      "license": "Apache-2.0",
+      "path": "svg-generator-2/repo",
+      "type": "python-cli"
+    }
+  ],
+  "requirements": {
+    "svg-ora-studio": ["node", "npm"],
+    "omnisvg": ["python>=3.10", "torch", "transformers", "huggingface_hub"]
+  },
+  "model_weights": {
+    "omnisvg": {
+      "source": "huggingface",
+      "repo_id": "OmniSVG/OmniSVG",
+      "size_gb": 2,
+      "download_cmd": "huggingface-cli download OmniSVG/OmniSVG --local-dir ./weights"
+    }
+  },
+  "hardware": {
+    "svg-ora-studio": "cpu",
+    "omnisvg": "gpu-8gb-recommended"
+  },
+  "example_prompts": [
+    "flat style icon of a banana, bright yellow, clean lines, 64x64 viewBox",
+    "simple card back design, geometric pattern, gold on dark navy, 100x140 viewBox",
+    "poker chip, blue with gold rim, denomination 100, top-down view, 64x64",
+    "cartoon monkey character, idle pose, jungle green/brown palette, 100x100",
+    "royal crown icon, gold with gem accents, 64x64"
+  ],
+  "fallback": "Use SVG-ORA-Studio web editor at localhost:5173 or hand-code SVGs from reference assets"
+}

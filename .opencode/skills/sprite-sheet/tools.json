@@ -1,0 +1,38 @@
+{
+  "name": "sprite-sheet",
+  "repos": [
+    {
+      "name": "SpriteForge",
+      "url": "https://github.com/francesco-sodano/spriteforge",
+      "license": "MIT",
+      "path": "sprite-sheet/repo",
+      "type": "python-cli"
+    },
+    {
+      "name": "Sprite Sheet Generator",
+      "url": "https://github.com/NO6KIKO/gorest-2d-animation-spritesheet-generator",
+      "license": "MIT",
+      "path": "sprite-sheet-2/repo",
+      "type": "node-cli"
+    }
+  ],
+  "requirements": {
+    "spriteforge": ["python>=3.10", "pillow", "numpy"],
+    "sprite-sheet-gen": ["node>=18", "npm"]
+  },
+  "model_weights": {
+    "none_required": true
+  },
+  "hardware": {
+    "spriteforge": "cpu",
+    "sprite-sheet-gen": "cpu"
+  },
+  "example_prompts": [
+    "pack 8 frames of monkey idle animation into horizontal strip",
+    "create sprite atlas for 16 option icons (8 monkey + 8 baby king)",
+    "generate Lottie-compatible sprite sheet for card deal animation",
+    "pack 6 character pose frames (idle, win, lose, spin, deal, flip)",
+    "create chip animation sprite sheet (bet, stack, collect, fly)"
+  ],
+  "fallback": "Use TexturePacker free version, online sprite sheet packers, or ImageMagick montage"
+}
