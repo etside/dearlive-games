@@ -134,15 +134,6 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-pineapple.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-cherry.svg
           test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-melon.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-spin.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-cub.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-mane.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-pride.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-savanna.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lion_crown.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
@@ -151,15 +142,6 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-spin.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-cub.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-mane.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-pride.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-savanna.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lion_crown.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
@@ -168,15 +150,6 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-spin.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-cub.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-mane.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-pride.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-savanna.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lion_crown.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
@@ -185,15 +158,6 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-spin.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-cub.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-mane.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-pride.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-savanna.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-lion-lion_crown.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
@@ -219,17 +183,6 @@ jobs:
           test -f assets/games/greedy-monkey/option-pineapple.svg
           test -f assets/games/greedy-monkey/option-cherry.svg
           test -f assets/games/greedy-monkey/option-melon.svg
-          test -f assets/games/greedy-lion/background-greedy-lion.svg
-          test -f assets/games/greedy-lion/center-badge-idle.svg
-          test -f assets/games/greedy-lion/center-badge-spin.svg
-          test -f assets/games/greedy-lion/center-badge-win.svg
-          test -f assets/games/greedy-lion/center-badge-lose.svg
-          test -f assets/games/greedy-lion/lobby-thumb-greedy-lion.svg
-          test -f assets/games/greedy-lion/option-cub.svg
-          test -f assets/games/greedy-lion/option-mane.svg
-          test -f assets/games/greedy-lion/option-pride.svg
-          test -f assets/games/greedy-lion/option-savanna.svg
-          test -f assets/games/greedy-lion/option-lion_crown.svg
           test -f assets/games/baby-king/lobby-thumb-baby-king.svg
           test -f assets/games/baby-king/option-toy_car.svg
           test -f assets/games/baby-king/option-toy_rocket.svg
@@ -239,7 +192,6 @@ jobs:
           test -f assets/games/wheel-common/wheel-track.svg
           test -f assets/games/wheel-common/multiplier-badge.svg
           test -f assets/games/greedy-monkey/lobby-thumb-greedy-monkey.svg
-          test -f assets/games/greedy-lion/lobby-thumb-greedy-lion.svg
           test -f assets/games/baby-king/lobby-thumb-baby-king.svg
 
   deploy-api:
