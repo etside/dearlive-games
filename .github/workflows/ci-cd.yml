@@ -125,35 +125,35 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_car.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_rocket.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
+
+
+
+
+
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_car.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_rocket.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
+
+
+
+
+
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_car.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_rocket.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
+
+
+
+
+
           test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
           test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_car.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-toy_rocket.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-teddy.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-gem.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-baby_crown.svg
+
+
+
+
+
 
       - name: Verify wheel game assets
         run: |
