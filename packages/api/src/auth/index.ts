@@ -205,7 +205,8 @@ function createHash(algorithm: string): any {
       digest: (encoding: string) => {
         // In production, use crypto.createHash
         return 'mock-hash';
-      })
+      }
+    })
   };
 }
 
@@ -218,8 +219,8 @@ function createHmac(algorithm: string, key: string): any {
       }
     })
   };
+}
 
-  function timingSafeEqual(a: Buffer, b: Buffer): boolean {
-    return a.length === b.length && a.every((val, i) => val === b[i]);
-  }
+function timingSafeEqual(a: Buffer, b: Buffer): boolean {
+  return a.length === b.length && a.every((val, i) => val === b[i]);
 }
