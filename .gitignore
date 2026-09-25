@@ -20,3 +20,4 @@ uv.lock
 
 # Redis dump
 dump.rdb
+working/
