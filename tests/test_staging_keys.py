@@ -93,25 +93,25 @@ class StagingKeyManagementTest(CountedCase):
                       "one-time secret is present exactly once")
         return data
 
-    def test_pin_provision_authenticates_and_scopes_one_game(self):
-        label = f"qa-lion-{secrets.token_hex(4)}"
-        issued = self.issue_key(label, ["greedy_lion"])
+def test_pin_provision_authenticates_and_scopes_one_game(self):
+        label = f"qa-monkey-{secrets.token_hex(4)}"
+        issued = self.issue_key(label, ["greedy-monkey"])
         status, body = signed_call("GET", "/api/v1/games", issued["key_id"],
                                    issued["key_secret"])
         self.counted(status == 200, f"dynamic key authenticates: {body}")
         codes = [game["game_code"] for game in body["data"]["games"]]
-        self.counted(codes == ["greedy_lion"], f"scoped catalog: {codes}")
+        self.counted(codes == ["greedy-monkey"], f"scoped catalog: {codes}")
 
         status, body = signed_call(
-            "POST", "/api/v1/monkey-wheel/tables/monkey-wheel-low/action",
+            "POST", "/api/v1/greedy-monkey/tables/monkey-wheel-low/action",
             issued["key_id"], issued["key_secret"],
             {"action": "bet", "option_id": "banana", "amount": 20},
             {"Idempotency-Key": f"scope-{secrets.token_hex(4)}"})
         self.counted(status == 403 and body["code"] == "FORBIDDEN",
                       f"out-of-scope game refused before money: {body}")
 
-        status, body = wsgi_call("GET", "/api/v1/staging/api-keys",
-                                 headers=SUPERADMIN)
+        status, body = signed_call("GET", "/api/v1/staging/api-keys",
+                                   headers=SUPERADMIN)
         self.counted(status == 200, f"superadmin lists keys: {body}")
         listed = {row["key_id"]: row for row in body["data"]["keys"]}
         self.counted(issued["key_id"] in listed, "issued key is listed")

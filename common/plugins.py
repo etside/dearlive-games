@@ -87,5 +87,4 @@ def import_builtin_games():
     """Import all bundled game modules so their decorators run. Safe to call twice."""
     import games.teen_patti_pro.plugin  # noqa: F401
     import games.greedy.plugin  # noqa: F401
-    import games.greedy_lion.plugin  # noqa: F401
     import games.animal_wheel.plugin  # noqa: F401

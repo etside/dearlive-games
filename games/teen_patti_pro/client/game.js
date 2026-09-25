@@ -9,6 +9,7 @@
   const API = (q.get('api') || window.location.origin).replace(/\/$/, '');
   const WS = (q.get('ws') || '').replace(/\/$/, '');
   const SESSION = q.get('session') || '';
+  const DEMO_TOKEN = q.get('demo_token') || '';
   const ROOM = q.get('room') || 'default';
 
   // Live skin tokens: theme.json (same directory) overrides these at boot;
@@ -485,7 +486,8 @@
   window.__tppAnim = { AnimLayer, animateDeal, animateFlip, animateChipBet, animatePotCollection, startTimerPulse, stopTimerPulse, animateWin, animateRoundReset };
   async function api(path, opts) {
     opts = opts || {};
-    opts.headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION }, opts.headers || {});
+    const authHeader = DEMO_TOKEN ? 'Demo ' + DEMO_TOKEN : 'Bearer ' + SESSION;
+    opts.headers = Object.assign({ 'Authorization': authHeader }, opts.headers || {});
     const r = await fetch(API + path, opts);
     const j = await r.json();
     if (!j.success) throw new Error(j.code + ': ' + j.message);

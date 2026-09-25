@@ -1,48 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Wheel Game</title>
-<style>
-  :root{
-    --dl-navy:#0a1220;--dl-blue:#16243f;--dl-text:#ffffff;--dl-muted:#b8c6e2;
-    --dl-gold:#ffd54a;--dl-success:#86efac;--dl-error:#fecaca;--dl-focus:#fbbf24;
-    --sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);
-    --sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px);
-  }
-  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--dl-navy);
-    color:var(--dl-text);font-family:system-ui,-apple-system,sans-serif;
-    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-  #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
-  #c:focus-visible{outline:3px solid var(--dl-focus);outline-offset:-3px}
-  #err{position:fixed;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);
-    top:calc(var(--sat) + 8px);z-index:10;display:none;align-items:center;gap:10px;
-    padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.4;
-    background:rgba(5,9,20,.96);color:#fff;border:1px solid rgba(255,255,255,.28);
-    box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
-  #err[data-kind="error"]{border-color:#f87171;background:rgba(69,10,10,.97);color:var(--dl-error)}
-  #err[data-kind="success"]{border-color:#4ade80;background:rgba(5,46,22,.97);color:#dcfce7}
-  #err[data-kind="info"]{border-color:#93c5fd}
-  #err button{all:unset;flex:0 0 44px;width:44px;height:44px;margin:-8px -8px -8px auto;pointer-events:auto;
-    display:grid;place-items:center;border-radius:8px;color:#fff;font-size:22px;line-height:1;cursor:pointer}
-  #err button:hover{background:rgba(255,255,255,.14)}
-  #err button:focus-visible{outline:3px solid var(--dl-focus);outline-offset:1px}
-  .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
-    clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
-  #kbhint{position:fixed;left:calc(var(--sal) + 8px);right:calc(var(--sar) + 8px);
-    bottom:calc(var(--sab) + 4px);z-index:9;display:none;padding:7px 10px;
-    border-radius:8px;font-size:12px;line-height:1.35;text-align:center;color:#e2e8f0;
-    background:rgba(5,9,20,.94);border:1px solid rgba(255,255,255,.28)}
-  body.kb #kbhint{display:block}
-  noscript p{margin:0;padding:calc(var(--sat) + 24px) 24px calc(var(--sab) + 24px);
-    font-size:16px;line-height:1.5}
-</style>
-</head>
 <body>
 <canvas id="c" role="img" tabindex="0" aria-label="Wheel game. Select a betting option, choose a chip value, then activate the selected option to place a bet. Keyboard: 1 to 8 select an option, Q W E R select a chip, Enter confirms the bet, S toggles sound, H opens history, question mark opens help, M opens menu, and Escape closes panels."></canvas>
 <div id="err" role="status" aria-live="polite" aria-atomic="true" data-kind="info"><button type="button" aria-label="Dismiss message">&times;</button><span id="errtext"></span></div>
 <div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+<div class="demo-badge" id="demoBadge" aria-live="polite">DEMO</div>
+<div class="timer-badge" id="timerBadge" aria-live="polite" aria-label="Session timer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></div><span id="timerText">00:00</span></div>
 <div id="kbhint">Keys: 1-8 option &middot; Q/W/E/R chip &middot; Enter bet &middot; H history &middot; ? help &middot; M menu &middot; S sound &middot; Esc close</div>
 <noscript><p>This wheel game needs JavaScript enabled to load the current round and accept bets.</p></noscript>
 <script>
@@ -56,6 +17,7 @@
   const GAME = (location.pathname.split('/')[1] || 'greedy-monkey').replace(/\/$/, '');
   const API = (q.get('api') || window.location.origin).replace(/\/$/, '');
   const SESSION = q.get('session') || '';
+  const DEMO_TOKEN = q.get('demo_token') || '';
   const ROOM = q.get('room') || 'default';
   const cv = document.getElementById('c'), ctx = cv.getContext('2d');
   const errBox = document.getElementById('err'), errText = document.getElementById('errtext');
@@ -65,7 +27,7 @@
   let SAFE = { t: 0, b: 0, l: 0, r: 0 };
   const S = { snap: null, selDenom: 100, selOpt: null, connected: false,
     msg: '', msgKind: 'info', panel: null, hist: [], recent: [], earn: null, auto: null };
-
+  const REDUCED = !!(motionQuery && motionQuery.matches);
   function readSafeAreas() {
     try {
       const cs = getComputedStyle(document.documentElement);
@@ -83,13 +45,12 @@
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 120));
   resize();
-
   function U() {
     const s = Math.max(0.9, Math.min(1.35, Math.min(W, H) / 420));
     return { s, f: n => Math.max(12, Math.round(n * s)) + 'px' };
   }
   function announce(text) {
-    if (!liveEl || !text) return;
+    if (!liveEl) return;
     liveEl.textContent = '';
     setTimeout(() => { liveEl.textContent = text; }, 30);
   }
@@ -103,52 +64,16 @@
     if (kind !== 'error') toastTimer = setTimeout(() => showErr(''), 3800);
     announce(text);
   }
-  function clearToast() {
-    if (toastTimer) clearTimeout(toastTimer);
-    showErr('');
-  }
+  function clearToast() { if (toastTimer) clearTimeout(toastTimer); showErr(''); }
   function status(text, kind) {
     S.msg = text || '';
     S.msgKind = kind || 'info';
-    if (text) setToast(text, kind); else clearToast();
+    if (text) setToast(text, kind);
   }
-  errBox.querySelector('button').addEventListener('click', clearToast);
-
-  try { S.sound = localStorage.getItem('wheel_sound') !== 'off'; }
-  catch (e) { S.sound = true; status('Sound is on for this visit; its preference could not be saved.', 'info'); }
-
-  function friendlyError(e) {
-    const m = String((e && e.message) || e || 'error');
-    if (/INSUFFICIENT_BALANCE/i.test(m)) return 'Not enough balance for that chip.';
-    if (/BETTING_CLOSED|BETTING_CLOSED_RACE/i.test(m)) return 'Betting is closed for this round.';
-    if (/DUPLICATE_REQUEST/i.test(m)) return 'That bet was already accepted.';
-    if (/UNAUTHENTICATED|UNAUTHORIZED|UNAUTHORISED|SESSION_EXPIRED|INVALID_SESSION|TOKEN_EXPIRED|Unknown session/i.test(m)) {
-      return 'Your session has expired. Reopen the game to continue.';
-    }
-    if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) {
-      return 'Network problem. Check your connection and try again.';
-    }
-    if (/JSON|SyntaxError|Unexpected token/i.test(m)) return 'The server returned an unreadable response. Try again.';
-    const clean = m.replace(/^[A-Z_]+:\s*/, '').trim();
-    return clean || 'Something went wrong. Please try again.';
-  }
-  async function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION }, opts.headers || {});
-    const r = await fetch(API + path, opts);
-    const j = await r.json();
-    if (!j.success) throw new Error(j.code + ': ' + j.message);
-    return j.data;
-  }
-  const G = s => '/api/v1/games/' + GAME;
-  function uuid() {
-    return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g,
-      c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
-  }
+  try { S.sound = localStorage.getItem('wheel_sound') !== 'off'; } catch (e) { S.sound = true; }
   function toggleSound() {
     S.sound = !S.sound;
-    try { localStorage.setItem('wheel_sound', S.sound ? 'on' : 'off'); }
-    catch (e) { status('Sound changed for this visit; the preference could not be saved.', 'info'); return; }
+    try { localStorage.setItem('wheel_sound', S.sound ? 'on' : 'off'); } catch (e) { status('Sound changed for this visit; the preference could not be saved.', 'info'); return; }
     status('Sound ' + (S.sound ? 'on' : 'off'), 'info');
   }
   function rr(x, y, w, h, r) {
@@ -167,9 +92,8 @@
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#0a1220'); g.addColorStop(1, '#16243f');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    const s = S.snap, u = U(), reduced = !!(motionQuery && motionQuery.matches);
+    const geo = wheel(), s = S.snap, u = U();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-
     ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
     ctx.fillText(GAME.toUpperCase().replace(/-/g, ' ') + ' · ' + ROOM,
       W / 2 + (SAFE.r - SAFE.l) / 2, SAFE.t + 64);
@@ -179,22 +103,23 @@
     ctx.fillStyle = '#ffe9a8'; ctx.font = u.f(12);
     ctx.fillText(s && s.round_id ? ('ROUND ' + (s.round_no || s.round_id)) : '—',
       W / 2 + (SAFE.r - SAFE.l) / 2, SAFE.t + 104);
-
     S._ctl = [];
     const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
     const step = W < 370 ? 44 : 48;
     ctl.forEach((c, i) => {
-      const x = SAFE.l + 26 + i * step, y = SAFE.t + 26;
-      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(x - 18, y - 16, 36, 32, 8); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(15); ctx.fillText(c[0], x, y + 1); ctx.restore();
+      const x = SAFE.l + 26 + i * step, y = 26 + SAFE.t;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(x - 18, y - 16, 36, 32, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(15);
+      ctx.fillText(c[0], x, y + 1); ctx.restore();
       S._ctl.push({ act: c[1], x, y, r: 24 });
     });
-    [['HIST', 'history', W - SAFE.r - 96], ['AUTO', 'auto', W - SAFE.r - 30]].forEach(a => {
-      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(a[2] - 24, SAFE.t + 10, 48, 32, 8); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText(a[0], a[2], SAFE.t + 27); ctx.restore();
-      S._ctl.push({ act: a[1], x: a[2], y: SAFE.t + 26, r: 28 });
-    });
-
+    const hx = W - SAFE.r - 32;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(hx - 26, 11 + SAFE.t * 0.4, 52, 32, 8); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('HIST', hx, 27 + SAFE.t * 0.4);
+    ctx.restore();
+    S._ctl.push({ act: 'history', x: hx, y: 26 + SAFE.t * 0.4, r: 28 });
     let secs = null;
     if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
       const skew = (S.srvNow || Date.now()) - (S.locNow || Date.now());
@@ -202,16 +127,17 @@
     }
     const geo = wheel();
     if (secs !== null) {
-      ctx.save(); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,.3)';
+      ctx.save(); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,.25)';
       ctx.beginPath(); ctx.arc(geo.cx, geo.cy, 24, 0, 7); ctx.stroke();
       ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffd54a';
       ctx.beginPath(); ctx.arc(geo.cx, geo.cy, 24, -Math.PI / 2, -Math.PI / 2 + Math.min(1, secs / 20) * Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(16); ctx.fillText(secs.toFixed(0), geo.cx, geo.cy);
-      ctx.restore();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(16);
+      ctx.fillText(secs.toFixed(0), geo.cx, geo.cy);
+      ctx.font = u.f(12); ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(secs < 5 ? 'CLOSING SOON' : (s.status === 'BETTING_OPEN' ? 'GUESSING' : s.status), geo.cx, geo.cy + 34);
     }
     const icon = GAME === 'greedy-lion' ? '🦁' : GAME.startsWith('greedy') || GAME.startsWith('monkey') ? '🐵' : '👑';
     ctx.font = u.f(34); ctx.fillText(icon, geo.cx, geo.cy);
-
     const opts = (s && s.options) || [];
     S._opts = [];
     opts.forEach((o, i) => {
@@ -222,9 +148,9 @@
       ctx.save();
       if (win || sel) {
         ctx.lineWidth = sel ? 4 : 3; ctx.strokeStyle = '#ffd54a';
-        ctx.beginPath(); ctx.arc(ox, oy, 38 + (reduced ? 0 : Math.sin(now / 260) * 2), 0, 7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ox, oy, 38 + (REDUCED ? 0 : Math.sin(now / 260) * 2), 0, 7); ctx.stroke();
       }
-      if (win && !reduced) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22; }
+      if (win && !REDUCED) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22; }
       ctx.fillStyle = sel ? '#ffd54a' : 'rgba(255,255,255,.12)';
       ctx.beginPath(); ctx.arc(ox, oy, 34, 0, 7); ctx.fill();
       ctx.shadowColor = 'transparent';
@@ -238,21 +164,19 @@
       ctx.restore();
       S._opts.push({ id: o.option_id, option_id: o.option_id, name: o.name || o.option_id, x: ox, y: oy, r: 40 });
     });
-
     ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(14);
-    ctx.fillText('TOTAL ' + ((s && s.total_bet) || 0) + ' · MY ' + ((s && s.my_total_bet) || 0),
-      geo.cx, H * 0.115 + SAFE.t);
+    ctx.fillText('TOTAL ' + ((s && s.total_bet) || 0) + '   ·   YOU ' + ((s && s.my_total_bet) || 0),
+      geo.cx, H * 0.115);
     ctx.fillStyle = '#b8c6e2'; ctx.font = u.f(12);
-    if (S.earn) ctx.fillText("Today's earnings: " + S.earn.net, geo.cx, H * 0.115 + SAFE.t + 17);
+    if (S.earn) ctx.fillText("Today's earnings: " + S.earn.net, geo.cx, H * 0.115 + 17);
     const rec = S.recent.slice(0, 8);
     ctx.font = u.f(15);
     rec.forEach((r2, i) => ctx.fillText(r2.winning_label ? (r2.winning_label[0] || '?') : '?',
       geo.cx - rec.length * 12 + i * 24, H * 0.66 + SAFE.t));
-
     const by = H - Math.max(120, H * 0.17) - SAFE.b;
     ctx.fillStyle = 'rgba(0,0,0,.52)'; ctx.fillRect(0, by - 14, W, H - by + 14 + SAFE.b);
     ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
-    ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), geo.cx, by + 4);
+    ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
     S._chips = [];
     const denoms = (s && s.denoms) || [20, 100, 500, 1000];
     const cw2 = Math.min(64, W / (denoms.length + 0.6));
@@ -267,26 +191,24 @@
       S._chips.push({ d, x, y, r: 28 });
     });
     if (S.msg) {
-      ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8';
+      ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : (S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8');
       ctx.font = u.f(13); ctx.fillText(S.msg, geo.cx, by + 84);
     } else if (!document.body.classList.contains('kb')) {
       ctx.fillStyle = '#d8e1f2'; ctx.font = u.f(12);
       ctx.fillText('select an option, choose a chip, then confirm', geo.cx, H - 12 - SAFE.b);
     }
-
     if (!S.snap && !S._everConnected) {
       ctx.fillStyle = 'rgba(0,0,0,.62)'; rr(W / 2 - 135, H * 0.44, 270, 50, 12); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
       ctx.fillText('Loading wheel…', W / 2, H * 0.44 + 25);
     } else if (S._everConnected && !S.connected) {
-      ctx.fillStyle = 'rgba(120,20,20,.94)'; rr(W / 2 - 120, H * 0.44, 240, 44, 10); ctx.fill();
+      ctx.fillStyle = 'rgba(120,20,20,.94)'; rr(W / 2 - 110, H * 0.44, 220, 40, 10); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(14);
-      ctx.fillText('Reconnecting…', W / 2, H * 0.44 + 22);
+      ctx.fillText('Reconnecting…', W / 2, H * 0.44 + 20);
     }
     if (S.panel) drawPanel(u);
     requestAnimationFrame(draw);
   }
-
   function drawPanel(u) {
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,.78)'; ctx.fillRect(0, 0, W, H);
@@ -322,7 +244,6 @@
     ctx.restore();
     S._panelBox = { x: px, y: py, w: pw, h: ph };
   }
-
   function selectChip(d) {
     S.selDenom = d;
     status('Chip ' + d + ' selected', 'info');
@@ -362,7 +283,6 @@
       if ((x - o.x) ** 2 + (y - o.y) ** 2 < o.r * o.r) { selectOption(o); return; }
     }
   });
-
   let betBusy = false;
   async function placeBet(opt) {
     if (betBusy) { status('Please wait — your bet is still sending.', 'info'); return; }
@@ -426,17 +346,43 @@
     }
   }
   function connect() {
-    const interval = SESSION ? 2000 : 3000;
-    setInterval(refresh, interval);
+    if (!SESSION) {
+      status('No session — open via the launch URL from your operator, or view demo.html', 'error');
+      return;
+    }
+    if (!WS) {
+      S.connected = true; S._everConnected = true;
+      S.polling = true;
+      refresh();
+      setInterval(refresh, 2000);
+      return;
+    }
+    let ws;
+    try { ws = new WebSocket(WS); } catch (e) { showErr('WS: ' + e.message); return; }
+    ws.onopen = () => {
+      S.connected = true; S._everConnected = true;
+      ws.send(JSON.stringify({ action: 'subscribe', room: ROOM, session: SESSION }));
+      refresh();
+    };
+    ws.onmessage = ev => {
+      try {
+        const m = JSON.parse(ev.data);
+        if (m.kind === 'snapshot' && m.data) { S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now(); }
+        else if (m.kind === 'event' && m.data) {
+          if (m.data.seq > S.lastSeq) S.lastSeq = m.data.seq;
+          refresh();
+        } else if (m.kind === 'pong') { /* keepalive */ }
+        else if (m.kind === 'error') { showErr('WS: ' + (m.data && m.data.message)); }
+      } catch (e) { /* ignore malformed */ }
+    };
+    ws.onclose = () => { S.connected = false; setTimeout(connect, 3000); };
+    ws.onerror = () => { try { ws.close(); } catch (e) { /* noop */ } };
+    setInterval(() => { try { ws.readyState === 1 && ws.send(JSON.stringify({ action: 'ping' })); } catch (e) { /* noop */ } }, 25000);
   }
   window.addEventListener('keydown', e => {
-    document.body.classList.add('kb');
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key;
-    if (k === 'Escape') {
-      if (S.panel) { S.panel = null; announce('Panel closed'); }
-      e.preventDefault(); return;
-    }
+    if (k === 'Escape') { S.panel = null; return; }
     if (S.panel) return;
     if (/^[1-8]$/.test(k)) {
       const o = S.snap && S.snap.options && S.snap.options[Number(k) - 1];
@@ -460,9 +406,69 @@
     if (k === 'm' || k === 'M') { S.panel = 'menu'; announce('Menu panel opened'); e.preventDefault(); return; }
     if (k === 's' || k === 'S') { toggleSound(); e.preventDefault(); }
   });
-
   refresh(); connect(); requestAnimationFrame(draw);
-})();
-</script>
-</body>
-</html>
+  // --- Demo mode initialization ---
+  (function initDemoMode() {
+    const params = new URLSearchParams(location.search);
+    S.demoMode = params.get('mode') === 'demo';
+    const DEMO_TTL_MS = 30 * 60 * 1000;
+    const SESSION_KEY = 'wheel_demo_session';
+    const demoBadge = document.getElementById('demoBadge');
+    const timerBadge = document.getElementById('timerBadge');
+    const timerText = document.getElementById('timerText');
+    let demoExpiry = 0;
+    let timerInterval = null;
+    function startTimer() {
+      clearInterval(timerInterval);
+      timerBadge.classList.add('active');
+      updateTimer();
+      timerInterval = setInterval(updateTimer, 1000);
+    }
+    function updateTimer() {
+      const remaining = Math.max(0, demoExpiry - Date.now());
+      const m = Math.floor(remaining / 60000).toString().padStart(2, '0');
+      const s = Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0');
+      timerText.textContent = m + ':' + s;
+      timerBadge.classList.remove('warning', 'danger');
+      if (remaining <= 5 * 60 * 1000) timerBadge.classList.add('danger');
+      else if (remaining <= 10 * 60 * 1000) timerBadge.classList.add('warning');
+      if (remaining <= 0) { endDemo(); }
+    }
+    function endDemo() {
+      clearInterval(timerInterval);
+      timerBadge.classList.remove('active', 'warning', 'danger');
+      timerBadge.textContent = 'Session ended';
+      // Optionally redirect or show modal
+    }
+    function startTimer() {
+      clearInterval(timerInterval);
+      timerBadge.classList.add('active');
+      updateTimer();
+      timerInterval = setInterval(updateTimer, 1000);
+    }
+    if (S.demoMode) {
+      demoBadge.classList.add('active');
+      timerBadge.classList.add('active');
+      const stored = localStorage.getItem('wheel_demo_session');
+      if (stored) {
+        try {
+          const s = JSON.parse(stored);
+          if (s.expiry > Date.now()) {
+            demoExpiry = s.expiry;
+            startTimer();
+          } else {
+            localStorage.removeItem('wheel_demo_session');
+            // endDemo();
+          }
+        } else {
+          demoExpiry = Date.now() + 30 * 60 * 1000;
+          localStorage.setItem('wheel_demo_session', JSON.stringify({ expiry: demoExpiry }));
+          startTimer();
+        }
+      } else {
+        demoBadge.classList.remove('active');
+        timerBadge.classList.remove('active');
+        clearInterval(timerInterval);
+      }
+    })();
+  })();

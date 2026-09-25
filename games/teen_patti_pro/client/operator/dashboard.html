@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Operator Dashboard — DearLive Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&family=Secular+One&display=swap" rel="stylesheet">
+<style>
+:root{
+  --dl-navy:#050914; --dl-blue:#2e6bff; --dl-violet:#7c3aed; --dl-cyan:#22d3ee;
+  --dl-text:#fef2f2; --dl-muted:#8fa3c8;
+  --dl-gold:#ffd54a; --dl-goldDeep:#f59e0b;
+  --dl-seatA:#ef4444; --dl-seatB:#3b82f6; --dl-seatC:#22c55e;
+  --dl-success:#34D399; --dl-warning:#FBBF24; --dl-danger:#FB7185; --dl-info:#38BDF8;
+  --dl-surface-deep:#080B1C; --dl-surface-room:#0D1230; --dl-surface-card:#151A3D; --dl-surface-elevated:#1D2450;
+  --radius-sm:8px; --radius-md:12px; --radius-lg:16px; --radius-xl:20px; --radius-full:9999px;
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px;
+  --space-8:32px; --space-10:40px; --space-12:48px;
+  --font-display:'Secular One',system-ui; --font-body:'Montserrat',system-ui;
+  --font-size-xs:12px; --font-size-sm:14px; --font-size-base:16px; --font-size-lg:20px; --font-size-xl:24px; --font-size-2xl:32px; --font-size-3xl:40px; --font-size-4xl:56px;
+  --font-weight-regular:400; --font-weight-medium:500; --font-weight-semibold:600; --font-weight-bold:800;
+  --line-height-tight:1.2; --line-height-normal:1.5; --line-height-relaxed:1.7;
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.3); --shadow-md:0 4px 12px rgba(0,0,0,0.4); --shadow-lg:0 8px 24px rgba(0,0,0,0.5); --shadow-glow:0 0 24px rgba(255,213,74,0.3);
+  --duration-instant:100ms; --duration-fast:180ms; --duration-normal:260ms; --duration-slow:400ms; --duration-slower:700ms;
+  --easing-standard:cubic-bezier(0.4,0,0.2,1); --easing-emphasized:cubic-bezier(0.2,0,0,1); --easing-enter:cubic-bezier(0,0,0.2,1); --easing-exit:cubic-bezier(0.4,0,1,1);
+  --z-background:0; --z-content:10; --z-ui:20; --z-overlay:30; --z-room-effects:40; --z-gift-effects:50; --z-modal:60; --z-toast:70; --z-critical:80; --z-fullscreen:90;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow-x:hidden;background:var(--dl-surface-deep);color:var(--dl-text);font-family:var(--font-body);font-size:var(--font-size-base);font-weight:var(--font-weight-regular);line-height:var(--line-height-normal);-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;height:auto;display:block}
+button{font-family:inherit;font-size:inherit;background:none;border:none;cursor:pointer;color:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;background:transparent;border:none;outline:none}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.container{width:100%;max-width:1440px;margin:0 auto;padding:0 var(--space-4)}
+.flex{display:flex}
+.flex-col{flex-direction:column}
+.items-center{align-items:center}
+.justify-center{justify-content:center}
+.justify-between{justify-content:space-between}
+.gap-1{gap:var(--space-1)} .gap-2{gap:var(--space-2)} .gap-3{gap:var(--space-3)} .gap-4{gap:var(--space-4)} .gap-6{gap:var(--space-6)} .gap-8{gap:var(--space-8)}
+.w-full{width:100%}
+.text-center{text-align:center}
+.text-muted{color:var(--dl-muted)}
+.text-gold{color:var(--dl-gold)}
+.text-success{color:var(--dl-success)}
+.text-warning{color:var(--dl-warning)}
+.text-danger{color:var(--dl-danger)}
+.font-display{font-family:var(--font-display)}
+.font-bold{font-weight:var(--font-weight-bold)}
+.font-semibold{font-weight:var(--font-weight-semibold)}
+.rounded-sm{border-radius:var(--radius-sm)} .rounded-md{border-radius:var(--radius-md)} .rounded-lg{border-radius:var(--radius-lg)} .rounded-xl{border-radius:var(--radius-xl)} .rounded-full{border-radius:var(--radius-full)}
+.shadow-sm{box-shadow:var(--shadow-sm)} .shadow-md{box-shadow:var(--shadow-md)} .shadow-lg{box-shadow:var(--shadow-lg)} .shadow-glow{box-shadow:var(--shadow-glow)}
+.bg-surface{background:var(--dl-surface-card)} .bg-elevated{background:var(--dl-surface-elevated)} .bg-deep{background:var(--dl-surface-deep)}
+.border{border:1px solid rgba(255,255,255,0.1)}
+.transition{transition:all var(--duration-normal) var(--easing-standard)}
+.hover-lift:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:var(--space-3) var(--space-6);font-weight:var(--font-weight-semibold);border-radius:var(--radius-lg);transition:all var(--duration-fast) var(--easing-standard);white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,var(--dl-gold),var(--dl-goldDeep));color:#080B1C;box-shadow:0 4px 16px rgba(255,213,74,0.3)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,213,74,0.4)}
+.btn-secondary{background:rgba(255,255,255,0.08);color:var(--dl-text);border:1px solid rgba(255,255,255,0.15)}
+.btn-secondary:hover{background:rgba(255,255,255,0.15);transform:translateY(-2px)}
+.btn-ghost{background:transparent;color:var(--dl-muted);border:1px solid transparent}
+.btn-ghost:hover{color:var(--dl-text);background:rgba(255,255,255,0.05)}
+.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.badge{display:inline-flex;align-items:center;padding:var(--space-1) var(--space-3);font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);border-radius:var(--radius-full);text-transform:uppercase;letter-spacing:0.05em}
+.badge-live{background:rgba(52,211,213,0.15);color:var(--dl-info);border:1px solid rgba(52,211,213,0.3)}
+.badge-coming{background:rgba(251,191,36,0.15);color:var(--dl-warning);border:1px solid rgba(251,191,36,0.3)}
+.badge-demo{background:rgba(255,213,74,0.15);color:var(--dl-gold);border:1px solid rgba(255,213,74,0.3)}
+.card{background:var(--dl-surface-card);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-xl);overflow:hidden;transition:all var(--duration-normal) var(--easing-standard)}
+.card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.5);border-color:rgba(255,213,74,0.3)}
+.game-thumb{aspect-ratio:1/1;width:100%;object-fit:cover}
+.game-card-body{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.game-title{font-family:var(--font-display);font-size:var(--font-size-lg);font-weight:var(--font-weight-bold);color:var(--dl-text)}
+.game-meta{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-size-sm);color:var(--dl-muted)}
+.player-count{display:flex;align-items:center;gap:var(--space-1);color:var(--dl-success)}
+.recent-strip{display:flex;gap:var(--space-3);overflow-x:auto;padding:var(--space-2) 0;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.recent-item{flex:0 0 80px;scroll-snap-align:start}
+.recent-thumb{aspect-ratio:1/1;width:100%;border-radius:var(--radius-md);object-fit:cover}
+.section-title{font-family:var(--font-display);font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);color:var(--dl-text);margin-bottom:var(--space-4)}
+.section-subtitle{font-size:var(--font-size-base);color:var(--dl-muted);margin-bottom:var(--space-6)}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-6)}
+@media (max-width:1024px){.grid-3{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:640px){.grid-3{grid-template-columns:1fr}}
+.skeleton{background:linear-gradient(90deg,rgba(255,255,255,0.05) 25%,rgba(255,255,255,0.1) 50%,rgba(255,255,255,0.05) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius-md)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.empty-state{text-align:center;padding:var(--space-12) var(--space-4);color:var(--dl-muted)}
+.empty-icon{font-size:48px;margin-bottom:var(--space-3);opacity:0.5}
+.empty-title{font-family:var(--font-display);font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);color:var(--dl-text);margin-bottom:var(--space-2)}
+.empty-desc{font-size:var(--font-size-base);color:var(--dl-muted);max-width:320px;margin:0 auto}
+.error-state{border-color:var(--dl-danger)}
+.error-title{color:var(--dl-danger)}
+.loading-overlay{position:fixed;inset:0;background:rgba(8,11,28,0.9);display:flex;align-items:center;justify-content:center;z-index:var(--z-fullscreen);display:none}
+.loading-overlay.active{display:flex}
+.spinner{width:48px;height:48px;border:4px solid rgba(255,255,255,0.1);border-top-color:var(--dl-gold);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:var(--space-6);left:50%;transform:translateX(-50%);padding:var(--space-3) var(--space-5);border-radius:var(--radius-lg);background:rgba(13,17,40,0.95);border:1px solid rgba(255,255,255,0.15);box-shadow:var(--shadow-lg);z-index:var(--z-toast);display:flex;align-items:center;gap:var(--space-3);opacity:0;transform:translateX(-50%) translateY(20px);transition:all var(--duration-normal) var(--easing-standard);pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{border-color:var(--dl-success)}
+.toast.error{border-color:var(--dl-danger)}
+.toast.warning{border-color:var(--dl-warning)}
+.toast.info{border-color:var(--dl-info)}
+.demo-badge{position:fixed;top:var(--space-4);right:var(--space-4);z-index:var(--z-critical);padding:var(--space-2) var(--space-4);background:rgba(255,213,74,0.2);border:1px solid rgba(255,213,74,0.4);border-radius:var(--radius-full);font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);color:var(--dl-gold);text-transform:uppercase;letter-spacing:0.1em;display:none}
+.demo-badge.active{display:block}
+.timer-badge{position:fixed;top:var(--space-4);left:var(--space-4);z-index:var(--z-critical);padding:var(--space-2) var(--space-4);background:rgba(13,17,40,0.95);border:1px solid rgba(255,213,74,0.3);border-radius:var(--radius-full);font-family:var(--font-display);font-size:var(--font-size-sm);font-weight:var(--font-weight-bold);color:var(--dl-gold);display:none}
+.timer-badge.active{display:flex;align-items:center;gap:var(--space-2)}
+.timer-badge.warning{color:var(--dl-warning);border-color:var(--dl-warning)}
+.timer-badge.danger{color:var(--dl-danger);border-color:var(--dl-danger);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+<header class="flex items-center justify-between p-4 border-b border-white/5 bg-surface-deep/80 backdrop-blur-sm sticky top-0 z-20">
+  <a href="/" class="flex items-center gap-3" aria-label="DearLive Home">
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect width="36" height="36" rx="8" fill="url(#logoGrad)"/><defs><linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffd54a"/><stop offset="100%" stop-color="#f59e0b"/></defs><path d="M12 14h12M18 10v4M12 22h12M18 18v4" stroke="#080B1C" stroke-width="3" stroke-linecap="round"/></svg>
+    <span class="font-display font-bold text-xl text-gold">DearLive</span>
+  </a>
+  <nav class="flex items-center gap-2">
+    <a href="/lobby" class="px-4 py-2 text-sm font-semibold text-gold bg-gold/10 rounded-lg hover:bg-gold/20 transition">Lobby</a>
+    <a href="/operator/dashboard" class="px-4 py-2 text-sm font-semibold text-gold bg-gold/10 rounded-lg hover:bg-gold/20 transition">Operator</a>
+    <a href="#" class="px-4 py-2 text-sm font-semibold text-muted hover:text-text transition">Store</a>
+    <a href="#" class="px-4 py-2 text-sm font-semibold text-muted hover:text-text transition">Ranking</a>
+    <button class="p-2 text-muted hover:text-text transition" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 1-.33 1.82l-.06.06a2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 1-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83l.06-.06a2 2 0 0 1 2.83 0l.06.06z"/><path d="M21 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2z"/></svg></button>
+  </nav>
+</header>
+<main id="mainContent" class="flex-1 min-h-0">
+  <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+  <section id="errorState" class="error-state empty-state hidden" aria-live="assertive">
+    <div class="empty-icon">⚠️</div>
+    <h2 class="empty-title error-title">Failed to Load Dashboard</h2>
+    <p class="empty-desc" id="errorMessage">Something went wrong. Please try again.</p>
+    <button class="btn btn-primary mt-4" id="retryBtn">Retry</button>
+  </section>
+  <section id="operatorContent" class="hidden">
+    <div class="container py-8">
+      <header class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+          <div>
+            <h1 class="font-display text-3xl font-bold text-text">Operator Dashboard</h1>
+            <p class="text-muted">Welcome back, <span id="operatorName" class="font-semibold text-gold">Operator</span></p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-gold/10 border border-gold/30 rounded-full">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gold"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              <span class="text-gold font-mono text-sm" id="liveStatus">LIVE</span>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-white/10 rounded-full">
+              <span class="text-xs font-mono text-gold" id="operatorId">OP-XXXX</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- KPI Cards Row -->
+        <section aria-labelledby="kpiTitle" class="mb-8">
+          <h2 id="kpiTitle" class="section-title">Key Metrics</h2>
+          <div class="grid-3" id="kpiGrid">
+            <!-- KPI Cards will be rendered here -->
+          </div>
+        </section>
+
+        <!-- Charts Row -->
+        <section class="grid-3 mb-8" aria-labelledby="chartsTitle">
+          <h2 id="chartsTitle" class="section-title sr-only">Charts</h2>
+          <div class="card col-span-3">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-display text-lg font-bold text-text">Revenue Trend (24h)</h3>
+              <select class="px-3 py-1 text-sm bg-surface-deep border border-white/10 rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-gold" id="chartRange">
+                <option value="1h">1 Hour</option>
+                <option value="6h" selected>6 Hours</option>
+                <option value="24h">24 Hours</option>
+                <option value="7d">7 Days</option>
+              </select>
+            </div>
+            <canvas id="revenueChart" height="200" width="100%"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="font-display text-lg font-bold text-text mb-4">Game Distribution</h3>
+            <canvas id="gameDistChart" height="200" width="100%"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="font-display text-lg font-bold text-text mb-4">Player Activity</h3>
+            <canvas id="playerActivityChart" height="200" width="100%"></canvas>
+          </div>
+        </section>
+
+        <!-- Quick Actions Row -->
+        <section class="mb-8" aria-labelledby="actionsTitle">
+          <h2 id="actionsTitle" class="section-title">Quick Actions</h2>
+          <div class="grid-3" id="quickActionsGrid">
+            <!-- Quick Action Cards -->
+          </div>
+        </section>
+
+        <!-- Tables -->
+        <section class="mb-8" aria-labelledby="tablesTitle">
+          <div class="flex items-center justify-between mb-4">
+            <h2 id="tablesTitle" class="section-title">My Tables</h2>
+            <button class="btn btn-primary" id="createTableBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Create Table</button>
+          </div>
+          <div class="card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-surface-deep/50">
+                  <tr class="border-b border-white/10">
+                    <th class="p-3 text-left font-semibold text-text">Table</th>
+                    <th class="p-3 text-left font-semibold text-text">Game</th>
+                    <th class="p-3 text-left font-semibold text-text">Status</th>
+                    <th class="p-3 text-left font-semibold text-text">Players</th>
+                    <th class="p-3 text-left font-semibold text-text">Round</th>
+                    <th class="p-3 text-left font-semibold text-text">Pot</th>
+                    <th class="p-3 text-left font-semibold text-text">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tablesBody">
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-3 font-mono text-gold">TP-001</td>
+                    <td class="p-3"><span class="badge badge-live">Teen Patti</span></td>
+                    <td class="p-3"><span class="badge badge-live">Betting</span></td>
+                    <td class="p-3 text-center">4/6</td>
+                    <td class="p-3 text-center font-mono text-gold">#1247</td>
+                    <td class="p-3 text-right font-mono text-gold">12,500</td>
+                    <td class="p-3"><button class="btn btn-ghost text-xs px-2 py-1">View</button></td>
+                  </tr>
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-3 font-mono text-gold">GM-003</td>
+                    <td class="p-3"><span class="badge badge-live">Greedy Monkey</span></td>
+                    <td class="p-3"><span class="badge badge-live">Spinning</span></td>
+                    <td class="p-3 text-center">2/4</td>
+                    <td class="p-3 text-center font-mono text-gold">#892</td>
+                    <td class="p-3 text-right font-mono text-gold">8,200</td>
+                    <td class="p-3"><button class="btn btn-ghost text-xs px-2 py-1">View</button></td>
+                  </tr>
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-3 font-mono text-gold">BK-002</td>
+                    <td class="p-3"><span class="badge badge-live">Baby King</span></td>
+                    <td class="p-3"><span class="badge badge-coming">Waiting</span></td>
+                    <td class="p-3 text-center">1/4</td>
+                    <td class="p-3 text-center font-mono text-gold">#561</td>
+                    <td class="p-3 text-right font-mono text-gold">3,100</td>
+                    <td class="p-3"><button class="btn btn-ghost text-xs px-2 py-1">View</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recent Activity -->
+        <section aria-labelledby="activityTitle" class="mb-8">
+          <h2 id="activityTitle" class="section-title">Recent Activity</h2>
+          <div class="card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-surface-deep/50">
+                  <tr class="border-b border-white/10">
+                    <th class="p-3 text-left font-semibold text-text">Time</th>
+                    <th class="p-3 text-left font-semibold text-text">Event</th>
+                    <th class="p-3 text-left font-semibold text-text">Player</th>
+                    <th class="p-3 text-left font-semibold text-text">Game</th>
+                    <th class="p-3 text-left font-semibold text-text">Amount</th>
+                    <th class="p-3 text-left font-semibold text-text">Result</th>
+                  </tr>
+                </thead>
+                <tbody id="activityBody">
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-3 text-muted font-mono text-xs">14:23:12</td>
+                    <td class="p-3"><span class="badge badge-success">Win</span></td>
+                    <td class="p-3 font-mono text-text">player_7x9k</td>
+                    <td class="p-3"><span class="badge badge-live">Teen Patti</span></td>
+                    <td class="p-3 font-mono text-success">+12,500</td>
+                    <td class="p-3 text-success font-semibold">Won</td>
+                  </tr>
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-3 text-muted font-mono text-xs">14:21:45</td>
+                    <td class="p-3"><span class="badge badge-warning">Bet</span></td>
+                    <td class="p-3 font-mono text-text">player_m2p8</td>
+                    <td class="p-3"><span class="badge badge-live">Greedy Monkey</span></td>
+                    <td class="p-3 font-mono text-warning">5,000</td>
+                    <td class="p-3 text-warning font-semibold">Pending</td>
+                  </tr>
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-3 text-muted font-mono text-xs">14:19:33</td>
+                    <td class="p-3"><span class="badge badge-danger">Loss</span></td>
+                    <td class="p-3 font-mono text-text">player_7x9k</td>
+                    <td class="p-3"><span class="badge badge-live">Baby King</span></td>
+                    <td class="p-3 font-mono text-danger">-5,000</td>
+                    <td class="p-3 text-danger font-semibold">Lost</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        <!-- Quick Stats Bottom -->
+        <section class="grid-3" aria-labelledby="bottomStatsTitle">
+          <h2 id="bottomStatsTitle" class="section-title sr-only">Bottom Stats</h2>
+          <div class="card p-6">
+            <h3 class="font-display text-lg font-bold text-text mb-4">Wallet Balance</h3>
+            <div class="flex items-center justify-between">
+              <span class="text-muted">Available</span>
+              <span class="font-display text-3xl font-bold text-gold" id="walletBalance">125,000</span>
+            </div>
+            <div class="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+              <span class="text-muted text-sm">Today P&L</span>
+              <span class="font-display text-xl font-bold text-success" id="todayPnl">+12,450</span>
+            </div>
+          </div>
+          <div class="card p-6">
+            <h3 class="font-display text-lg font-bold text-text mb-4">Today's Stats</h3>
+            <div class="grid-2 gap-4">
+              <div class="text-center p-4 bg-surface-deep/50 rounded-lg">
+                <div class="font-display text-2xl font-bold text-text" id="totalRounds">247</div>
+                <div class="text-muted text-sm">Total Rounds</div>
+              </div>
+              <div class="text-center p-4 bg-surface-deep/50 rounded-lg">
+                <div class="font-display text-2xl font-bold text-text" id="totalBets">1,234</div>
+                <div class="text-muted text-sm">Total Bets</div>
+              </div>
+              <div class="text-center p-4 bg-surface-deep/50 rounded-lg">
+                <div class="font-display text-2xl font-bold text-text" id="activePlayers">89</div>
+                <div class="text-muted text-sm">Active Players</div>
+              </div>
+              <div class="text-center p-4 bg-surface-deep/50 rounded-lg">
+                <div class="font-display text-2xl font-bold text-gold" id="totalRevenue">48,230</div>
+                <div class="text-muted text-sm">Revenue</div>
+              </div>
+            </div>
+          </div>
+          <div class="card p-6">
+            <h3 class="font-display text-lg font-bold text-text mb-4">Quick Links</h3>
+            <div class="grid-2 gap-3">
+              <a href="/operator/admin/profit-risk" class="btn btn-secondary w-full justify-center">Profit & Risk</a>
+              <a href="/operator/admin/player-override" class="btn btn-secondary w-full justify-center">Player Override</a>
+              <a href="/operator/admin/packages" class="btn btn-secondary w-full justify-center">Token Packages</a>
+              <a href="/operator/admin/game-rules" class="btn btn-secondary w-full justify-center">Game Rules</a>
+              <a href="/operator/admin/wallet" class="btn btn-secondary w-full justify-center">Wallet & Credits</a>
+              <a href="/operator/admin/withdrawals" class="btn btn-secondary w-full justify-center">Withdrawals</a>
+              <a href="/operator/admin/rooms" class="btn btn-secondary w-full justify-center">Rooms</a>
+              <a href="/operator/admin/vip" class="btn btn-secondary w-full justify-center">VIP Tiers</a>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <footer class="p-6 border-t border-white/5 bg-surface-deep/80 backdrop-blur-sm">
+    <div class="container flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted">
+      <p>&copy; 2024 DearLive Games. All rights reserved.</p>
+      <nav class="flex items-center gap-6">
+        <a href="#" class="hover:text-text transition">Terms</a>
+        <a href="#" class="hover:text-text transition">Privacy</a>
+        <a href="#" class="hover:text-text transition">Support</a>
+        <a href="#" class="hover:text-text transition">API Docs</a>
+      </nav>
+    </div>
+  </footer>
+  <div class="demo-badge" id="demoBadge" aria-live="polite">DEMO</div>
+  <div class="timer-badge" id="timerBadge" aria-live="polite" aria-label="Session timer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></div><span id="timerText">00:00</span></div>
+  <div id="toastContainer" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+  <script>
+  (() => {
+    'use strict';
+    const API = '';
+    const state = { kpis: {}, charts: {}, tables: [], activity: [] };
+    const els = {
+      loading:document.getElementById('loadingOverlay'),
+      error:document.getElementById('errorState'),
+      errorMsg:document.getElementById('errorMessage'),
+      operatorContent:document.getElementById('operatorContent'),
+      kpiGrid:document.getElementById('kpiGrid'),
+      revenueChart:document.getElementById('revenueChart'),
+      gameDistChart:document.getElementById('gameDistChart'),
+      playerActivityChart:document.getElementById('playerActivityChart'),
+      quickActionsGrid:document.getElementById('quickActionsGrid'),
+      tablesBody:document.getElementById('tablesBody'),
+      activityBody:document.getElementById('activityBody'),
+      walletBalance:document.getElementById('walletBalance'),
+      todayPnl:document.getElementById('todayPnl'),
+      totalRounds:document.getElementById('totalRounds'),
+      totalBets:document.getElementById('totalBets'),
+      activePlayers:document.getElementById('activePlayers'),
+      totalRevenue:document.getElementById('totalRevenue'),
+      walletBalance:document.getElementById('walletBalance'),
+      todayPnl:document.getElementById('todayPnl'),
+      totalRounds:document.getElementById('totalRounds'),
+      totalBets:document.getElementById('totalBets'),
+      activePlayers:document.getElementById('activePlayers'),
+      totalRevenue:document.getElementById('totalRevenue'),
+    };
+    function showLoading(){els.loading?.classList.add('active');els.error?.classList.add('hidden');els.operatorContent?.classList.add('hidden')}
+    function hideLoading(){els.loading?.classList.remove('active')}
+    function showError(msg){els.loading?.classList.remove('active');els.operatorContent?.classList.add('hidden');els.error?.classList.remove('hidden');els.errorMsg.textContent=msg}
+    function showOperator(){els.loading?.classList.remove('active');els.error?.classList.add('hidden');els.operatorContent?.classList.remove('hidden')}
+    function toast(message,type='info'){const tc=document.getElementById('toastContainer');tc.textContent=message;tc.className='toast show '+type;clearTimeout(tc._hide);tc._hide=setTimeout(()=>tc.classList.remove('show'),4000)}
+    async function fetchJson(path){const r=await fetch(API+path,{headers:{'Authorization':'Bearer '+SESSION}});const j=await r.json();if(!j.success)throw new Error(j.code+': '+j.message);return j.data}
+    function formatNumber(n){return new Intl.NumberFormat().format(n)}
+    function formatCurrency(n){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n/100)}
+    function formatTime(ms){const d=new Date(ms);return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+    function showLoading(){els.loading?.classList.add('active');els.error?.classList.add('hidden');els.operatorContent?.classList.add('hidden')}
+    function hideLoading(){els.loading?.classList.remove('active')}
+    function showError(msg){els.loading?.classList.remove('active');els.operatorContent?.classList.add('hidden');els.error?.classList.remove('hidden');els.errorMsg.textContent=msg}
+    function showOperator(){els.loading?.classList.remove('active');els.error?.classList.add('hidden');els.operatorContent?.classList.remove('hidden')}
+    function toast(message,type='info'){const tc=document.getElementById('toastContainer');tc.textContent=message;tc.className='toast show '+type;clearTimeout(tc._hide);tc._hide=setTimeout(()=>tc.classList.remove('show'),4000)}
+    async function fetchKpis(){try{const data=await fetchJson('/api/v1/operator/admin/dashboard/kpis');state.kpis=data;renderKpis();}catch(e){toast('Failed to load KPIs','error')}}
+    function renderKpis(){const k=state.kpis;if(!k)return;const grid=els.kpiGrid;if(!grid)return;grid.innerHTML='';[
+      {label:'Active Games',value:state.kpis.activeGames||0,icon:'🎮',color:'var(--dl-info)'},
+      {label:'Live Rounds',value:state.kpis.liveRounds||0,icon:'🔴',color:'var(--dl-danger)'},
+      {label:'Total Bets (24h)',value:formatNumber(state.kpis.totalBets24h||0),icon:'🎲',color:'var(--dl-gold)'},
+      {label:'Net Revenue (24h)',value:formatCurrency(state.kpis.netRevenue24h||0),icon:'💰',color:'var(--dl-success)'},
+      {label:'Online Players',value:formatNumber(state.kpis.onlinePlayers||0),icon:'👥',color:'var(--dl-info)'},
+      {label:'Pending Withdrawals',value:state.kpis.pendingWithdrawals||0,icon:'⏳',color:'var(--dl-warning)'}
+    ].forEach(kpi=>{const card=document.createElement('article');card.className='card p-6 hover-lift';card.innerHTML=`<div class="flex items-center justify-between"><div><p class="text-muted text-sm">${kpi.label}</p><p class="font-display text-3xl font-bold text-text">${kpi.value}</p></div><div class="text-3xl" style="color:${kpi.color}">${kpi.icon}</div>`;grid.appendChild(card)})}
+    async function fetchCharts(){try{const data=await fetchJson('/api/v1/operator/admin/dashboard/charts');state.charts=data;renderCharts();}catch(e){toast('Failed to load charts','error')}}
+    function renderCharts(){const c=state.charts;if(!c)return;renderRevenueChart(c.revenue);renderGameDistChart(c.gameDist);renderPlayerActivityChart(c.playerActivity)}
+    function renderRevenueChart(data){const ctx=els.revenueChart?.getContext('2d');if(!ctx||!data)return;new Chart(ctx,{type:'line',data:{labels:data.labels,datasets:[{label:'Revenue',data:data.values,borderColor:'#ffd54a',backgroundColor:'rgba(255,213,74,0.1)',fill:true,tension:0.4,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#8fa3c8'}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8fa3c8',callback:v=>'$'+v/100}}}})}}
+    function renderGameDistChart(data){const ctx=els.gameDistChart?.getContext('2d');if(!ctx||!data)return;new Chart(ctx,{type:'doughnut',data:{labels:data.labels,datasets:[{data:data.values,backgroundColor:['#ef4444','#3b82f6','#22c55e','#f59e0b','#a78bfa','#22d3ee'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8fa3c8',font:{size:11}}},tooltip:{callbacks:{label:c=>c.label+': '+c.value+'%'}}})})}
+    function renderPlayerActivityChart(data){const ctx=els.playerActivityChart?.getContext('2d');if(!ctx||!data)return;new Chart(ctx,{type:'bar',data:{labels:data.labels,datasets:[{label:'Active',data:data.active,backgroundColor:'#22c55e'},{label:'Betting',data:data.betting,backgroundColor:'#f59e0b'},{label:'Idle',data:data.idle,backgroundColor:'#64748b'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8fa3c8',font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:'#8fa3c8'}},y:{stacked:true,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#8fa3c8'}}}})}
+    async function fetchTables(){try{const data=await fetchJson('/api/v1/operator/admin/rooms');state.tables=data.rooms||[];renderTables();}catch(e){toast('Failed to load tables','error')}}
+    function renderTables(){const tbody=els.tablesBody;if(!tbody)return;tbody.innerHTML='';(state.tables||[]).forEach(t=>{const tr=document.createElement('tr');tr.className='border-b border-white/5 hover:bg-white/5';tr.innerHTML=`<td class="p-3 font-mono text-gold">${t.id}</td><td class="p-3"><span class="badge badge-${t.game==='teen-patti-pro'?'live':t.game==='greedy-monkey'?'live':'live'}">${t.game}</span></td><td class="p-3"><span class="badge badge-${t.status==='betting'?'live':t.status==='waiting'?'coming':'danger'}">${t.status}</span></td><td class="p-3 text-center">${t.players}/${t.maxPlayers}</td><td class="p-3 text-center font-mono text-gold">#${t.roundNo}</td><td class="p-3 text-right font-mono text-gold">${formatNumber(t.pot)}</td><td class="p-3"><button class="btn btn-ghost text-xs px-2 py-1">View</button></td>`;tbody.appendChild(tr)})}
+    async function fetchActivity(){try{const data=await fetchJson('/api/v1/operator/admin/activity?limit=20');state.activity=data.items||[];renderActivity();}catch(e){toast('Failed to load activity','error')}}
+    function renderActivity(){const tbody=els.activityBody;if(!tbody)return;tbody.innerHTML='';(state.activity||[]).forEach(a=>{const tr=document.createElement('tr');tr.className='border-b border-white/5 hover:bg-white/5';const isWin=a.type==='win'||a.result==='won';const isLoss=a.type==='loss'||a.result==='lost';tr.className='border-b border-white/5 hover:bg-white/5';tr.innerHTML=`<td class="p-3 text-muted font-mono text-xs">${formatTime(a.timestamp)}</td><td class="p-3"><span class="badge badge-${isWin?'success':a.type==='bet'?'warning':'danger'}">${a.type}</span></td><td class="p-3 font-mono text-text">${a.player}</td><td class="p-3"><span class="badge badge-${a.game==='teen-patti-pro'?'live':a.game==='greedy-monkey'?'live':'live'}">${a.game}</span></td><td class="p-3 font-mono ${isWin?'text-success':isLoss?'text-danger':'text-warning'}">${a.amount>=0?'+':''}${formatNumber(a.amount)}</td><td class="p-3 ${isWin?'text-success':isLoss?'text-danger':'text-warning'} font-semibold">${isWin?'Won':isLoss?'Lost':a.result}</td>`;els.activityBody.appendChild(tr)})}
+    async function fetchSummary(){try{const data=await fetchJson('/api/v1/operator/admin/dashboard/summary');els.walletBalance.textContent=formatCurrency(data.walletBalance);els.todayPnl.textContent=(data.todayPnl>=0?'+':'')+formatCurrency(data.todayPnl);els.totalRounds.textContent=formatNumber(data.totalRounds);els.totalBets.textContent=formatNumber(data.totalBets);els.activePlayers.textContent=formatNumber(data.activePlayers);els.totalRevenue.textContent=formatCurrency(data.totalRevenue);}catch(e){toast('Failed to load summary','error')}}
+    async function init(){showLoading();try{await Promise.all([fetchKpis(),fetchCharts(),fetchTables(),fetchActivity(),fetchSummary()]);hideLoading();showOperator();}catch(e){showError('Failed to load dashboard')}}
+    document.getElementById('retryBtn')?.addEventListener('click',()=>{showLoading();init()});
+    document.getElementById('retryBtn')?.addEventListener('click',init);
+    document.getElementById('createTableBtn')?.addEventListener('click',()=>{window.location.href='/operator/admin/rooms/new'});
+    // Demo mode
+    const DEMO_TTL_MS=30*60*1000;const SESSION_KEY='operator_demo_session';let demoExpiry=0,timerInterval=null;
+    const demoBadge=document.getElementById('demoBadge'),timerBadge=document.getElementById('timerBadge'),timerText=document.getElementById('timerText');
+    function initDemoMode(){const params=new URLSearchParams(location.search);const isDemo=params.get('mode')==='demo';const badge=document.getElementById('demoBadge'),timer=document.getElementById('timerBadge');if(params.get('mode')==='demo'){demoBadge.classList.add('active');timerBadge.classList.add('active');const stored=localStorage.getItem('operator_demo_session');if(stored){try{const s=JSON.parse(stored);if(s.expiry>Date.now()){startTimer(s.expiry)}else{localStorage.removeItem('operator_demo_session');endDemo()}}else{localStorage.setItem('operator_demo_session',JSON.stringify({expiry:Date.now()+30*60*1000}));startTimer(Date.now()+30*60*1000)}}else{els.demoBadge?.classList.remove('active');els.timerBadge?.classList.remove('active','warning','danger');clearInterval(timerInterval)}}
+    function startTimer(expiry){clearInterval(timerInterval);timerBadge.classList.add('active');timerBadge.classList.remove('warning','danger');function tick(){const rem=Math.max(0,expiry-Date.now());const m=Math.floor(remaining/60000).toString().padStart(2,'0');const s=Math.floor((remaining%60000)/1000).toString().padStart(2,'0');timerText.textContent=m+':'+s;timerBadge.classList.remove('warning','danger');if(remaining<=5*60*1000)timerBadge.classList.add('danger');else if(remaining<=10*60*1000)timerBadge.classList.add('warning');if(remaining<=0)endDemo()}function updateTimer(){const rem=Math.max(0,expiry-Date.now());const m=Math.floor(rem/60000).toString().padStart(2,'0');const s=Math.floor((rem%60000)/1000).toString().padStart(2,'0');timerText.textContent=m+':'+s;timerBadge.classList.remove('warning','danger');if(rem<=5*60*1000)timerBadge.classList.add('danger');else if(rem<=10*60*1000)timerBadge.classList.add('warning');if(rem<=0)endDemo()}
+    function endDemo(){clearInterval(timerInterval);timerBadge.classList.remove('active','warning','danger');timerText.textContent='00:00';toast('Demo session ended','info')}}
+    function init(){showLoading();setTimeout(()=>{renderGames();renderRecent();initDemoMode();hideLoading();showLobby()},300)}
+    document.getElementById('retryBtn')?.addEventListener('click',()=>{showLoading();init()});
+    document.getElementById('retryBtn')?.addEventListener('click',init);
+    document.getElementById('createTableBtn')?.addEventListener('click',()=>{window.location.href='/operator/admin/rooms/new'});
+    document.addEventListener('DOMContentLoaded',init);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DearLive Games — Lobby</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&family=Secular+One&display=swap" rel="stylesheet">
+<style>
+:root{
+  --dl-navy:#050914; --dl-blue:#2e6bff; --dl-violet:#7c3aed; --dl-cyan:#22d3ee;
+  --dl-text:#fef2f2; --dl-muted:#8fa3c8;
+  --dl-gold:#ffd54a; --dl-goldDeep:#f59e0b;
+  --dl-seatA:#ef4444; --dl-seatB:#3b82f6; --dl-seatC:#22c55e;
+  --dl-success:#34D399; --dl-warning:#FBBF24; --dl-danger:#FB7185; --dl-info:#38BDF8;
+  --dl-surface-deep:#080B1C; --dl-surface-room:#0D1230; --dl-surface-card:#151A3D; --dl-surface-elevated:#1D2450;
+  --radius-sm:8px; --radius-md:12px; --radius-lg:16px; --radius-xl:20px; --radius-full:9999px;
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px;
+  --space-8:32px; --space-10:40px; --space-12:48px;
+  --font-display:'Secular One',system-ui; --font-body:'Montserrat',system-ui;
+  --font-size-xs:12px; --font-size-sm:14px; --font-size-base:16px; --font-size-lg:20px; --font-size-xl:24px; --font-size-2xl:32px; --font-size-3xl:40px; --font-size-4xl:56px;
+  --font-weight-regular:400; --font-weight-medium:500; --font-weight-semibold:600; --font-weight-bold:800;
+  --line-height-tight:1.2; --line-height-normal:1.5; --line-height-relaxed:1.7;
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.3); --shadow-md:0 4px 12px rgba(0,0,0,0.4); --shadow-lg:0 8px 24px rgba(0,0,0,0.5); --shadow-glow:0 0 24px rgba(255,213,74,0.3);
+  --duration-instant:100ms; --duration-fast:180ms; --duration-normal:260ms; --duration-slow:400ms; --duration-slower:700ms;
+  --easing-standard:cubic-bezier(0.4,0,0.2,1); --easing-emphasized:cubic-bezier(0.2,0,0,1); --easing-enter:cubic-bezier(0,0,0.2,1); --easing-exit:cubic-bezier(0.4,0,1,1);
+  --z-background:0; --z-content:10; --z-ui:20; --z-overlay:30; --z-room-effects:40; --z-gift-effects:50; --z-modal:60; --z-toast:70; --z-critical:80; --z-fullscreen:90;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow-x:hidden;background:var(--dl-surface-deep);color:var(--dl-text);font-family:var(--font-body);font-size:var(--font-size-base);font-weight:var(--font-weight-regular);line-height:var(--line-height-normal);-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;height:auto;display:block}
+button{font-family:inherit;font-size:inherit;background:none;border:none;cursor:pointer;color:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;background:transparent;border:none;outline:none}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.container{width:100%;max-width:1440px;margin:0 auto;padding:0 var(--space-4)}
+.flex{display:flex}
+.flex-col{flex-direction:column}
+.items-center{align-items:center}
+.justify-center{justify-content:center}
+.justify-between{justify-content:space-between}
+.gap-1{gap:var(--space-1)} .gap-2{gap:var(--space-2)} .gap-3{gap:var(--space-3)} .gap-4{gap:var(--space-4)} .gap-6{gap:var(--space-6)} .gap-8{gap:var(--space-8)}
+.w-full{width:100%}
+.text-center{text-align:center}
+.text-muted{color:var(--dl-muted)}
+.text-gold{color:var(--dl-gold)}
+.text-success{color:var(--dl-success)}
+.text-warning{color:var(--dl-warning)}
+.text-danger{color:var(--dl-danger)}
+.font-display{font-family:var(--font-display)}
+.font-bold{font-weight:var(--font-weight-bold)}
+.font-semibold{font-weight:var(--font-weight-semibold)}
+.rounded-sm{border-radius:var(--radius-sm)} .rounded-md{border-radius:var(--radius-md)} .rounded-lg{border-radius:var(--radius-lg)} .rounded-xl{border-radius:var(--radius-xl)} .rounded-full{border-radius:var(--radius-full)}
+.shadow-sm{box-shadow:var(--shadow-sm)} .shadow-md{box-shadow:var(--shadow-md)} .shadow-lg{box-shadow:var(--shadow-lg)} .shadow-glow{box-shadow:var(--shadow-glow)}
+.bg-surface{background:var(--dl-surface-card)} .bg-elevated{background:var(--dl-surface-elevated)} .bg-deep{background:var(--dl-surface-deep)}
+.border{border:1px solid rgba(255,255,255,0.1)}
+.transition{transition:all var(--duration-normal) var(--easing-standard)}
+.hover-lift:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:var(--space-3) var(--space-6);font-weight:var(--font-weight-semibold);border-radius:var(--radius-lg);transition:all var(--duration-fast) var(--easing-standard);white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,var(--dl-gold),var(--dl-goldDeep));color:#080B1C;box-shadow:0 4px 16px rgba(255,213,74,0.3)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,213,74,0.4)}
+.btn-secondary{background:rgba(255,255,255,0.08);color:var(--dl-text);border:1px solid rgba(255,255,255,0.15)}
+.btn-secondary:hover{background:rgba(255,255,255,0.15);transform:translateY(-2px)}
+.btn-ghost{background:transparent;color:var(--dl-muted);border:1px solid transparent}
+.btn-ghost:hover{color:var(--dl-text);background:rgba(255,255,255,0.05)}
+.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.badge{display:inline-flex;align-items:center;padding:var(--space-1) var(--space-3);font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);border-radius:var(--radius-full);text-transform:uppercase;letter-spacing:0.05em}
+.badge-live{background:rgba(52,211,213,0.15);color:var(--dl-info);border:1px solid rgba(52,211,213,0.3)}
+.badge-coming{background:rgba(251,191,36,0.15);color:var(--dl-warning);border:1px solid rgba(251,191,36,0.3)}
+.badge-demo{background:rgba(255,213,74,0.15);color:var(--dl-gold);border:1px solid rgba(255,213,74,0.3)}
+.card{background:var(--dl-surface-card);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-xl);overflow:hidden;transition:all var(--duration-normal) var(--easing-standard)}
+.card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.5);border-color:rgba(255,213,74,0.3)}
+.game-thumb{aspect-ratio:1/1;width:100%;object-fit:cover}
+.game-card-body{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.game-title{font-family:var(--font-display);font-size:var(--font-size-lg);font-weight:var(--font-weight-bold);color:var(--dl-text)}
+.game-meta{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-size-sm);color:var(--dl-muted)}
+.player-count{display:flex;align-items:center;gap:var(--space-1);color:var(--dl-success)}
+.recent-strip{display:flex;gap:var(--space-3);overflow-x:auto;padding:var(--space-2) 0;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.recent-item{flex:0 0 80px;scroll-snap-align:start}
+.recent-thumb{aspect-ratio:1/1;width:100%;border-radius:var(--radius-md);object-fit:cover}
+.section-title{font-family:var(--font-display);font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);color:var(--dl-text);margin-bottom:var(--space-4)}
+.section-subtitle{font-size:var(--font-size-base);color:var(--dl-muted);margin-bottom:var(--space-6)}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-6)}
+@media (max-width:1024px){.grid-3{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:640px){.grid-3{grid-template-columns:1fr}}
+.skeleton{background:linear-gradient(90deg,rgba(255,255,255,0.05) 25%,rgba(255,255,255,0.1) 50%,rgba(255,255,255,0.05) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius-md)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.empty-state{text-align:center;padding:var(--space-12) var(--space-4);color:var(--dl-muted)}
+.empty-icon{font-size:48px;margin-bottom:var(--space-3);opacity:0.5}
+.empty-title{font-family:var(--font-display);font-size:var(--font-size-xl);font-weight:var(--font-weight-bold);color:var(--dl-text);margin-bottom:var(--space-2)}
+.empty-desc{font-size:var(--font-size-base);color:var(--dl-muted);max-width:320px;margin:0 auto}
+.error-state{border-color:var(--dl-danger)}
+.error-title{color:var(--dl-danger)}
+.loading-overlay{position:fixed;inset:0;background:rgba(8,11,28,0.9);display:flex;align-items:center;justify-content:center;z-index:var(--z-fullscreen);display:none}
+.loading-overlay.active{display:flex}
+.spinner{width:48px;height:48px;border:4px solid rgba(255,255,255,0.1);border-top-color:var(--dl-gold);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:var(--space-6);left:50%;transform:translateX(-50%);padding:var(--space-3) var(--space-5);border-radius:var(--radius-lg);background:rgba(13,17,40,0.95);border:1px solid rgba(255,255,255,0.15);box-shadow:var(--shadow-lg);z-index:var(--z-toast);display:flex;align-items:center;gap:var(--space-3);opacity:0;transform:translateX(-50%) translateY(20px);transition:all var(--duration-normal) var(--easing-standard);pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{border-color:var(--dl-success)}
+.toast.error{border-color:var(--dl-danger)}
+.toast.warning{border-color:var(--dl-warning)}
+.toast.info{border-color:var(--dl-info)}
+.demo-badge{position:fixed;top:var(--space-4);right:var(--space-4);z-index:var(--z-critical);padding:var(--space-2) var(--space-4);background:rgba(255,213,74,0.2);border:1px solid rgba(255,213,74,0.4);border-radius:var(--radius-full);font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);color:var(--dl-gold);text-transform:uppercase;letter-spacing:0.1em;display:none}
+.demo-badge.active{display:block}
+.timer-badge{position:fixed;top:var(--space-4);left:var(--space-4);z-index:var(--z-critical);padding:var(--space-2) var(--space-4);background:rgba(13,17,40,0.95);border:1px solid rgba(255,213,74,0.3);border-radius:var(--radius-full);font-family:var(--font-display);font-size:var(--font-size-sm);font-weight:var(--font-weight-bold);color:var(--dl-gold);display:none}
+.timer-badge.active{display:flex;align-items:center;gap:var(--space-2)}
+.timer-badge.warning{color:var(--dl-warning);border-color:var(--dl-warning)}
+.timer-badge.danger{color:var(--dl-danger);border-color:var(--dl-danger);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+<header class="flex items-center justify-between p-4 border-b border-white/5 bg-surface-deep/80 backdrop-blur-sm sticky top-0 z-20">
+  <a href="/" class="flex items-center gap-3" aria-label="DearLive Home">
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect width="36" height="36" rx="8" fill="url(#logoGrad)"/><defs><linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffd54a"/><stop offset="100%" stop-color="#f59e0b"/></defs><path d="M12 14h12M18 10v4M12 22h12M18 18v4" stroke="#080B1C" stroke-width="3" stroke-linecap="round"/></svg>
+    <span class="font-display font-bold text-xl text-gold">DearLive</span>
+  </a>
+  <nav class="flex items-center gap-2">
+    <a href="/lobby" class="px-4 py-2 text-sm font-semibold text-gold bg-gold/10 rounded-lg hover:bg-gold/20 transition">Lobby</a>
+    <a href="#" class="px-4 py-2 text-sm font-semibold text-muted hover:text-text transition">Store</a>
+    <a href="#" class="px-4 py-2 text-sm font-semibold text-muted hover:text-text transition">Ranking</a>
+    <button class="p-2 text-muted hover:text-text transition" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 1-.33 1.82l-.06.06a2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 1-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 1 .33-1.82l.06-.06a2 2 0 0 1 2.83 0l.06.06z"/><path d="M21 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2z"/></svg></button>
+  </nav>
+</header>
+<main id="mainContent" class="flex-1 min-h-0">
+  <section id="loadingState" class="loading-overlay active" aria-live="polite" aria-label="Loading games">
+    <div class="spinner"></div>
+  </section>
+  <section id="errorState" class="error-state empty-state hidden" aria-live="assertive">
+    <div class="empty-icon">⚠️</div>
+    <h2 class="empty-title error-title">Failed to Load Games</h2>
+    <p class="empty-desc" id="errorMessage">Something went wrong. Please try again.</p>
+    <button class="btn btn-primary mt-4" id="retryBtn">Retry</button>
+  </section>
+  <section id="lobbyContent" class="hidden">
+    <div class="container py-8">
+      <header class="flex flex-col items-start gap-2 mb-8">
+        <h1 class="font-display text-3xl font-bold text-text">Game Lobby</h1>
+        <p class="text-muted">Choose a game and start playing</p>
+      </header>
+      <section aria-labelledby="recentTitle" class="mb-10">
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="recentTitle" class="section-title">Recently Played</h2>
+          <button id="clearRecent" class="btn btn-ghost text-sm hidden">Clear History</button>
+        </div>
+        <div class="recent-strip" id="recentStrip" role="list" aria-label="Recently played games">
+        </div>
+        <p id="emptyRecent" class="empty-state hidden"><span class="empty-icon">🕐</span><h3 class="empty-title">No recent games</h3><p class="empty-desc">Your recently played games will appear here</p></p>
+      </section>
+      <section aria-labelledby="gamesTitle">
+        <h2 id="gamesTitle" class="section-title">All Games</h2>
+        <p class="section-subtitle">Pick a game and start playing</p>
+        <div class="grid-3" id="gamesGrid" role="list" aria-label="Available games">
+        </div>
+      </section>
+    </div>
+  </section>
+</main>
+<footer class="p-6 border-t border-white/5 bg-surface-deep/80 backdrop-blur-sm">
+  <div class="container flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted">
+    <p>&copy; 2024 DearLive Games. All rights reserved.</p>
+    <nav class="flex items-center gap-6">
+      <a href="#" class="hover:text-text transition">Terms</a>
+      <a href="#" class="hover:text-text transition">Privacy</a>
+      <a href="#" class="hover:text-text transition">Support</a>
+      <a href="#" class="hover:text-text transition">API Docs</a>
+    </nav>
+  </div>
+</footer>
+<div class="demo-badge" id="demoBadge" aria-live="polite">DEMO</div>
+<div class="timer-badge" id="timerBadge" aria-live="polite" aria-label="Session timer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></div><span id="timerText">00:00</span></div>
+<div id="toastContainer" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+<script>
+(() => {
+  'use strict';
+  const GAMES = [
+    {id:'teen-patti-pro',name:'Teen Patti Pro',thumb:'/assets/games/teen-patti-pro/lobby-thumb-teen-patti-pro.svg',playable:true,desc:'Classic 3-card Indian poker with blind/chaal betting',tags:['Card Game','Multiplayer','Strategy']},
+    {id:'greedy-monkey',name:'Greedy Monkey',thumb:'/assets/games/greedy-monkey/lobby-thumb-greedy-monkey.svg',playable:true,desc:'Spin the monkey wheel for big multipliers',tags:['Wheel','Spin','Casual']},
+    {id:'baby-king',name:'Baby King',thumb:'/assets/games/baby-king/lobby-thumb-baby-king.svg',playable:true,desc:'Rule the kingdom with the baby king wheel',tags:['Wheel','Spin','Family']}
+  ];
+  const DEMO_TTL_MS = 30 * 60 * 1000;
+  const RECENT_KEY = 'dearlive_recent_games';
+  const SESSION_KEY = 'dearlive_demo_session';
+  const API_BASE = '';
+  const state = {games:GAMES,recent:[],session:null,demoMode:false,demoExpiry:0,timerInterval:null};
+  const els = {
+    loading:document.getElementById('loadingState'),
+    error:document.getElementById('errorState'),
+    errorMsg:document.getElementById('errorMessage'),
+    lobby:document.getElementById('lobbyContent'),
+    recentStrip:document.getElementById('recentStrip'),
+    emptyRecent:document.getElementById('emptyRecent'),
+    clearRecentBtn:document.getElementById('clearRecent'),
+    gamesGrid:document.getElementById('gamesGrid'),
+    demoBadge:document.getElementById('demoBadge'),
+    timerBadge:document.getElementById('timerBadge'),
+    timerText:document.getElementById('timerText'),
+    retryBtn:document.getElementById('retryBtn'),
+    clearRecentBtn:document.getElementById('clearRecent'),
+    toastContainer:document.getElementById('toastContainer')
+  };
+  function showLoading(){els.loading.classList.add('active');els.error.classList.add('hidden');els.lobby.classList.add('hidden')}
+  function hideLoading(){els.loading.classList.remove('active')}
+  function showError(msg){els.loading.classList.remove('active');els.lobby.classList.add('hidden');els.error.classList.remove('hidden');els.errorMsg.textContent=msg}
+  function showLobby(){els.loading.classList.remove('active');els.error.classList.add('hidden');els.lobby.classList.remove('hidden')}
+  function toast(message,type='info'){const tc=els.toastContainer;tc.textContent=message;tc.className='toast show '+type;clearTimeout(tc._hide);tc._hide=setTimeout(()=>tc.classList.remove('show'),4000)}
+  function createGameCard(game){const card=document.createElement('article');card.className='card hover-lift';card.setAttribute('role','listitem');card.dataset.gameId=game.id;const badge=game.playable?'<span class="badge badge-live">Live</span>':'<span class="badge badge-coming">Coming Soon</span>';card.innerHTML=`<img src="${game.thumb}" alt="${game.name}" class="game-thumb" loading="lazy"><div class="game-card-body"><div class="flex items-start justify-between"><h3 class="game-title">${game.name}</h3>${badge}</div><p style="font-size:13px;color:var(--dl-muted);line-height:1.5">${game.desc}</p><div class="game-meta"><span class="player-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.13"/></svg><span>2-6</span></span><span class="flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>20s</span></span></div><div class="flex flex-wrap gap-2" style="margin-top:auto">${game.tags.map(t=>`<span class="px-2 py-1 text-xs bg-white/5 rounded-full text-muted">${t}</span>`).join('')}</div><div class="flex gap-2" style="margin-top:auto"><button class="btn ${game.playable?'btn-primary':'btn-secondary'}" ${!game.playable?'disabled':''} style="flex:1" onclick="navigateToGame('${game.id}')">${game.playable?'PLAY':'COMING SOON'}</button>${game.playable?'<button class="btn btn-secondary" style="flex:1" onclick="navigateToGameDemo(\''+game.id+'\')">PLAY DEMO</button>':''}</div>`;if(game.playable){card.querySelector('button').addEventListener('click',()=>navigateToGame(game.id))}return card}
+  function renderGames(){const grid=els.gamesGrid;grid.innerHTML='';GAMES.forEach(g=>grid.appendChild(createGameCard(g)))}
+  function getRecent(){try{return JSON.parse(localStorage.getItem(RECENT_KEY)||'[]')}catch{return[]}}
+  function saveRecent(list){localStorage.setItem(RECENT_KEY,JSON.stringify(list))}
+  function addRecent(gameId){const list=getRecent().filter(id=>id!==gameId);list.unshift(gameId);if(list.length>5)list.pop();saveRecent(list);renderRecent()}
+  function renderRecent(){const list=getRecent();const strip=els.recentStrip;strip.innerHTML='';if(list.length===0){els.emptyRecent.classList.remove('hidden');els.clearRecentBtn.classList.add('hidden');return}els.emptyRecent.classList.add('hidden');els.clearRecentBtn.classList.remove('hidden');list.forEach(id=>{const game=GAMES.find(g=>g.id===id);if(!game)return;const item=document.createElement('div');item.className='recent-item';item.setAttribute('role','listitem');item.innerHTML=`<img src="${game.thumb}" alt="${game.name}" class="recent-thumb" loading="lazy"><span style="display:block;text-align:center;margin-top:6px;font-size:11px;font-weight:600;color:var(--dl-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.name}</span>`;item.addEventListener('click',()=>navigateToGame(id));strip.appendChild(item)})}
+  function navigateToGame(gameId){addRecent(gameId);const game=GAMES.find(g=>g.id===gameId);if(!game||!game.playable){toast('This game is not available yet','warning');return}const url=new URL('/',window.location.origin);url.searchParams.set('game',gameId);url.searchParams.set('mode','demo');window.location.href=url.toString()}
+function navigateToGameDemo(gameId){addRecent(gameId);const game=GAMES.find(g=>g.id===gameId);if(!game||!game.playable){toast('This game is not available yet','warning');return}const url=new URL('/',window.location.origin);url.searchParams.set('game',gameId);url.searchParams.set('mode','demo');window.location.href=url.toString()}
+  function initDemoMode(){const params=new URLSearchParams(window.location.search);state.demoMode=params.get('mode')==='demo';if(state.demoMode){els.demoBadge.classList.add('active');const stored=localStorage.getItem(SESSION_KEY);if(stored){try{const s=JSON.parse(stored);if(s.expiry>Date.now()){state.demoExpiry=s.expiry;startTimer()}else{localStorage.removeItem(SESSION_KEY);endDemo()}}else{state.demoExpiry=Date.now()+DEMO_TTL_MS;localStorage.setItem(SESSION_KEY,JSON.stringify({expiry:state.demoExpiry}));startTimer()}}else{els.demoBadge.classList.remove('active');els.timerBadge.classList.remove('active');clearInterval(state.timerInterval)}}
+  function startTimer(){clearInterval(state.timerInterval);els.timerBadge.classList.add('active');updateTimer();state.timerInterval=setInterval(updateTimer,1000)}
+  function updateTimer(){const remaining=Math.max(0,state.demoExpiry-Date.now());const m=Math.floor(remaining/60000).toString().padStart(2,'0');const s=Math.floor((remaining%60000)/1000).toString().padStart(2,'0');els.timerText.textContent=`${m}:${s}`;els.timerBadge.classList.remove('warning','danger');if(remaining<=5*60*1000)els.timerBadge.classList.add('danger');else if(remaining<=10*60*1000)els.timerBadge.classList.add('warning');if(remaining<=0){endDemo()}}
+  function endDemo(){clearInterval(state.timerInterval);state.demoMode=false;state.demoExpiry=0;localStorage.removeItem(SESSION_KEY);els.demoBadge.classList.remove('active');els.timerBadge.classList.remove('active','warning','danger');toast('Demo session ended. Play with real coins to continue.','info');renderGames()}
+  function toast(message,type='info'){const tc=document.getElementById('toastContainer');tc.textContent=message;tc.className='toast show '+type;clearTimeout(tc._hide);tc._hide=setTimeout(()=>tc.classList.remove('show'),4000)}
+  function init(){showLoading();setTimeout(()=>{renderGames();renderRecent();initDemoMode();hideLoading();showLobby()},300)}
+  els.retryBtn.addEventListener('click',()=>{showLoading();setTimeout(()=>{renderGames();renderRecent();hideLoading();showLobby()},300)})
+  els.clearRecentBtn.addEventListener('click',()=>{if(confirm('Clear all recent games history?')){localStorage.removeItem(RECENT_KEY);renderRecent()}})
+  document.addEventListener('DOMContentLoaded',init)
+})();
+</script>
+</body>
+</html>

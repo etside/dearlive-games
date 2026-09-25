@@ -119,7 +119,7 @@ class AssetLifecycleTest(CountedCase):
             self.counted(status == 200, f"master file served: {row['filename']}")
             want = {"wav": "audio", "gif": "image", "lottie": "json"}[kind]
             self.counted(want in ctype, f"{row['filename']} content-type {ctype}")
-        for game in ("greedy-lion", "monkey-wheel"):
+        for game in ("baby-king", "monkey-wheel"):
             self.counted("fallback" in manifest["games"][game], f"{game} fallback documented")
             self.counted(len(manifest["games"][game].get("audio", [])) == 0,
                          f"{game} claims no originals")

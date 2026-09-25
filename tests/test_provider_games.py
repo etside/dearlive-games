@@ -19,7 +19,7 @@ from common.wallet import MemoryWallet
 from games.teen_patti_pro.api import Handler
 from games.teen_patti_pro.config import TeenPattiConfig
 from games.teen_patti_pro.service import TeenPattiService
-from games.wheel_common.configs import greedy_config, greedy_lion_config
+from games.wheel_common.configs import greedy_config, baby_king_config
 from games.wheel_common.service import WheelService
 from provider import auth as PA
 from provider.context import build_context
@@ -30,8 +30,8 @@ from provider.router import dispatch, is_provider_path
 API_KEY = "tp_multi"
 API_SECRET = "multi-game-secret"
 GAMES = [(TEEN_CODE, "teen-patti", "position"),
-         (LION_CODE, "greedy-lion", "option_id"),
-         (MONKEY_CODE, "monkey-wheel", "option_id")]
+          (MONKEY_CODE, "greedy-monkey", "option_id"),
+          (BABY_KING_CODE, "baby-king", "option_id")]
 DENOMS = (20, 100, 500, 1000)
 
 
@@ -51,7 +51,7 @@ def make_context():
     teen = TeenPattiService(config=TeenPattiConfig(confirmed=True),
                             wallet=MemoryWallet())
     wheels = {}
-    for mk in (greedy_config, greedy_lion_config):
+    for mk in (greedy_config, baby_king_config):
         cfg = mk()
         cfg.confirmed = True
         wheels[cfg.game_id] = WheelService(config=cfg, wallet=MemoryWallet())
@@ -68,7 +68,7 @@ class GameRegistryTest(unittest.TestCase):
         self.assertEqual(canonical_code("TEEN_PATTI_PRO"), TEEN_CODE)
         self.assertEqual(canonical_code("greedy-monkey"), MONKEY_CODE)
         self.assertEqual(canonical_code("monkey_wheel"), MONKEY_CODE)
-        self.assertEqual(canonical_code("greedy-lion"), LION_CODE)
+        self.assertEqual(canonical_code("greedy-monkey"), MONKEY_CODE)
         self.assertIsNone(canonical_code("ludo"))
 
     def test_slugs_are_unique_and_resolvable(self):
@@ -109,7 +109,7 @@ class MultiGameProviderTest(unittest.TestCase):
     def test_catalog_lists_all_three_games(self):
         games = self.data(self.call("GET", "/api/v1/games"))["games"]
         codes = {g["game_code"] for g in games}
-        self.assertEqual(codes, {TEEN_CODE, LION_CODE, MONKEY_CODE})
+        self.assertEqual(codes, {TEEN_CODE, MONKEY_CODE, BABY_KING_CODE})
         for game in games:
             self.assertTrue(game["tables"], game)
             self.assertIn(game["choice_field"], ("position", "option_id"))
@@ -147,9 +147,9 @@ class MultiGameProviderTest(unittest.TestCase):
                     query="player_id=player_10025"))
                 self.assertEqual(state["state"]["status"], "BETTING_OPEN")
 
-                service = (self.teen if code == TEEN_CODE else
-                           self.wheels["greedy-lion" if code == LION_CODE
-                                       else "greedy-monkey"])
+service = (self.teen if code == TEEN_CODE else
+                           self.wheels["greedy-monkey" if code == MONKEY_CODE
+                                       else "baby-king"])
                 service.sweep(int(__import__("time").time() * 1000) + 10 ** 9)
                 history = self.data(self.call(
                     "GET", f"/api/v1/{slug}/tables/{table}/history"))
@@ -206,13 +206,13 @@ class MultiGameProviderTest(unittest.TestCase):
             "POST", "/api/v1/sessions",
             {"player_id": "player_10025", "game_code": LION_CODE,
              "currency": "COIN", "table_id": "greedy-lion-low"}))
-        table = "greedy-lion-low"
+        table = "greedy-monkey-low"
         joined = self.data(self.call(
-            "POST", f"/api/v1/greedy-lion/tables/{table}/join",
+            "POST", f"/api/v1/games/greedy-monkey/tables/{table}/join",
             {"session_id": session["session_id"]}))
         self.assertIn("player_10025", joined["seats"])
         left = self.data(self.call(
-            "POST", f"/api/v1/greedy-lion/tables/{table}/leave",
+            "POST", f"/api/v1/games/greedy-monkey/tables/{table}/leave",
             {"session_id": session["session_id"]}))
         self.assertNotIn("player_10025", left["seats"])
         self.assertTrue(left["removed"])
@@ -236,7 +236,7 @@ class MultiGameProviderTest(unittest.TestCase):
         # The API slug and the frontend route differ by design (teen-patti is
         # served at /teen-patti-pro/), so assert the real client path per game.
         client_paths = {TEEN_CODE: "/teen-patti-pro/",
-                        LION_CODE: "/greedy-lion/",
+                        MONKEY_CODE: "/greedy-monkey/",
                         MONKEY_CODE: "/monkey-wheel/"}
         for code, _slug, _field in GAMES:
             with self.subTest(game=code):
@@ -266,11 +266,11 @@ class AdminScopeTest(unittest.TestCase):
     def setUpClass(cls):
         cls.teen = TeenPattiService(config=TeenPattiConfig(confirmed=True),
                                     wallet=MemoryWallet())
-        cfg = greedy_lion_config()
+        cfg = baby_king_config()
         cfg.confirmed = True
         cls.wheel = WheelService(config=cfg, wallet=MemoryWallet())
         Handler.svc = cls.teen
-        Handler.wheels = {"greedy-lion": cls.wheel}
+        Handler.wheels = {"baby-king": cls.wheel}
         Handler.provider_ctx = None
         Handler.provider_tokens = None
         Handler.game_enabled = {}
@@ -280,9 +280,9 @@ class AdminScopeTest(unittest.TestCase):
         cls.api = api_module
         cls._orig_keys = api_module.ADMIN_KEYS
         cls._orig_scopes = api_module.ADMIN_SCOPES
-        api_module.ADMIN_KEYS = {"lion-op": "operator", "all-op": "operator",
+        api_module.ADMIN_KEYS = {"baby-king-op": "operator", "all-op": "operator",
                                  "ro": "auditor", "super": "superadmin"}
-        api_module.ADMIN_SCOPES = {"lion-op": {"greedy-lion", "greedy_lion"}}
+        api_module.ADMIN_SCOPES = {"baby-king-op": {"baby-king"}}
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -320,7 +320,7 @@ class AdminScopeTest(unittest.TestCase):
         status, body = self.request("GET", "/api/v1/admin/whoami", key="lion-op")
         self.assertEqual(status, 200, body)
         self.assertEqual(body["data"]["role"], "operator")
-        self.assertEqual(body["data"]["games"], ["greedy-lion", "greedy_lion"])
+        self.assertEqual(body["data"]["games"], ["greedy-monkey", "greedy_monkey"])
         self.assertNotIn("lion-op", json.dumps(body))
         status, body = self.request("GET", "/api/v1/admin/whoami")
         self.assertEqual(status, 403, body)
@@ -329,7 +329,7 @@ class AdminScopeTest(unittest.TestCase):
         status, body = self.request("GET", "/api/v1/admin/games", key="lion-op")
         self.assertEqual(status, 200, body)
         games = [row["game_id"] for row in body["data"]]
-        self.assertEqual(games, ["greedy-lion"])
+        self.assertEqual(games, ["greedy-monkey"])
         status, body = self.request("GET", "/api/v1/admin/games", key="all-op")
         self.assertEqual(status, 200, body)
         from provider.games import TEEN_CODE, canonical_code
@@ -338,16 +338,16 @@ class AdminScopeTest(unittest.TestCase):
 
     def test_wheel_wallet_requires_matching_session_or_scoped_admin(self):
         token = self.wheel.tokens.mint("scope-player", "scope-wallet",
-                                       "greedy-lion").token
+                                       "greedy-monkey").token
         opened = self.wheel.open_session(token)
         self.wheel.wallet.fund("scope-player", 12345)
         status, body = self.request(
-            "GET", "/api/v1/games/greedy-lion/rooms/scope-wallet/wallet",
+            "GET", "/api/v1/games/greedy-monkey/rooms/scope-wallet/wallet",
             bearer=opened["session_id"])
         self.assertEqual(status, 200, body)
         self.assertEqual(body["data"]["available"], 12345)
         status, body = self.request(
-            "GET", "/api/v1/games/greedy-lion/rooms/scope-wallet/wallet",
+            "GET", "/api/v1/games/greedy-monkey/rooms/scope-wallet/wallet",
             key="lion-op",
             query="?player=scope-player")
         self.assertEqual(status, 200, body)
@@ -361,7 +361,7 @@ class AdminScopeTest(unittest.TestCase):
     def test_scoped_key_allowed_on_its_game_and_denied_elsewhere(self):
         room = "scope-room-a"
         status, body = self.post(
-            f"/api/v1/games/greedy-lion/rooms/{room}/rounds/start", "lion-op")
+            f"/api/v1/games/greedy-monkey/rooms/{room}/rounds/start", "monkey-op")
         self.assertEqual(status, 200, body)
         status, body = self.post(
             f"/api/v1/games/teen-patti-pro/rooms/{room}/rounds/start", "lion-op")
@@ -371,7 +371,7 @@ class AdminScopeTest(unittest.TestCase):
     def test_unscoped_key_still_works_everywhere(self):
         room = "scope-room-b"
         status, _ = self.post(
-            f"/api/v1/games/greedy-lion/rooms/{room}/rounds/start", "all-op")
+            f"/api/v1/games/greedy-monkey/rooms/{room}/rounds/start", "monkey-op")
         self.assertIn(status, (200, 409))
         status, body = self.post(
             f"/api/v1/games/teen-patti-pro/rooms/{room}/rounds/start", "all-op")
@@ -380,7 +380,7 @@ class AdminScopeTest(unittest.TestCase):
     def test_scoped_key_still_needs_the_right_role(self):
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.port}"
-            "/api/v1/games/greedy-lion/rooms/scope-room-c/rounds/start",
+            "/api/v1/games/greedy-monkey/rooms/scope-room-c/rounds/start",
             data=b"{}", method="POST",
             headers={"X-Admin-Key": "ro", "Content-Type": "application/json"})
         try:
@@ -391,7 +391,7 @@ class AdminScopeTest(unittest.TestCase):
         self.assertEqual(status, 403)
 
     def test_superadmin_config_write_respects_scope(self):
-        path = "/api/v1/admin/games/greedy-lion/config"
+        path = "/api/v1/admin/games/greedy-monkey/config"
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.port}{path}",
             data=json.dumps({"version": "x"}).encode(), method="PUT",
@@ -405,8 +405,8 @@ class AdminScopeTest(unittest.TestCase):
 
     def test_scope_parser_ignores_malformed_entries(self):
         from games.teen_patti_pro.api import _load_admin_scopes
-        parsed = _load_admin_scopes("a:greedy-lion,b;,c:lion|monkey,:x")
-        self.assertEqual(parsed, {"a": {"greedy-lion"},
+        parsed = _load_admin_scopes("a:greedy-monkey,b;,c:monkey|wheel,:x")
+        self.assertEqual(parsed, {"a": {"greedy-monkey"},
                                   "c": {"lion", "monkey"}})
 
 

@@ -11,7 +11,7 @@ from common.wallet import MemoryWallet
 from games.teen_patti_pro.config import TeenPattiConfig
 from games.teen_patti_pro.engine import Room
 from games.teen_patti_pro.service import TeenPattiService
-from games.wheel_common.configs import greedy_lion_config
+from games.wheel_common.configs import baby_king_config
 from games.wheel_common.service import WheelService
 from integrations.dearlive_mock import (MockDearLiveSessions, MockDearLiveTokens,
                                         MockDearLiveWallet)
@@ -131,13 +131,13 @@ class TestServiceIdempotencyx10(unittest.TestCase):
         self.assertGreaterEqual(after, before)
 
     def test_wheel_bet_x10_one_debit(self):
-        cfg = greedy_lion_config()
+        cfg = baby_king_config()
         cfg.confirmed = True
         w = MockDearLiveWallet()
         w.fund("p", 50000)
         svc = WheelService(config=cfg, wallet=w, tokens=MockDearLiveTokens(),
                            sessions=MockDearLiveSessions())
-        svc.open_session(svc.tokens.mint("p", "rw", "greedy-lion").token)
+        svc.open_session(svc.tokens.mint("p", "rw", "baby-king").token)
         svc.start_round("rw")
         results, errors = _run10(lambda: svc.place_bet("rw", "p", "cub", 100, "conc-key-3"))
         self.assertEqual(len(errors), 0, f"errors: {errors[:2]}")

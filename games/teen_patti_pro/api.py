@@ -87,13 +87,18 @@ class Handler(BaseHTTPRequestHandler):
     TEEN_IDS = {"teen-patti-pro", "teen_patti"}
     provider_ctx: object = None
     provider_tokens: object = None
-    WHEEL_ALIAS = {"greedy-monkey": "greedy-monkey", "greedy": "greedy-monkey",
-                   "greedy_monkey": "greedy-monkey", "monkey-wheel": "greedy-monkey",
-                   "monkey_wheel": "greedy-monkey",
-                   "greedy-lion": "greedy-lion", "greedy_lion": "greedy-lion",
-                   "baby-king": "baby-king",
-                   "baby_king": "baby-king", "animal-food-wheel": "baby-king",
-                   "food-wheel": "baby-king", "food_wheel": "baby-king"}
+    WHEEL_ALIAS = {
+        "greedy-monkey": "greedy-monkey",
+        "greedy": "greedy-monkey",
+        "greedy_monkey": "greedy-monkey",
+        "monkey-wheel": "greedy-monkey",
+        "monkey_wheel": "greedy-monkey",
+        "baby-king": "baby-king",
+        "baby_king": "baby-king",
+        "animal-food-wheel": "baby-king",
+        "food-wheel": "baby-king",
+        "food_wheel": "baby-king",
+    }
 
     # -- helpers --
     def game_kind(self, game_id: str):
@@ -481,8 +486,6 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path in ("/greedy-monkey", "/greedy-monkey/"):
                 return self.serve_wheel()
-            if path in ("/greedy-lion", "/greedy-lion/"):
-                return self.serve_wheel()
             if path in ("/monkey-wheel", "/monkey-wheel/"):
                 return self.serve_wheel()
             if path in ("/baby-king", "/baby-king/"):
@@ -784,7 +787,52 @@ class Handler(BaseHTTPRequestHandler):
                 if svc is None:
                     return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))
                 return self.ok(self.game_config_view(m.group(1), svc))
-            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+            
+            # --- Operator Admin Dashboard Endpoints ---
+            if path == "/api/v1/operator/admin/dashboard/kpis":
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
+                # Return KPIs for operator dashboard
+                return self.ok({
+                    "active_games": len([r for r in self.svc.rooms.values() if r.round and r.round.status == "BETTING_OPEN"]),
+                    "live_rounds": len([r for r in self.svc.rooms.values() if r.round and r.round.status in ("BETTING_OPEN", "RESULT")]),
+                    "total_bets_24h": sum(len([b for b in room.round.bets if b.decision_time_ms > time.time()*1000 - 86400000]) for room in self.svc.rooms.values() if room.round),
+                    "net_revenue_24h": sum(sum(b.amount for b in room.round.bets if b.status == "won") - sum(b.amount for b in room.round.bets if b.status == "lost") for room in self.svc.rooms.values() if room.round),
+                    "online_players": len(self.svc.sessions),
+                    "pending_withdrawals": 0  # TODO: implement
+                })
+            
+            if path == "/api/v1/operator/admin/dashboard/charts":
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
+                # Return chart data for dashboard
+                # Revenue trend (last 24h)
+                revenue_data = {"labels": [], "values": []}
+                game_dist = {"labels": [], "values": []}
+                player_activity = {"labels": [], "active": [], "betting": [], "idle": []}
+                return self.ok({
+                    "revenue": revenue_data,
+                    "game_dist": game_dist,
+                    "player_activity": player_activity
+                })
+            
+            if path == "/api/v1/operator/admin/dashboard/summary":
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
+                # Summary stats
+                wallet_bal = self.svc.wallet.get_balance("operator") if hasattr(self.svc.wallet, "get_balance") else type('obj', (object,), {'available': 0})()
+                return self.ok({
+                    "wallet_balance": getattr(wallet_bal, 'available', 0),
+                    "today_pnl": 0,
+                    "total_rounds": len(self.svc.rooms),
+                    "total_bets": sum(len(room.round.bets) if room.round else 0 for room in self.svc.rooms.values()),
+                    "active_players": len(self.svc.sessions),
+                    "total_revenue": 0,
+                    "pending_withdrawals": 0
+                })
         except ServiceError as exc:
             return self.fail(exc)
 
@@ -794,16 +842,215 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.serve_provider("POST", path, url.query):
                 return
-            if path == "/api/v1/sessions":
+            # --- Operator Auth (Phase 1) ---
+            if path == "/api/v1/operator/auth":
                 body, err = parse_body(self)
                 if err:
                     return self.send(422, err)
+                pin = body.get("pin", "")
+                if not pin:
+                    return self.send(422, E.err("PIN required", E.E_VALIDATION))
+                # Verify PIN against OPERATOR_PIN_HASH
+                import bcrypt
+                pin_hash = os.environ.get("OPERATOR_PIN_HASH", "")
+                if not pin_hash:
+                    return self.send(500, E.err("Operator PIN not configured", E.E_INTERNAL))
                 try:
-                    return self.ok(self.svc.open_session(body.get("launch_token", "")),
-                                   "Session opened")
+                    if not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
+                        return self.send(401, E.err("Invalid PIN", E.E_AUTH))
+                except Exception:
+                    return self.send(500, E.err("PIN verification failed", E.E_INTERNAL))
+                # Generate operator JWT token
+                import jwt
+                import time
+                token_secret = os.environ.get("OPERATOR_TOKEN_SECRET", "")
+                if not token_secret:
+                    return self.send(500, E.err("Operator token secret not configured", E.E_INTERNAL))
+                payload = {
+                    "scope": "operator",
+                    "iat": int(time.time()),
+                    "exp": int(time.time()) + 24 * 3600,  # 24h TTL
+                    "iss": "dearlive-games",
+                    "sub": "operator"
+                }
+                import jwt
+                operator_token = jwt.encode({"scope": "operator", "iat": int(time.time()), "exp": int(time.time()) + 86400}, token_secret, algorithm="HS256")
+                return self.ok({
+                    "operator_token": operator_token,
+                    "expires_at": int(time.time()) + 86400,
+                    "scope": "operator"
+                }, "Operator authenticated")
+            
+            # --- Operator Session Endpoints ---
+            if path == "/api/v1/operator/sessions":
+                # Verify operator token
+                auth = self.headers.get("Authorization", "")
+                if not auth.startswith("Bearer "):
+                    return self.send(401, E.err("Operator token required", E.E_AUTH))
+                token = auth.split(" ")[1]
+                import jwt
+                token_secret = os.environ.get("OPERATOR_TOKEN_SECRET", "")
+                try:
+                    payload = jwt.decode(token, token_secret, algorithms=["HS256"])
+                    if payload.get("scope") != "operator":
+                        return self.send(403, E.err("Invalid token scope", E.E_FORBIDDEN))
+                except jwt.ExpiredSignatureError:
+                    return self.send(401, E.err("Token expired", E.E_AUTH))
+                except jwt.InvalidTokenError:
+                    return self.send(401, E.err("Invalid token", E.E_AUTH))
+                
+                body, err = parse_body(self)
+                if err:
+                    return self.send(422, err)
+                
+                # Create operator session
+                game_slug = body.get("game_slug", "")
+                currency = body.get("currency", "USD")
+                lang = body.get("lang", "EN")
+                return_url = body.get("return_url", "/")
+                demo_balance = body.get("demo_balance")
+                
+                # Use the service's demo session store
+                demo_store = getattr(self.svc, 'demo_store', None)
+                if demo_store is None:
+                    from common.session import DemoSessionStore
+                    demo_store = DemoSessionStore()
+                    self.svc.demo_store = demo_store
+                
+                # Get client IP
+                client_ip = self.headers.get("X-Forwarded-For", self.client_address[0])
+                
+                session = demo_store.create(
+                    game_slug=game_slug,
+                    ip=self.headers.get("X-Forwarded-For", self.client_address[0]),
+                    currency=currency,
+                    lang=lang,
+                    demo_balance=demo_balance
+                )
+                demo_token = f"demo-{session.session_id}"
+                return self.ok({
+                    "session_id": session.session_id,
+                    "demo_token": demo_token,
+                    "starting_balance": session.starting_balance,
+                    "current_balance": session.current_balance,
+                    "currency": session.currency,
+                    "lang": session.lang,
+                    "expires_at_ms": session.expires_at_ms,
+                    "return_url": return_url
+                }, "Demo session created")
+            
+            # --- Operator Admin Dashboard Endpoints ---
+            if path == "/api/v1/operator/admin/dashboard/kpis":
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
+                return self.ok({
+                    "active_games": len([r for r in self.svc.rooms.values() if r.round and r.round.status == "BETTING_OPEN"]),
+                    "live_rounds": len([r for r in self.svc.rooms.values() if r.round and r.round.status in ("BETTING_OPEN", "RESULT")]),
+                    "total_bets_24h": sum(len([b for b in room.round.bets if b.decision_time_ms > time.time()*1000 - 86400000]) for room in self.svc.rooms.values() if room.round),
+                    "net_revenue_24h": sum(sum(b.amount for b in room.round.bets if b.status == "won") - sum(b.amount for b in room.round.bets if b.status == "lost") for room in self.svc.rooms.values() if room.round),
+                    "online_players": len(self.svc.sessions),
+                    "pending_withdrawals": 0
+                })
+            
+            if path == "/api/v1/operator/admin/dashboard/charts":
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
+                return self.ok({
+                    "revenue": {"labels": [], "values": []},
+                    "game_dist": {"labels": [], "values": []},
+                    "player_activity": {"labels": [], "active": [], "betting": [], "idle": []}
+                })
+            
+            if path == "/api/v1/operator/admin/dashboard/summary":
+                denied = self.require_role("operator")
+                if denied:
+                    return self.send(*denied)
+                wallet_bal = self.svc.wallet.get_balance("operator") if hasattr(self.svc.wallet, "get_balance") else type('obj', (object,), {'available': 0})()
+                return self.ok({
+                    "wallet_balance": getattr(wallet_bal, 'available', 0),
+                    "today_pnl": 0,
+                    "total_rounds": len(self.svc.rooms),
+                    "total_bets": sum(len(room.round.bets) if room.round else 0 for room in self.svc.rooms.values()),
+                    "active_players": len(self.svc.sessions),
+                    "total_revenue": 0,
+                    "pending_withdrawals": 0
+                })
+                body, err = parse_body(self)
+                if err:
+                    return self.send(422, err)
+                game_slug = body.get("game_slug", "")
+                currency = body.get("currency", "USD")
+                lang = body.get("lang", "EN")
+                return_url = body.get("return_url", "/")
+                demo_balance = body.get("demo_balance")
+                client_ip = self.headers.get("X-Forwarded-For", self.client_address[0])
+                try:
+                    # Use the service's demo session store
+                    demo_store = getattr(self.svc, 'demo_store', None)
+                    if demo_store is None:
+                        from common.session import DemoSessionStore
+                        demo_store = DemoSessionStore()
+                        self.svc.demo_store = demo_store
+                    session = demo_store.create(
+                        game_slug=game_slug,
+                        ip=client_ip,
+                        currency=currency,
+                        lang=lang,
+                        demo_balance=demo_balance
+                    )
+                    demo_token = f"demo-{session.session_id}"
+                    return self.ok({
+                        "session_id": session.session_id,
+                        "demo_token": demo_token,
+                        "starting_balance": session.starting_balance,
+                        "current_balance": session.current_balance,
+                        "currency": session.currency,
+                        "lang": session.lang,
+                        "expires_at_ms": session.expires_at_ms,
+                        "return_url": body.get("return_url", "/")
+                    }, "Demo session created")
+                except ValueError as e:
+                    return self.send(429, E.err(str(e), E.E_RATE_LIMIT))
                 except ServiceError as exc:
                     return self.fail(exc)
-            m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/start", path)
+                except Exception as e:
+                    return self.send(500, E.err(f"Demo session creation failed: {e}", E.E_INTERNAL))
+            
+            m = re.fullmatch(r"/api/v1/demo/sessions/(\S+)", path)
+            if m:
+                session_id = m.group(1)
+                demo_store = getattr(self.svc, 'demo_store', None)
+                if demo_store is None:
+                    return self.send(404, E.err("Demo session not found", E.E_NOT_FOUND))
+                session = demo_store.get(m.group(1))
+                if not session:
+                    return self.send(404, E.err("Demo session not found", E.E_NOT_FOUND))
+                return self.ok({
+                    "session_id": session.session_id,
+                    "game_slug": session.game_slug,
+                    "starting_balance": session.starting_balance,
+                    "current_balance": session.current_balance,
+                    "currency": session.currency,
+                    "lang": session.lang,
+                    "status": session.status,
+                    "rounds_played": session.rounds_played,
+                    "expires_at_ms": session.expires_at_ms,
+                    "created_at_ms": session.created_at_ms
+                })
+            
+            m = re.fullmatch(r"/api/v1/demo/sessions/(\S+)/close", path)
+            if m:
+                session_id = m.group(1)
+                demo_store = getattr(self.svc, 'demo_store', None)
+                if demo_store is None:
+                    return self.send(404, E.err("Demo session not found", E.E_NOT_FOUND))
+                demo_store.close(session_id)
+                return self.ok({"session_id": session_id, "status": "CLOSED"}, "Demo session closed")
+            
+            if path == "/api/v1/sessions":
+                m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/rounds/start", path)
             if m:
                 denied = self.require_role("operator", "teen-patti-pro")
                 if denied:
@@ -1100,10 +1347,10 @@ def main():
     Handler.svc.admin_keys_note = note
     # Wheel games (G1 Greedy Monkey, G2 Baby King): same adapter selection,
     # independent service state per game.
-    from games.wheel_common.configs import baby_king_config, greedy_config, greedy_lion_config
+    from games.wheel_common.configs import baby_king_config, greedy_config
     from games.wheel_common.service import WheelService
     Handler.wheels = {}
-    for _mkcfg in (greedy_config, baby_king_config, greedy_lion_config):
+    for _mkcfg in (greedy_config, baby_king_config):
         _wc = _mkcfg()
         if args.confirmed:
             _wc.confirmed = True

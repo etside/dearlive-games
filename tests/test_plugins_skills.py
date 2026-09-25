@@ -17,7 +17,6 @@ class TestRegistry(unittest.TestCase):
         self.assertEqual(games["teen-patti-pro"]["status"], "live")
         self.assertEqual(games["greedy-monkey"]["status"], "live")
         self.assertEqual(games["baby-king"]["status"], "live")
-        self.assertEqual(games["greedy-lion"]["status"], "live")
 
     def test_unknown_game_fails_closed(self):
         plugins.import_builtin_games()
@@ -30,7 +29,6 @@ class TestRegistry(unittest.TestCase):
         plugins.create("teen-patti-pro", "test-room")
         plugins.create("greedy-monkey", "test-room")
         plugins.create("baby-king", "test-room")
-        plugins.create("greedy-lion", "test-room")
 
     def test_live_factory(self):
         plugins.import_builtin_games()
