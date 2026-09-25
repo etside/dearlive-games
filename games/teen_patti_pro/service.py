@@ -21,6 +21,7 @@ from common.idempotency import (IdempotencyStore, MemoryIdempotencyStore,
 from common.lifecycle import (RoundStatus, SETTLE_MAX_ATTEMPTS, needs_settlement_retry)
 from common.session import TokenStore, MemoryTokenStore, SessionStore, MemorySessionStore, TokenError
 from common.wallet import WalletAdapter, MemoryWallet, InsufficientBalance, WalletError
+from common.settlement import SettlementStore, MemorySettlementStore
 from common.webhooks import build_event, MemoryDeliveryLog
 from .config import TeenPattiConfig, DEFAULT_CONFIG
 from .engine import Room, LifecycleError
@@ -51,6 +52,7 @@ class TeenPattiService:
                  sessions: SessionStore = None,
                  webhook_destinations: List[str] = None,
                  webhook_secret: str = "dev-secret",
+                 settlement_store: SettlementStore = None,
                  skills=None):  # common.skills.SkillBus (optional; never blocks money)
         self.config = config
         self.wallet = wallet or MemoryWallet()
@@ -62,7 +64,10 @@ class TeenPattiService:
         self.webhook_destinations = webhook_destinations or []
         self.webhook_secret = webhook_secret
         self.rooms: Dict[str, Room] = {}
-        self.settled_bet_ids = set()  # UNIQUE settlement.bet_id guard
+        # Exactly-once settlement is enforced by the STORE (UNIQUE(bet_id)),
+        # never by an in-process set, which cannot hold across workers or
+        # restarts. Swap in PostgresSettlementStore for a real deployment.
+        self.settlements = settlement_store or MemorySettlementStore()
         self.round_history: Dict[str, List[dict]] = {}
         self.event_log: List[dict] = []
         self.settlement_alerts: List[dict] = []  # never dropped: operator must see stranded pots
@@ -257,15 +262,22 @@ class TeenPattiService:
         rows = room.settle(self._now())
         credited = []
         try:
-            with self._settle_lock:  # atomic check-add-credit per bet
+            with self._settle_lock:  # serialise within this process
                 for row in rows:
-                    if row["bet_id"] in self.settled_bet_ids:
-                        continue  # UNIQUE settlement.bet_id: never pay twice
-                    if row["payout"] > 0:
-                        self.wallet.credit(row["player_id"], row["payout"],
-                                           ref=f"settle:{row['bet_id']}",
-                                           idempotency_key=f"settle:{row['bet_id']}")
-                    self.settled_bet_ids.add(row["bet_id"])
+                    # Exactly-once is the STORE's guarantee (UNIQUE(bet_id)),
+                    # not an in-process set. A duplicate here means another
+                    # worker already owns this payout.
+                    stored, created = self.settlements.record(
+                        {**row, "settlement_id": row["settlement_id"]})
+                    if not created and stored.get("credited"):
+                        continue  # already paid: never pay twice
+                    if stored["payout"] > 0:
+                        # Idempotent on settle:<bet_id>, so a crash between this
+                        # and mark_credited cannot pay twice on retry.
+                        self.wallet.credit(stored["player_id"], stored["payout"],
+                                           ref=f"settle:{stored['bet_id']}",
+                                           idempotency_key=f"settle:{stored['bet_id']}")
+                    self.settlements.mark_credited(stored["bet_id"])
                     credited.append(row)
                     self.audit.record("system", "settlement.credit", "settlement",
                                       row["settlement_id"], after=row)
@@ -417,9 +429,9 @@ class TeenPattiService:
         r = room.round
         if r is None or not r.settlements:
             return 0
-        return sum(row["payout"] for row in r.settlements
-                   if row.get("payout", 0) > 0
-                   and row["bet_id"] not in self.settled_bet_ids)
+        round_bets = {row["bet_id"] for row in r.settlements}
+        return sum(row["payout"] for row in self.settlements.unpaid()
+                   if row["bet_id"] in round_bets and row.get("payout", 0) > 0)
 
     def _alert_settle_failed(self, room_id: str, room, now: int) -> None:
         """Operator alert for a settlement that exhausted its retry budget."""

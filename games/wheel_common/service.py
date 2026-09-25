@@ -35,6 +35,7 @@ from common.session import (MemorySessionStore, MemoryTokenStore, SessionStore,
                             TokenError, TokenStore)
 from common.wallet import (InsufficientBalance, MemoryWallet, WalletAdapter,
                            WalletError)
+from common.settlement import SettlementStore, MemorySettlementStore
 from common.wheel import wheel_outcome
 from common.webhooks import build_event, MemoryDeliveryLog
 
@@ -142,6 +143,7 @@ class WheelRoom:
 class WheelService:
     def __init__(self, config: WheelConfig, wallet: WalletAdapter = None,
                  idempotency: IdempotencyStore = None, tokens: TokenStore = None,
+                 settlement_store: SettlementStore = None,
                  sessions: SessionStore = None, webhook_destinations=None,
                  webhook_secret: str = "dev-secret"):
         self.config = config
@@ -155,7 +157,9 @@ class WheelService:
         self.webhook_destinations = webhook_destinations or []
         self.webhook_secret = webhook_secret
         self.rooms: Dict[str, WheelRoom] = {}
-        self.settled_bet_ids = set()
+        # Exactly-once is the STORE's guarantee (UNIQUE(bet_id)), not an
+        # in-process set, which cannot hold across workers or restarts.
+        self.settlements = settlement_store or MemorySettlementStore()
         self.event_log: List[dict] = []
         self._settle_lock = threading.Lock()
         self._now = lambda: int(time.time() * 1000)
@@ -451,13 +455,16 @@ class WheelService:
         credited = []
         with self._settle_lock:
             for row in rows:
-                if row["bet_id"] in self.settled_bet_ids:
+                # UNIQUE(bet_id) in the store: a duplicate means another worker
+                # already owns this payout.
+                stored, created = self.settlements.record(dict(row))
+                if not created and stored.get("credited"):
                     continue
-                if row["payout"] > 0:
-                    self.wallet.credit(row["player_id"], row["payout"],
-                                       ref=f"settle:{row['bet_id']}",
-                                       idempotency_key=f"settle:{row['bet_id']}")
-                self.settled_bet_ids.add(row["bet_id"])
+                if stored["payout"] > 0:
+                    self.wallet.credit(stored["player_id"], stored["payout"],
+                                       ref=f"settle:{stored['bet_id']}",
+                                       idempotency_key=f"settle:{stored['bet_id']}")
+                self.settlements.mark_credited(stored["bet_id"])
                 self._add_earning(row["player_id"], row["payout"] - row["stake"])
                 self.audit.record("system", "settlement.credit", "settlement",
                                   row["settlement_id"], after=row)

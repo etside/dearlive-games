@@ -47,7 +47,14 @@ CREATE TABLE IF NOT EXISTS settlements (
   player_id      TEXT NOT NULL,
   payout         BIGINT NOT NULL CHECK (payout >= 0),
   credit_txn_id  TEXT NOT NULL DEFAULT '',
-  config_version TEXT NOT NULL
+  config_version TEXT NOT NULL,
+  -- Exactly-once payout flag. The row records the intent to pay; `credited`
+  -- records that the money actually moved. A crash between the two leaves
+  -- credited = FALSE and the settlement-retry path pays it. The wallet credit
+  -- is itself idempotent on `settle:<bet_id>`.
+  credited       BOOLEAN NOT NULL DEFAULT FALSE,
+  credited_at    TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS idempotency_keys (
