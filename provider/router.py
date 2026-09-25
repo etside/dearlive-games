@@ -768,14 +768,31 @@ def resolve_route(method: str, path: str):
     return None, [], None
 
 
+# The exact wallet paths the B2B provider contract owns. Anything else under
+# /api/v1/wallet/ belongs to the game API and must stay local.
+PROVIDER_WALLET_PATHS = frozenset({
+    "/api/v1/wallet/credit",
+    "/api/v1/wallet/debit",
+    "/api/v1/wallet/rollback",
+})
+PROVIDER_WALLET_TX = re.compile(r"^/api/v1/wallet/transactions/[^/]+$")
+
+
 def is_provider_path(path: str) -> bool:
     if path in ("/docs", "/docs/", "/openapi.json"):
         return True
     if re.fullmatch(rf"/api/v1/{GAME_SLUG}/tables(/.*)?", path):
         return True
-    if path.startswith("/api/v1/wallet/"):
+    # Provider wallet routes are an EXPLICIT allowlist, not the whole
+    # /api/v1/wallet/ prefix. The prefix form swallowed the local
+    # GET /api/v1/wallet/balance route: is_provider_path() returned True, the
+    # request was forwarded here, and this router -- which only owns
+    # credit/debit/rollback/transactions -- answered 404. That is what made the
+    # client show a null balance. Keep this list in sync with the ROUTES table;
+    # tests assert every registered provider route is still recognised.
+    if path in PROVIDER_WALLET_PATHS or PROVIDER_WALLET_TX.match(path):
         return True
-    if path.startswith("/api/v1/players/"):
+    if re.fullmatch(r"/api/v1/players/[^/]+/balance", path):
         return True
     if re.fullmatch(r"/api/v1/sessions(/[^/]+)?", path):
         return True
