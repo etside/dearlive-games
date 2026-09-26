@@ -494,6 +494,66 @@
     await Promise.all(promises);
   }
 
+  // ---- player appearance (set in DearLive admin, by player id) ----
+  //
+  // An operator styles a player in the admin panel; the game resolves that
+  // style by player id and falls back to the default icon when the player has
+  // none, or when the lookup fails for any reason. Nothing here is allowed to
+  // block or break the table: a missing avatar must never cost a player their
+  // seat, so every failure path lands on the default.
+  const DEFAULT_AVATAR = '/assets/games/teen-patti-pro/avatars/avatar-placeholder.svg';
+  const DEFAULT_FRAME = '/assets/games/teen-patti-pro/avatars/avatar-frame-navy.svg';
+  const appearances = new Map();   // player_id -> {avatar, frame, title, source}
+  const avatarImages = new Map();  // url -> HTMLImageElement
+
+  function appearanceFor(playerId) {
+    if (!playerId) return { avatar: DEFAULT_AVATAR, frame: DEFAULT_FRAME, title: '', source: 'default' };
+    return appearances.get(playerId) ||
+      { avatar: DEFAULT_AVATAR, frame: DEFAULT_FRAME, title: '', source: 'default' };
+  }
+
+  function loadAvatarImage(url) {
+    if (!url) return null;
+    if (avatarImages.has(url)) return avatarImages.get(url);
+    const img = new Image();
+    // A broken avatar URL leaves complete=true with a zero-size image, so
+    // onerror swaps in the default rather than drawing a blank rect.
+    img.onerror = () => { img.src = DEFAULT_AVATAR; };
+    img.src = url;
+    avatarImages.set(url, img);
+    return img;
+  }
+
+  async function refreshAppearance(playerId) {
+    if (!playerId || appearances.has(playerId)) return appearanceFor(playerId);
+    const fallback = appearanceFor(playerId);
+    try {
+      const r = await fetch(API + '/api/v1/players/' +
+        encodeURIComponent(playerId) + '/appearance');
+      const j = await r.json();
+      if (j && j.success && j.data && j.data.appearance) {
+        const a = j.data.appearance;
+        appearances.set(playerId, {
+          avatar: a.avatar || DEFAULT_AVATAR,
+          frame: a.frame || DEFAULT_FRAME,
+          title: a.title || '',
+          source: a.source || 'dearlive'
+        });
+        loadAvatarImage(appearances.get(playerId).avatar);
+        return appearances.get(playerId);
+      }
+    } catch (e) { /* offline, 404, or a store that is down: keep the default */ }
+    return fallback;
+  }
+
+  // Fetch every seat's style once per round. Fire-and-forget: the table is
+  // already drawable with defaults, so there is no reason to make a player
+  // wait on an admin lookup to see their chips.
+  function refreshAppearances(s) {
+    const seats = (s && s.seats) || {};
+    Object.keys(seats).forEach(pid => { refreshAppearance(pid); });
+  }
+
   // Expose for reconnect handling
   window.__tppAnim = { AnimLayer, animateDeal, animateFlip, animateChipBet, animatePotCollection, startTimerPulse, stopTimerPulse, animateWin, animateRoundReset };
   async function api(path, opts) {
@@ -655,12 +715,17 @@
       const hands = (s && s.hands && s.hands[p]) || ['**', '**', '**'];
       hands.forEach((f, j) => card(pt.x - L.cw * 1.15 + j * (L.cw + 5), pt.y - L.ch / 2, L.cw, L.ch, f));
       const avatarY = pt.y + L.ch / 2 + 28;
-      ctx.save();
-      ctx.fillStyle = sel ? '#fbbf24' : '#e2e8f0';
-      ctx.beginPath(); ctx.arc(pt.x, avatarY, 15, 0, 7); ctx.fill();
-      ctx.strokeStyle = active ? '#fbbf24' : '#64748b'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = '#312e81'; ctx.font = 'bold ' + u.f(10); ctx.fillText('YOU', pt.x, avatarY + 1);
-      ctx.restore();
+      const look = appearanceFor((s && s.seats && s.seats[p]) || null);
+      const av = loadAvatarImage(look.avatar);
+      if (av && av.complete && av.naturalWidth) {
+        ctx.drawImage(av, pt.x - 15, avatarY - 15, 30, 30);
+      } else {
+        ctx.fillStyle = sel ? '#fbbf24' : '#e2e8f0';
+        ctx.beginPath(); ctx.arc(pt.x, avatarY, 15, 0, 7); ctx.fill();
+        ctx.strokeStyle = active ? '#fbbf24' : '#64748b'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = '#312e81'; ctx.font = 'bold ' + u.f(10);
+        ctx.fillText('YOU', pt.x, avatarY + 1);
+      }
       ctx.fillStyle = active ? '#fbbf24' : '#f8fafc'; ctx.font = 'bold ' + u.f(12);
       ctx.fillText(SEAT_LABELS[p], pt.x, avatarY + 28);
       ctx.fillStyle = '#e2e8f0'; ctx.font = u.f(12);
@@ -875,6 +940,7 @@
     try {
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
+      refreshAppearances(S.snap);
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
       
       // Round reset: animate cards flying back to deck before new deal
@@ -1045,7 +1111,7 @@
     ws.onmessage = ev => {
       try {
         const m = JSON.parse(ev.data);
-        if (m.kind === 'snapshot' && m.data) { S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now(); }
+        if (m.kind === 'snapshot' && m.data) { S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now(); refreshAppearances(m.data); }
         else if (m.kind === 'event' && m.data) {
           if (m.data.seq > S.lastSeq) S.lastSeq = m.data.seq;
           // Handle specific event types for animations

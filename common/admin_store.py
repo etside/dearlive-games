@@ -111,6 +111,11 @@ def _row_to_pr(row) -> Dict[str, Any]:
 class AdminStore:
     """Interface for admin reads/writes. See module docstring."""
 
+    # -- player appearance (set by an operator, read by the client) --
+    def get_player_appearance(self, player_id: str) -> Dict[str, Any]: ...
+    def set_player_appearance(self, player_id: str, appearance: Dict[str, Any],
+                              actor: str = "") -> Dict[str, Any]: ...
+
     # -- scheduled config changes --
     def create_scheduled_change(self, change_id: str, target_type: str,
                                 payload: Dict[str, Any], effective_at: str,
@@ -124,6 +129,8 @@ class AdminStore:
     def cancel_scheduled_change(self, change_id: str) -> bool: ...
     def due_scheduled_changes(self, now_iso: str,
                                limit: int = 25) -> List[Dict[str, Any]]: ...
+    def claim_due_scheduled_changes(self, now_iso: str, limit: int = 25,
+                                    grace_seconds: int = 300) -> List[Dict[str, Any]]: ...
     def mark_scheduled_applied(self, change_id: str,
                                result: Optional[Dict[str, Any]] = None) -> bool: ...
     def mark_scheduled_failed(self, change_id: str, reason: str) -> bool: ...
@@ -480,6 +487,60 @@ class PostgresAdminStore(AdminStore):
             raise
         finally:
             self._close(cur)
+
+    # -- player appearance (set by an operator, read by the client) --
+    def get_player_appearance(self, player_id: str) -> Dict[str, Any]: ...
+    def set_player_appearance(self, player_id: str, appearance: Dict[str, Any],
+                              actor: str = "") -> Dict[str, Any]: ...
+
+    # -- player appearance --
+
+    # Operator-set presentation for a player: avatar, frame, title. Stored as a
+    # platform_config key so a new player needs no row of their own, and read
+    # by the game client keyed on player id. An unset player resolves to the
+    # default rather than 404, so a brand-new player renders correctly with no
+    # admin work.
+    DEFAULT_APPEARANCE = {
+        "avatar": "/assets/games/teen-patti-pro/avatars/avatar-placeholder.svg",
+        "frame": "/assets/games/teen-patti-pro/avatars/avatar-frame-navy.svg",
+        "title": "",
+        "source": "default",
+    }
+
+    def get_player_appearance(self, player_id: str) -> Dict[str, Any]:
+        key = f"player_appearance:{player_id}"
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT value_json FROM platform_config WHERE key = %s", (key,))
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return dict(self.DEFAULT_APPEARANCE)
+            raw = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            merged = dict(self.DEFAULT_APPEARANCE)
+            merged.update(raw or {})
+            merged["source"] = "dearlive"
+            return merged
+        finally:
+            self._close(cur)
+
+    def set_player_appearance(self, player_id: str, appearance: Dict[str, Any],
+                              actor: str = "") -> Dict[str, Any]:
+        key = f"player_appearance:{player_id}"
+        value = {k: v for k, v in (appearance or {}).items()
+                 if k in ("avatar", "frame", "title")}
+        cur = self._cursor_factory()
+        try:
+            cur.execute(
+                "INSERT INTO platform_config (key, value_json) VALUES (%s, %s) "
+                "ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, "
+                "updated_at = NOW()", (key, json.dumps(value)))
+            self._commit(cur)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+        return self.get_player_appearance(player_id)
 
     # -- scheduled config changes --
 

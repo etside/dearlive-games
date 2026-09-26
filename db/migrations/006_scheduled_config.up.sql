@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS scheduled_config_change (
     payload      JSONB       NOT NULL,
     effective_at TIMESTAMPTZ NOT NULL,
     status       TEXT        NOT NULL DEFAULT 'PENDING',
+    -- APPLYING + claimed_at make the sweep safe to run from more than one
+    -- process (two API workers, or an old and a new one during a rolling
+    -- deploy). A row is claimed with a conditional UPDATE; only the process
+    -- whose UPDATE matched a row goes on to apply it. claimed_at lets another
+    -- process reclaim a row stranded in APPLYING by a crash.
+    claimed_at   TIMESTAMPTZ,
     applied_at   TIMESTAMPTZ,
     result       JSONB,
     created_by   TEXT        NOT NULL DEFAULT '',
@@ -32,7 +38,7 @@ CREATE TABLE IF NOT EXISTS scheduled_config_change (
         target_type IN ('profit_risk', 'game_config', 'settings', 'package')
     ),
     CONSTRAINT scheduled_status_known CHECK (
-        status IN ('PENDING', 'APPLIED', 'CANCELLED', 'FAILED')
+        status IN ('PENDING', 'APPLYING', 'APPLIED', 'CANCELLED', 'FAILED')
     )
 );
 
@@ -41,6 +47,13 @@ CREATE TABLE IF NOT EXISTS scheduled_config_change (
 CREATE INDEX IF NOT EXISTS scheduled_config_due_idx
     ON scheduled_config_change (effective_at)
     WHERE status = 'PENDING';
+
+-- Reclaiming rows stranded in APPLYING by a crashed process. The grace window
+-- must exceed the time a legitimate apply can take, or a slow apply gets
+-- stolen from under the process still working on it.
+CREATE INDEX IF NOT EXISTS scheduled_config_stuck_idx
+    ON scheduled_config_change (claimed_at)
+    WHERE status = 'APPLYING';
 
 -- Per-target history, so the admin UI can show what is queued for one game.
 CREATE INDEX IF NOT EXISTS scheduled_config_target_idx

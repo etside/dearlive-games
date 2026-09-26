@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How to play — Teen Patti Pro</title>
+<style>
+  /* Same tokens as the table (index.html) so the rules page does not look like
+     a different product. Zoom is deliberately not disabled. */
+  :root{
+    --dl-navy:#050914; --dl-blue:#2e6bff; --dl-violet:#7c3aed; --dl-cyan:#22d3ee;
+    --dl-text:#fef2f2; --dl-muted:#8fa3c8;
+    --dl-table-a:#450a0a; --dl-table-b:#7f1d1d;
+    --dl-primary:#dc2626; --dl-accent:#fbbf24;
+    --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+    --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:linear-gradient(180deg,var(--dl-table-a) 0%,var(--dl-table-b) 100%);
+    color:var(--dl-text);font-family:system-ui,-apple-system,sans-serif;line-height:1.55}
+  .wrap{max-width:760px;margin:0 auto;
+    padding:calc(var(--sat) + 20px) calc(var(--sar) + 18px) calc(var(--sab) + 40px) calc(var(--sal) + 18px)}
+  h1{font-size:1.6rem;margin:0 0 4px;letter-spacing:-.01em}
+  h2{font-size:1.1rem;margin:30px 0 10px;color:var(--dl-accent)}
+  p,li{font-size:1rem}
+  .sub{color:var(--dl-muted);margin:0 0 8px;font-size:.95rem}
+  .back{display:inline-block;margin-bottom:18px;padding:9px 15px;border-radius:10px;
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);
+    color:var(--dl-text);text-decoration:none;font-size:.92rem}
+  .back:focus-visible,a:focus-visible{outline:3px solid var(--dl-cyan);outline-offset:2px}
+  .card{background:rgba(5,9,20,.42);border:1px solid rgba(255,255,255,.14);
+    border-radius:14px;padding:16px 18px;margin:12px 0}
+  table{width:100%;border-collapse:collapse;margin:6px 0;font-size:.95rem}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.12);vertical-align:top}
+  th{color:var(--dl-accent);font-weight:600;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  ol,ul{padding-left:22px}
+  li{margin:5px 0}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.78rem;
+    background:rgba(46,107,255,.22);border:1px solid rgba(46,107,255,.5);color:#cfe0ff}
+  .note{background:rgba(220,38,38,.14);border-left:3px solid var(--dl-primary);
+    padding:12px 15px;border-radius:0 10px 10px 0;margin:16px 0;font-size:.95rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0}
+  .stat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);
+    border-radius:11px;padding:11px 13px}
+  .stat b{display:block;font-size:1.3rem;color:var(--dl-accent);line-height:1.2}
+  .stat span{font-size:.82rem;color:var(--dl-muted)}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid rgba(255,255,255,.14);
+    color:var(--dl-muted);font-size:.85rem}
+  .cards{display:flex;gap:7px;margin:9px 0}
+  .cd{width:44px;height:62px;border-radius:7px;background:#f8fafc;color:#0f172a;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-weight:700;font-size:.95rem;box-shadow:0 3px 9px rgba(0,0,0,.4)}
+  .cd small{font-size:.62rem;font-weight:600;opacity:.72}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">&larr; Back to the table</a>
+
+  <h1>How to play Teen Patti Pro</h1>
+  <p class="sub">Three cards, one round, highest hand wins the pot. <span class="tag">config tpp-1.0.0</span></p>
+
+  <div class="card">
+    <h2 style="margin-top:0">The round</h2>
+    <ol>
+      <li>You are dealt <strong>three cards</strong>, face down.</li>
+      <li>You have <strong>20 seconds</strong> to place your bet. Seats A, B and C are
+        highlighted while it is your turn.</li>
+      <li>Betting closes and the hands are revealed.</li>
+      <li>The best hand takes the pot. Ties split it.</li>
+    </ol>
+    <div class="grid">
+      <div class="stat"><b>3</b><span>cards per hand</span></div>
+      <div class="stat"><b>20s</b><span>to bet</span></div>
+      <div class="stat"><b>3</b><span>seats</span></div>
+      <div class="stat"><b>0</b><span>jokers in play</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Betting</h2>
+    <p>Chip denominations are <strong>20, 100, 500 and 1000</strong>. Minimum bet 20,
+      maximum 100,000, and you can place up to <strong>50 bets per round</strong> —
+      which is how you raise after seeing what the others did.</p>
+    <p>On a phone: tap a seat to select it, tap again to bet. The selected seat
+      highlights and the status line confirms the amount.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Hand rankings</h2>
+    <p>Strongest first. When two hands are the same type, the tiebreak is the
+      highest card in the hand.</p>
+    <table>
+      <thead><tr><th>Rank</th><th>Hand</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>Trail</strong></td><td>Three of a kind. Ace-high trail beats everything below.</td></tr>
+        <tr><td>2</td><td><strong>Pure sequence</strong></td><td>Three consecutive cards of the same suit — A,2,3 through Q,K,A.</td></tr>
+        <tr><td>3</td><td><strong>Sequence</strong></td><td>Three consecutive cards, mixed suits.</td></tr>
+        <tr><td>4</td><td><strong>Colour</strong></td><td>Three of the same suit, not in sequence.</td></tr>
+        <tr><td>5</td><td><strong>Pair</strong></td><td>Two of a kind. The third card is the kicker.</td></tr>
+        <tr><td>6</td><td><strong>High card</strong></td><td>Nothing above. Ace is high.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-bottom:0"><strong>Example:</strong> a pair of Kings beats a pair
+      of Fives; a King-high colour beats a pair; and a King-high sequence beats
+      the same sequence in mixed suits.</p>
+    <div class="cards" aria-hidden="true">
+      <div class="cd">K<small>♠</small></div><div class="cd">K<small>♥</small></div><div class="cd">7<small>♣</small></div>
+    </div>
+    <p style="margin:0;font-size:.88rem;color:var(--dl-muted)">A pair of Kings with a
+      Seven kicker. The Seven only matters when two players have the same pair.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Your avatar</h2>
+    <p>The picture and frame under your seat come from the DearLive admin panel
+      and are tied to your player ID. If you have not been styled yet, or the
+      lookup cannot reach the server, you get the default icon — the game never
+      stops for it.</p>
+  </div>
+
+  <div class="note">
+    <strong>Play responsibly.</strong> This is a game of chance. Only play with
+    money you can afford to lose, and set your own limits.
+  </div>
+
+  <footer>
+    Config <code>tpp-1.0.0</code> · full rules and traceability in
+    <code>docs/GAME_RULES.md</code>. The figures above are checked against the
+    engine config by <code>tests/test_player_docs.py</code>, so they cannot
+    silently drift from what the game actually runs.
+  </footer>
+</div>
+</body>
+</html>

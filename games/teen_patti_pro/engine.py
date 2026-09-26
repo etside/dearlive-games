@@ -533,7 +533,14 @@ class Room:
         reveal = r.status in (RoundStatus.RESULT, RoundStatus.SETTLED, RoundStatus.CLOSED)
         pots: Dict[str, int] = {}
         mine = 0
+        # Seat -> player id. The client resolves each seat's avatar from the
+        # admin panel by player id. Not a new disclosure: the table endpoint
+        # already lists every member's id, and hands/pots are already keyed by
+        # position, so the mapping is derivable by anyone playing.
+        seats: Dict[str, str] = {}
         for b in r.bets:
+            if b.player_id:
+                seats.setdefault(b.position, b.player_id)
             if b.status in ("accepted", "won"):
                 pots[b.position] = pots.get(b.position, 0) + b.amount
                 if b.player_id == viewer:
@@ -547,6 +554,7 @@ class Room:
             "betting_end_at": r.betting_end_at_ms,
             "pots": pots, "pot_total": sum(pots.values()) + r.carry_in,
             "my_bet": mine, "carry_in": r.carry_in,
+            "seats": seats,
             "hands": ({p: [fmt_card(c) for c in r.resolved.get(p, h)]
                        for p, h in r.hands.items()}
                       if reveal else {p: ["**"] * 3 for p in r.hands}),

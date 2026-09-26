@@ -35,6 +35,26 @@ class Phase5ConfigEventTest(unittest.TestCase):
         self.assertEqual(second.config_snapshot["version"], "round-b")
         self.assertEqual(second.config_version, "round-b")
 
+    def test_snapshot_maps_each_seat_to_its_player(self):
+        # The client resolves a seat's avatar from the admin panel by player
+        # id, so it needs to know which player is in which seat. ids are
+        # already visible to the table, so this is a mapping, not a leak.
+        service = self._service()
+        for pid in ("alice", "bob"):
+            service.wallet.fund(pid, 5000)
+        service.start_round("seat-room")
+        service.place_bet("seat-room", "alice", "A", 100, "idem-a")
+        service.place_bet("seat-room", "bob", "B", 500, "idem-b")
+        snap = service.state("seat-room", "alice")
+        self.assertEqual(snap["seats"], {"A": "alice", "B": "bob"})
+
+    def test_snapshot_seats_are_empty_before_anyone_bets(self):
+        # Every seat falls back to the default avatar, which is the correct
+        # rendering for an empty table.
+        service = self._service()
+        service.start_round("empty-room")
+        self.assertEqual(service.state("empty-room", "alice")["seats"], {})
+
     def test_lifecycle_events_are_room_routable(self):
         service = self._service()
         service.start_round("teen-room")

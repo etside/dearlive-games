@@ -9,6 +9,7 @@ X-Signature), handled by provider/router.py.
 """
 import argparse
 import json
+import logging
 import os
 import re
 import time
@@ -65,7 +66,64 @@ ADMIN_KEYS = _load_admin_keys()
 ADMIN_SCOPES = _load_admin_scopes()
 
 
+def _new_id(prefix):
+    """Collision-resistant id for a row the caller did not name."""
+    import uuid
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def body_of(handler):
+    """Parsed JSON body for a request, or {} when absent/unparseable.
+
+    The deep-control router validates field by field and reports precise
+    errors, so a body-level 422 here would pre-empt them.
+    """
+    try:
+        data, err = parse_body(handler)
+    except Exception:
+        return {}
+    if err or not isinstance(data, dict):
+        return {}
+    return data
+
+
+def _int_arg(qs, name, default, low=None, high=None):
+    """Read a bounded integer from a query dict, falling back to the default.
+
+    A malformed or out-of-range value is clamped rather than rejected, so a
+    typo in a dashboard URL shows a page instead of a 500.
+    """
+    raw = (qs.get(name, [None])[0] or "").strip()
+    try:
+        value = int(raw) if raw else int(default)
+    except (TypeError, ValueError):
+        value = int(default)
+    if low is not None:
+        value = max(low, value)
+    if high is not None:
+        value = min(high, value)
+    return value
+
+
+def _text_arg(qs, name, default="", max_len=64, pattern=None):
+    """Read a bounded, optionally pattern-checked string from the query."""
+    raw = str(qs.get(name, [default])[0] or "").strip()[:max_len]
+    if pattern and raw and not re.fullmatch(pattern, raw):
+        return default
+    return raw
+
+
 def parse_body(handler, max_bytes=1 << 20):
+    """Read and JSON-decode the request body, at most once per request.
+
+    The result is cached on the handler. Several routes probe the body before
+    deciding which route they are (the deep-control router runs first), and
+    rfile is a one-shot stream: a second read returns b"" and the real handler
+    then blocked or validated against nothing.
+    """
+    cached = getattr(handler, "_parsed_body", None)
+    if cached is not None:
+        return cached
     try:
         length = int(handler.headers.get("Content-Length", "0"))
     except ValueError:
@@ -74,9 +132,11 @@ def parse_body(handler, max_bytes=1 << 20):
         return None, E.err("Body too large", E.E_VALIDATION)
     raw = handler.rfile.read(length) if length else b"{}"
     try:
-        return json.loads(raw or b"{}"), None
+        result = (json.loads(raw or b"{}"), None)
     except (ValueError, UnicodeError):
-        return None, E.err("Invalid JSON", E.E_VALIDATION)
+        result = (None, E.err("Invalid JSON", E.E_VALIDATION))
+    handler._parsed_body = result
+    return result
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -109,6 +169,269 @@ class Handler(BaseHTTPRequestHandler):
             store = build_admin_store()
             type(self).admin_store = store
         return store
+
+    # -- deep-control plumbing -------------------------------------------
+    #
+    # Every admin read funnels through _admin_read and every write through
+    # _admin_write so that "no database" produces one consistent 503 and one
+    # consistent message, rather than each route inventing its own failure.
+
+    def _admin_read(self, fn):
+        """Run a store read and envelope it, or answer 503/502 honestly."""
+        try:
+            store = self.admin_db_or_503()
+            return self.ok(fn(store))
+        except AdminStoreUnavailable as exc:
+            return self.send(503, E.err(str(exc), E.E_INTERNAL))
+        except ServiceError as exc:
+            return self.fail(exc)
+        except Exception as exc:
+            # The driver's message can name tables and columns, so report the
+            # type only.
+            return self.send(502, E.err(
+                f"admin query failed: {type(exc).__name__}", E.E_INTERNAL))
+
+    def _admin_post(self, path, body, query=""):
+        """POST routes for the deep-control surface. None means "not mine".
+
+        Kept as one method so the route table for the admin surface can be
+        read in one place instead of being scattered through do_POST.
+        """
+        from common.profit_sim import simulate
+
+        def need(role):
+            return self.require_role(role)
+
+        # --- profit & risk (save is PUT; POST here is only the simulator) ---
+        if path == "/api/v1/admin/profit-risk/simulate":
+            denied = need("auditor")
+            if denied:
+                return self.send(*denied)
+            active = None
+            try:
+                active = self.admin_db_or_503().get_active_profit_risk()
+            except AdminStoreUnavailable as exc:
+                return self.send(503, E.err(str(exc), E.E_INTERNAL))
+            except Exception:
+                active = None
+            cfg = dict(active or {})
+            cfg.update({k: v for k, v in (body or {}).items() if v is not None})
+            rounds = int(body.get("rounds", 10000) or 10000)
+            return self.ok(simulate(cfg, rounds=rounds))
+        if path == "/api/v1/admin/scheduled-changes/apply":
+            # Manual trigger. The background sweeper normally does this on a
+            # timer; an operator who just scheduled a change for "now" should
+            # not have to wait a minute to see it land.
+            denied = need("admin")
+            if denied:
+                return self.send(*denied)
+            from common.config_scheduler import apply_due_changes
+            return self._admin_read(
+                lambda st: {"report": apply_due_changes(st)})
+        if path == "/api/v1/admin/scheduled-changes":
+            denied = need("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: st.create_scheduled_change(
+                    change_id=body.get("change_id") or _new_id("chg"),
+                    target_type=str(body.get("target_type", "")),
+                    target_id=str(body.get("target_id", "")),
+                    payload=body.get("payload") or {},
+                    effective_at=str(body.get("effective_at", "")),
+                    created_by=self.admin_role() or "admin",
+                    reason=str(body.get("reason", ""))),
+                audit_action="config.schedule", audit_entity="scheduled_change",
+                before=body)
+        # --- player overrides ---
+        if path == "/api/v1/admin/player-overrides":
+            denied = need("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: st.create_player_override(
+                    override_id=body.get("override_id") or _new_id("ovr"),
+                    player_id=str(body.get("player_id", "")),
+                    house_edge_pct=body.get("house_edge_pct"),
+                    token_delta=int(body.get("token_delta", 0) or 0),
+                    custom_loss_limit=body.get("custom_loss_limit"),
+                    expires_at=body.get("expires_at"),
+                    reason=str(body.get("reason", "")),
+                    actor=self.admin_role() or "admin"),
+                audit_action="player.override", audit_entity="player",
+                audit_entity_id=str(body.get("player_id", "")), before=body)
+        # --- token packages ---
+        if path == "/api/v1/admin/packages":
+            denied = need("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: st.create_package(
+                    package_id=str(body.get("package_id") or _new_id("pkg")),
+                    name=str(body.get("name", "")),
+                    coins=int(body.get("coins", 0) or 0),
+                    price_minor=int(body.get("price_minor", 0) or 0),
+                    currency=str(body.get("currency", "USD")),
+                    bonus_percent=int(body.get("bonus_percent", 0) or 0),
+                    bonus_coins=int(body.get("bonus_coins", 0) or 0),
+                    is_active=bool(body.get("is_active", True)),
+                    sort_order=int(body.get("sort_order", 0) or 0),
+                    tags=body.get("tags") or []),
+                audit_action="package.create", audit_entity="package", before=body)
+        m = re.fullmatch(r"/api/v1/admin/games/([^/]+)/(enable|disable)", path)
+        if m:
+            denied = need("admin")
+            if denied:
+                return self.send(*denied)
+            enabled = m.group(2) == "enable"
+            return self._admin_write(
+                lambda st: st.set_game_enabled(
+                    m.group(1), enabled, status=body.get("status"),
+                    message=str(body.get("message", ""))),
+                audit_action=("game.enable" if enabled else "game.disable"),
+                audit_entity="game", audit_entity_id=m.group(1),
+                before={"enabled": enabled})
+        return None
+
+    def _admin_put(self, path, body):
+        """PUT routes for the deep-control surface. None means "not mine"."""
+        if path == "/api/v1/admin/profit-risk":
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not isinstance(body, dict) or not body:
+                return self.send(422, E.err("profit-risk body required",
+                                            E.E_VALIDATION))
+            return self._admin_write(
+                lambda st: st.save_profit_risk(body, self.admin_role() or "admin"),
+                audit_action="profit_risk.update", audit_entity="profit_risk",
+                audit_entity_id="default", before=body)
+        m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/appearance", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: {"appearance": st.set_player_appearance(
+                    m.group(1), body.get("appearance") or body,
+                    actor=self.admin_role() or "admin")},
+                audit_action="player.appearance.set", audit_entity="player",
+                audit_entity_id=m.group(1), before=body)
+        if path == "/api/v1/admin/profit-risk":
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not isinstance(body, dict) or not body:
+                return self.send(422, E.err("profit-risk body required",
+                                            E.E_VALIDATION))
+            return self._admin_write(
+                lambda st: st.save_profit_risk(body, self.admin_role() or "admin"),
+                audit_action="profit_risk.update", audit_entity="profit_risk",
+                audit_entity_id="default", before=body)
+        m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/appearance", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: {"appearance": st.set_player_appearance(
+                    m.group(1), body.get("appearance") or body,
+                    actor=self.admin_role() or "admin")},
+                audit_action="player.appearance.set", audit_entity="player",
+                audit_entity_id=m.group(1), before=body)
+        if path == "/api/v1/admin/settings":
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not isinstance(body, dict) or not body:
+                return self.send(422, E.err("settings body required",
+                                            E.E_VALIDATION))
+            return self._admin_write(
+                lambda st: {"settings": st.put_settings(
+                    body, actor=self.admin_role() or "admin")},
+                audit_action="settings.update", audit_entity="settings",
+                before=body)
+        m = re.fullmatch(r"/api/v1/admin/packages/([^/]+)", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: st.update_package(m.group(1), **body),
+                audit_action="package.update", audit_entity="package",
+                audit_entity_id=m.group(1), before=body)
+        return None
+
+    def _admin_delete(self, path):
+        """DELETE routes for the deep-control surface. None means "not mine".
+
+        Deletes are soft everywhere: a package is archived and an override is
+        revoked, because both can already be referenced by wallet
+        transactions. Hard-deleting either would orphan money records.
+        """
+        m = re.fullmatch(r"/api/v1/admin/packages/([^/]+)", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: {"archived": st.archive_package(m.group(1))},
+                audit_action="package.archive", audit_entity="package",
+                audit_entity_id=m.group(1))
+        m = re.fullmatch(r"/api/v1/admin/scheduled-changes/([^/]+)", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: {"cancelled": st.cancel_scheduled_change(m.group(1))},
+                audit_action="config.schedule.cancel",
+                audit_entity="scheduled_change", audit_entity_id=m.group(1))
+        m = re.fullmatch(r"/api/v1/admin/player-overrides/([^/]+)", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: {"revoked": st.revoke_player_override(
+                    m.group(1), self.admin_role() or "admin")},
+                audit_action="player.override.revoke", audit_entity="player_override",
+                audit_entity_id=m.group(1))
+        return None
+
+    def _admin_write(self, fn, audit_action=None, audit_entity=None,
+                     audit_entity_id=None, before=None):
+        """Run a store write, audit it, and envelope the result.
+
+        The audit row is written by the caller's caller -- the store's own
+        tables are the durable record; this keeps the in-process audit log
+        consistent with the other admin routes.
+        """
+        try:
+            store = self.admin_db_or_503()
+            result = fn(store)
+            if audit_action:
+                try:
+                    self.svc.audit.record(
+                        self.admin_role() or "admin", audit_action,
+                        audit_entity or "admin", str(audit_entity_id or ""),
+                        before={"args": repr(before)[:400]} if before is not None
+                        else None,
+                        after={"ok": True})
+                except Exception:
+                    # Never let an audit failure mask a successful write; the
+                    # store's own tables remain the durable record.
+                    pass
+            return self.ok(result)
+        except AdminStoreUnavailable as exc:
+            return self.send(503, E.err(str(exc), E.E_INTERNAL))
+        except ServiceError as exc:
+            return self.fail(exc)
+        except KeyError as exc:
+            return self.send(404, E.err(f"Not found: {exc}", E.E_NOT_FOUND))
+        except Exception as exc:
+            return self.send(502, E.err(
+                f"admin write failed: {type(exc).__name__}", E.E_INTERNAL))
 
     def game_kind(self, game_id: str):
         return "teen" if game_id in self.TEEN_IDS else None
@@ -215,10 +538,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         url = urllib.parse.urlparse(self.path)
+        path = url.path
         try:
             if self.serve_provider("DELETE", url.path, url.query):
                 return
-            self.send(404, E.err("Not found", E.E_NOT_FOUND))
+            # ---- deep-control deletes (soft: archive/revoke, never hard) ----
+            if path.startswith("/api/v1/admin/"):
+                handled = self._admin_delete(path)
+                if handled is not None:
+                    return handled
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         except ServiceError as exc:
             return self.fail(exc)
 
@@ -400,13 +729,79 @@ class Handler(BaseHTTPRequestHandler):
     # -- routing --
     CLIENT_DIR = Path(__file__).parent / "client"
     MASTER_DIR = Path(__file__).parent.parent.parent / "assets" / "dearlive-master"
+    # Shared artwork (avatars, frames) is authored once under assets/games/ and
+    # referenced by URL from the client and from admin_store defaults, so the
+    # default avatar an operator never configures still resolves to a real file.
+    ASSETS_DIR = Path(__file__).parent.parent.parent / "assets"
+    ASSET_SUFFIXES = (".svg", ".png", ".webp", ".jpg", ".jpeg", ".json")
+    ASSET_MIME = {".svg": "image/svg+xml", ".png": "image/png",
+                  ".webp": "image/webp", ".jpg": "image/jpeg",
+                  ".jpeg": "image/jpeg", ".json": "application/json"}
     MASTER_KINDS = {"lottie": ("application/json; charset=utf-8", ".json"),
                     "gif": ("image/gif", ".gif"),
                     "wav": ("audio/wav", ".wav")}
 
-    def serve_client(self, name: str, ctype: str):
+    def serve_repo_asset(self, rel: str):
+        """Serve a file from the repo assets/ tree, read-only and contained.
+
+        rel is untrusted: it comes straight off the URL. Rejecting "..", the
+        absolute form and any symlink that escapes the root is what keeps this
+        from becoming a filesystem read primitive. The extension is
+        whitelisted so this cannot be used to fetch .env or .py from inside
+        the tree.
+        """
+        if not rel or rel.endswith("/"):
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        parts = rel.split("/")
+        if any(p in ("..", ".", "") for p in parts) or rel.startswith("/"):
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        target = (self.ASSETS_DIR / rel).resolve()
         try:
-            body = (self.CLIENT_DIR / name).read_bytes()
+            target.relative_to(self.ASSETS_DIR.resolve())
+        except ValueError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        if target.suffix.lower() not in self.ASSET_SUFFIXES or not target.is_file():
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        ctype = self.ASSET_MIME.get(target.suffix.lower(), "application/octet-stream")
+        try:
+            body = target.read_bytes()
+        except OSError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # Artwork changes only per release, so let the client hold it briefly.
+        # Hashed filenames would allow immutable caching; without them a short
+        # max-age is the safe compromise.
+        self.send_header("Cache-Control", "public, max-age=300")
+        self.end_headers()
+        return self.wfile.write(body)
+
+    # Client files are addressed by name from the URL, so the set is closed by
+    # extension rather than by an ever-growing hardcoded list (lobby.html and
+    # how-to-play.html were unreachable precisely because nobody added them to
+    # such a list).
+    CLIENT_SUFFIXES = {".html": "text/html; charset=utf-8",
+                       ".js": "application/javascript; charset=utf-8",
+                       ".json": "application/json; charset=utf-8",
+                       ".css": "text/css; charset=utf-8",
+                       ".svg": "image/svg+xml",
+                       ".png": "image/png", ".webp": "image/webp",
+                       ".ico": "image/x-icon"}
+
+    def serve_client(self, name: str, ctype: str = ""):
+        # name reaches here from the URL. Without the containment check below,
+        # "..%2f..%2f.env" would read outside the client directory.
+        target = (self.CLIENT_DIR / name).resolve()
+        try:
+            target.relative_to(self.CLIENT_DIR.resolve())
+        except ValueError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        if target.suffix.lower() not in self.CLIENT_SUFFIXES or not target.is_file():
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        ctype = ctype or self.CLIENT_SUFFIXES[target.suffix.lower()]
+        try:
+            body = target.read_bytes()
         except OSError:
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         self.send_response(200)
@@ -479,6 +874,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "no-cache")
                 self.end_headers()
                 return self.wfile.write(body)
+            m = re.fullmatch(r"/teen-patti-pro/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
+            if m:
+                return self.serve_client(m.group(1))
+            if path.startswith("/assets/"):
+                return self.serve_repo_asset(path[len("/assets/"):])
             m = re.fullmatch(r"/teen-patti-pro/assets/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 name = m.group(1)
@@ -787,6 +1187,76 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     kpis["settlement_health"] = {"available": False}
                 return self.ok(kpis)
+            # ---- deep-control reads -------------------------------------
+            # Every one of these is database-backed. With no DATABASE_URL the
+            # store raises AdminStoreUnavailable and the route answers 503
+            # with the reason, rather than returning an empty-but-successful
+            # payload that would read as "there is nothing configured".
+            if path == "/api/v1/admin/profit-risk":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                return self._admin_read(
+                    lambda st: {"active": st.get_active_profit_risk(),
+                                "versions": st.list_profit_risk_versions(10)})
+            if path == "/api/v1/admin/packages":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                only_active = qs.get("active", ["false"])[0].lower() in ("1", "true", "yes")
+                return self._admin_read(
+                    lambda st: {"packages": st.list_packages(only_active)})
+            if path == "/api/v1/admin/settings":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                return self._admin_read(lambda st: {"settings": st.get_settings()})
+            if path == "/api/v1/admin/scheduled-changes":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                target_type = qs.get("target_type", [None])[0]
+                target_id = qs.get("target_id", [None])[0]
+                status = qs.get("status", [None])[0]
+                limit = _int_arg(qs, "limit", 50, 1, 500)
+                return self._admin_read(lambda st: {"changes": st.list_scheduled_changes(
+                    target_type, target_id, status, limit)})
+            if path == "/api/v1/admin/player-overrides":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                player_id = qs.get("player_id", [None])[0]
+                limit = _int_arg(qs, "limit", 50, 1, 500)
+                return self._admin_read(
+                    lambda st: {"overrides": st.list_player_overrides(player_id, limit)})
+            m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/appearance", path)
+            if m:
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                return self._admin_read(
+                    lambda st: {"appearance": st.get_player_appearance(m.group(1))})
+            m = re.fullmatch(r"/api/v1/players/([^/]+)/appearance", path)
+            if m:
+                # Client-facing: an operator sets a player's look in the admin
+                # panel, and the game reads it by player id. Unlike every
+                # admin route, a missing database here is NOT a 503: this sits
+                # in the table-rendering path, and an admin outage must not
+                # blank out every player's avatar. Fall back to the default.
+                try:
+                    store = self.admin_db_or_503()
+                    return self.ok({"appearance":
+                                    store.get_player_appearance(m.group(1))})
+                except Exception as exc:
+                    # Logged, not swallowed: a blank avatar on every table is a
+                    # real outage, and the operator has to be able to find it.
+                    logging.getLogger("dearlive.api").warning(
+                        "appearance lookup failed for %s, serving default: %s",
+                        m.group(1), type(exc).__name__)
+                    from common.admin_store import PostgresAdminStore
+                    return self.ok({"appearance": dict(
+                        PostgresAdminStore.DEFAULT_APPEARANCE),
+                        "degraded": True})
             if path == "/api/v1/admin/audit":
                 denied = self.require_role("auditor")
                 if denied:
@@ -829,6 +1299,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.serve_provider("POST", path, url.query):
                 return
+            # ---- deep-control writes -------------------------------------
+            if path.startswith("/api/v1/admin/"):
+                handled = self._admin_post(path, body_of(self), url.query)
+                if handled is not None:
+                    return handled
             # --- Operator Auth (Phase 1) ---
             if path == "/api/v1/operator/auth":
                 body, err = parse_body(self)
@@ -1224,6 +1699,11 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         path = url.path
         try:
+            # ---- deep-control writes (settings, packages) ----
+            if path.startswith("/api/v1/admin/"):
+                handled = self._admin_put(path, body_of(self))
+                if handled is not None:
+                    return handled
             m = re.fullmatch(r"/api/v1/admin/games/(\S+)/config", path)
             if m:
                 denied = self.require_role("admin", m.group(1))
@@ -1273,6 +1753,23 @@ def _start_sweeper(interval_s: float = 1.0):
     thread = threading.Thread(target=loop, name="teen-patti-sweeper", daemon=True)
     thread.start()
     return thread
+
+
+def _start_config_sweeper(store, interval_s: int = 60):
+    """Apply due scheduled config changes on a timer.
+
+    Started only when the admin store can actually reach a database: with no
+    DATABASE_URL the sweep would log a warning every minute forever, which
+    buries real errors and looks like a fault when nothing is wrong.
+
+    Separate from _start_sweeper, which settles betting windows on a 1s tick.
+    Config changes are rare and can wait a minute; round settlement cannot.
+    """
+    from common.admin_store import UnavailableAdminStore
+    from common.config_scheduler import ScheduledChangeSweeper
+    if isinstance(store, UnavailableAdminStore):
+        return None
+    return ScheduledChangeSweeper(store, interval_seconds=interval_s).start()
 
 
 def main():
@@ -1328,17 +1825,23 @@ def main():
     Handler.provider_tokens = _ctx.tokens
     if not args.no_sweeper:
         _start_sweeper()
+    _config_sweeper = None if args.no_sweeper else _start_config_sweeper(
+        Handler.admin_store)
     if not args.no_ws:
         from .ws import start_background as _start_ws
         _start_ws(Handler.svc, Handler.provider_tokens, args.host, args.ws_port)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"TeenPattiPro API: http://{args.host}:{args.port} "
           f"(config {cfg.version}, confirmed={cfg.confirmed}, "
-          f"provider={'on' if _ctx.keys else 'no-keys'})", flush=True)
+          f"provider={'on' if _ctx.keys else 'no-keys'}, "
+          f"config-sweeper={'on' if _config_sweeper else 'off'})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        if _config_sweeper is not None:
+            _config_sweeper.stop()
 
 
 if __name__ == "__main__":

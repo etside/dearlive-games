@@ -10,6 +10,10 @@ Environments are separate: `APP_ENV=sandbox|staging|production`. The DearLive
 developer configures their own real addresses/credentials/currency via env
 (`.env.example`) — **no game-logic changes, no hardcoded hosts/secrets.**
 
+> **Operators:** admin keys, roles and the full endpoint list are in
+> [ADMIN.md](ADMIN.md). This document is the platform-to-games contract; that
+> one is the operator runbook.
+
 ## 1. Game catalog (Games section layout preserved)
 
 The existing DearLive Games-section visual structure is untouched. The host
