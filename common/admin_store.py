@@ -114,6 +114,29 @@ class AdminStore:
     # -- dashboard --
     def dashboard_kpis(self) -> Dict[str, Any]: ...
 
+    # -- token packages (coin_package) --
+    def list_packages(self, active_only: bool = False) -> List[Dict[str, Any]]: ...
+    def get_package(self, package_id: str) -> Optional[Dict[str, Any]]: ...
+    def create_package(self, **kw) -> Dict[str, Any]: ...
+    def update_package(self, package_id: str, **kw) -> Dict[str, Any]: ...
+    def archive_package(self, package_id: str) -> bool: ...
+
+    # -- platform settings (platform_config key/value) --
+    def get_settings(self) -> Dict[str, Any]: ...
+    def put_settings(self, values: Dict[str, Any],
+                     actor: str = "") -> Dict[str, Any]: ...
+
+    # -- audit (audit_log) --
+    def list_audit(self, actor: Optional[str] = None, action: Optional[str] = None,
+                   entity: Optional[str] = None, since_ms: Optional[int] = None,
+                   limit: int = 100) -> List[Dict[str, Any]]: ...
+
+    # -- game enable / disable (game) --
+    def list_games_admin(self) -> List[Dict[str, Any]]: ...
+    def set_game_enabled(self, game_id: str, enabled: bool,
+                         status: Optional[str] = None,
+                         message: str = "") -> Dict[str, Any]: ...
+
     # -- profit & risk --
     def get_active_profit_risk(self) -> Optional[Dict[str, Any]]: ...
     def list_profit_risk_versions(self, limit: int = 10) -> List[Dict[str, Any]]: ...
@@ -211,6 +234,235 @@ class PostgresAdminStore(AdminStore):
         conn = getattr(cur, "connection", None)
         if conn is not None and hasattr(conn, "rollback"):
             conn.rollback()
+
+    # -- token packages (coin_package) --
+    #
+    # "Delete" is a soft archive (is_active = FALSE) rather than a row removal.
+    # A package may already have been bought, and the wallet_transaction rows
+    # from that purchase must not be left pointing at a package that no longer
+    # exists.
+
+    _PKG_COLS = ("package_id", "name", "coins", "price_minor", "currency",
+                 "bonus_percent", "bonus_coins", "is_active", "sort_order",
+                 "tags", "created_at", "updated_at")
+
+    def list_packages(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        cur = self._cursor_factory()
+        try:
+            sql = "SELECT " + ", ".join(self._PKG_COLS) + " FROM coin_package "
+            if active_only:
+                sql += "WHERE is_active "
+            sql += "ORDER BY sort_order, package_id"
+            cur.execute(sql)
+            return [self._pkg_row(r) for r in cur.fetchall()]
+        finally:
+            self._close(cur)
+
+    def _pkg_row(self, r) -> Dict[str, Any]:
+        return {"package_id": r[0], "name": r[1], "coins": int(r[2]),
+                "price_minor": int(r[3]), "currency": r[4],
+                "bonus_percent": int(r[5]), "bonus_coins": int(r[6]),
+                "is_active": bool(r[7]), "sort_order": int(r[8]),
+                "tags": r[9] if isinstance(r[9], list) else json.loads(r[9] or "[]"),
+                "created_at": r[10], "updated_at": r[11]}
+
+    def get_package(self, package_id: str) -> Optional[Dict[str, Any]]:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT " + ", ".join(self._PKG_COLS) +
+                        " FROM coin_package WHERE package_id = %s", (package_id,))
+            r = cur.fetchone()
+            return self._pkg_row(r) if r else None
+        finally:
+            self._close(cur)
+
+    def create_package(self, **kw) -> Dict[str, Any]:
+        cur = self._cursor_factory()
+        try:
+            cur.execute(
+                "INSERT INTO coin_package (package_id, name, coins, price_minor, "
+                "currency, bonus_percent, bonus_coins, is_active, sort_order, tags) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING " +
+                ", ".join(self._PKG_COLS),
+                (kw["package_id"], kw["name"], int(kw["coins"]),
+                 int(kw["price_minor"]), kw.get("currency", "USD"),
+                 int(kw.get("bonus_percent", 0)), int(kw.get("bonus_coins", 0)),
+                 bool(kw.get("is_active", True)), int(kw.get("sort_order", 0)),
+                 json.dumps(list(kw.get("tags") or []))))
+            r = cur.fetchone()
+            self._commit(cur)
+            return self._pkg_row(r)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    def update_package(self, package_id: str, **kw) -> Dict[str, Any]:
+        """Partial update: only supplied keys are written, so omitting a field
+        can never blank it."""
+        allowed = {"name": str, "coins": int, "price_minor": int,
+                   "currency": str, "bonus_percent": int, "bonus_coins": int,
+                   "is_active": bool, "sort_order": int, "tags": list}
+        sets, params = [], []
+        for key, caster in allowed.items():
+            if key in kw and kw[key] is not None:
+                sets.append(f"{key} = %s")
+                params.append(json.dumps(caster(value := kw[key]))
+                              if caster is list else caster(value))
+        if not sets:
+            return self.get_package(package_id) or {}
+        params.append(package_id)
+        cur = self._cursor_factory()
+        try:
+            cur.execute("UPDATE coin_package SET " + ", ".join(sets) +
+                        ", updated_at = NOW() WHERE package_id = %s RETURNING " +
+                        ", ".join(self._PKG_COLS), tuple(params))
+            r = cur.fetchone()
+            if not r:
+                raise KeyError(package_id)
+            self._commit(cur)
+            return self._pkg_row(r)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    def archive_package(self, package_id: str) -> bool:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("UPDATE coin_package SET is_active = FALSE, "
+                        "updated_at = NOW() WHERE package_id = %s "
+                        "AND is_active", (package_id,))
+            changed = cur.rowcount
+            self._commit(cur)
+            return bool(changed)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    # -- platform settings (platform_config) --
+
+    def get_settings(self) -> Dict[str, Any]:
+        """All key/value rows as a flat mapping."""
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT key, value_json FROM platform_config")
+            out = {}
+            for k, v in cur.fetchall():
+                out[k] = v if isinstance(v, (dict, list, int, float, bool, type(None))) \
+                    else json.loads(v)
+            return out
+        finally:
+            self._close(cur)
+
+    def put_settings(self, values: Dict[str, Any],
+                     actor: str = "") -> Dict[str, Any]:
+        """Upsert each key in one transaction, so a failure cannot leave the
+        platform half-configured."""
+        if not values:
+            return self.get_settings()
+        cur = self._cursor_factory()
+        try:
+            for key, value in values.items():
+                cur.execute(
+                    "INSERT INTO platform_config (key, value_json) VALUES (%s, %s) "
+                    "ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, "
+                    "updated_at = NOW()", (str(key), json.dumps(value)))
+            self._commit(cur)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+        return self.get_settings()
+
+    # -- audit (audit_log) --
+    #
+    # Append-only. Nothing in this store issues UPDATE or DELETE against
+    # audit_log; entries are corrected by writing a new one.
+
+    def list_audit(self, actor: Optional[str] = None, action: Optional[str] = None,
+                   entity: Optional[str] = None, since_ms: Optional[int] = None,
+                   limit: int = 100) -> List[Dict[str, Any]]:
+        where, params = [], []
+        if actor:
+            where.append("actor = %s"); params.append(actor)
+        if action:
+            where.append("action = %s"); params.append(action)
+        if entity:
+            where.append("entity = %s"); params.append(entity)
+        if since_ms:
+            where.append("created_at >= to_timestamp(%s)")
+            params.append(float(since_ms) / 1000.0)
+        sql = ("SELECT audit_id, actor, action, entity, entity_id, before_data, "
+               "after_data, created_at FROM audit_log ")
+        if where:
+            sql += "WHERE " + " AND ".join(where) + " "
+        sql += "ORDER BY created_at DESC LIMIT %s"
+        params.append(int(limit))
+        cur = self._cursor_factory()
+        try:
+            cur.execute(sql, tuple(params))
+            out = []
+            for r in cur.fetchall():
+                out.append({
+                    "audit_id": r[0], "actor": r[1], "action": r[2],
+                    "entity": r[3], "entity_id": r[4],
+                    "before": r[5] if isinstance(r[5], dict) else json.loads(r[5] or "null"),
+                    "after": r[6] if isinstance(r[6], dict) else json.loads(r[6] or "null"),
+                    "created_at": r[7]})
+            return out
+        finally:
+            self._close(cur)
+
+    # -- game enable / disable (game) --
+
+    def list_games_admin(self) -> List[Dict[str, Any]]:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT game_id, name, status, enabled FROM game ORDER BY game_id")
+            return [{"game_id": r[0], "name": r[1], "status": r[2],
+                     "enabled": bool(r[3])} for r in cur.fetchall()]
+        finally:
+            self._close(cur)
+
+    def set_game_enabled(self, game_id: str, enabled: bool,
+                         status: Optional[str] = None,
+                         message: str = "") -> Dict[str, Any]:
+        """Flip the lobby toggle, and optionally set the lifecycle status.
+
+        A round in flight is never interrupted: round state lives in the game
+        engine, not in this row, so an in-progress round finishes normally and
+        only new rounds stop being offered.
+        """
+        cur = self._cursor_factory()
+        try:
+            if status is None:
+                status = "live" if enabled else "disabled"
+            if message:
+                cur.execute(
+                    "INSERT INTO platform_config (key, value_json) VALUES (%s, %s) "
+                    "ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, "
+                    "updated_at = NOW()",
+                    (f"game_message:{game_id}", json.dumps({"message": message})))
+            cur.execute("UPDATE game SET enabled = %s, status = %s WHERE game_id = %s "
+                        "RETURNING game_id, name, status, enabled",
+                        (bool(enabled), str(status), game_id))
+            r = cur.fetchone()
+            if not r:
+                raise KeyError(game_id)
+            self._commit(cur)
+            return {"game_id": r[0], "name": r[1], "status": r[2],
+                    "enabled": bool(r[3]), "message": message}
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
 
     # -- dashboard --
 
