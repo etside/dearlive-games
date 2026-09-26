@@ -18,6 +18,7 @@ Start at the [top-level README](../README.md) for the 5-minute quickstart.
 |---|---|
 | [INTEGRATION.md](INTEGRATION.md) | platform ↔ games contract |
 | [ADMIN.md](ADMIN.md) | admin API keys, roles, every endpoint, scheduling |
+| [COMPLIANCE_REPORT.md](COMPLIANCE_REPORT.md) | BRD/SRS audit: every requirement, status, evidence |
 | [PROVIDER-INTEGRATION.md](PROVIDER-INTEGRATION.md) | B2B HMAC API guide |
 | [IDEMPOTENCY.md](IDEMPOTENCY.md) | idempotency keys, retries, errors |
 | [webhooks.md](webhooks.md) | settlement webhooks |
