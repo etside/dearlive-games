@@ -15,9 +15,11 @@ JS = (CLIENT / "game.js").read_text(encoding="utf-8")
 HTML = (CLIENT / "index.html").read_text(encoding="utf-8")
 BOTH = (JS + HTML).lower()
 
-# SRS section 1: three seats, red / blue / green.
-SEAT_COLOURS = {"seat-p4.svg": "#ef4444", "seat-p5.svg": "#3b82f6",
-                "seat-p6.svg": "#22c55e"}
+# SRS section 1 (A left, B centre, C right) and the DearLive reference
+# (green left, blue centre, red right) agree: A green, B blue, C red.
+# This was A red / C green, with B and C also swapped in the layout.
+SEAT_COLOURS = {"seat-p4.svg": "#22c55e", "seat-p5.svg": "#3b82f6",
+                "seat-p6.svg": "#ef4444"}
 
 
 class UiRequirementTest(unittest.TestCase):
@@ -74,7 +76,8 @@ class UiRequirementTest(unittest.TestCase):
 
     def test_ui04_seats_are_visually_distinct(self):
         # All three chairs were generated from one gradient, so the seats were
-        # indistinguishable. SRS section 5 asks for red / blue / green.
+        # indistinguishable. SRS section 1 fixes the order: A green, B blue,
+        # C red.
         seen = set()
         for name, colour in SEAT_COLOURS.items():
             svg = (CLIENT / "assets/generated" / name).read_text()
@@ -87,6 +90,31 @@ class UiRequirementTest(unittest.TestCase):
         for name in SEAT_COLOURS:
             self.assertTrue((CLIENT / "assets/generated" / name).is_file(), name)
 
+    def test_ui04_theme_tokens_agree_with_the_svgs(self):
+        # A mismatch here is invisible until someone looks at the screen.
+        a, b, c = (SEAT_COLOURS["seat-p4.svg"],
+                   SEAT_COLOURS["seat-p5.svg"], SEAT_COLOURS["seat-p6.svg"])
+        for token, colour in (("--dl-seat-a", a), ("--dl-seat-b", b),
+                              ("--dl-seat-c", c)):
+            self.assertIn(f"{token}:{colour}", HTML, token)
+
+    def test_ui04_seat_order_is_left_centre_right(self):
+        # SRS section 1: A (left), B (center), C (right). The layout previously
+        # put B right and C top-centre, contradicting both the SRS and the
+        # reference. Assert the geometry, not just that positions exist.
+        import re as _re
+        m = _re.search(r"const pp = land\s*\?\s*(\[.*?\])\s*:\s*(\[.*?\]);",
+                       JS, _re.S)
+        self.assertIsNotNone(m, "could not find the seat layout arrays")
+        land = m.group(1)
+        centre_idx = land.index("x: cx,")
+        self.assertIn("cx - rx", land[:centre_idx], "leftmost seat must be cx - rx")
+        self.assertIn("cx + rx", land[centre_idx:], "rightmost seat must be cx + rx")
+        # POS is ['A','B','C'] and pp is indexed in that order, so index 1 is
+        # the centre seat and must be the one drawn at cx.
+        self.assertLess(land.index("x: cx,"), land.index("cx + rx"),
+                        "index 1 (seat B) must be the centre seat")
+
     # -- UI-05/06 cards and pots ------------------------------------------
     def test_ui05_three_cards_per_seat(self):
         from games.teen_patti_pro.config import DEFAULT_CONFIG
@@ -98,6 +126,13 @@ class UiRequirementTest(unittest.TestCase):
 
     def test_ui06_pot_per_seat_and_total(self):
         self.assertPresent("pot_total", "my_bet")
+
+    def test_ui06_uses_the_fr06_label_wording(self):
+        # FR-06 names these "Total Bet" and "My Total Bet". The client
+        # abbreviated them to "POT"/"YOU", matching neither the spec nor the
+        # reference.
+        self.assertIn("Total Bet", JS)
+        self.assertIn("My Total Bet", JS)
 
     # -- UI-07 chip bar ----------------------------------------------------
     def test_ui07_chip_denominations_come_from_config(self):

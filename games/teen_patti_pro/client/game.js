@@ -657,10 +657,12 @@
     const cx = W / 2, top = H * (land ? 0.30 : 0.24) + SAFE.t;
     const rx = Math.min(W * 0.36, (land ? 260 : 300));
     const seats = {};
-    // portrait: A left, B right, C top-center
+    // SRS section 1 and the DearLive reference agree: A left, B centre,
+    // C right. This was previously A left, B right, C top-centre, which put
+    // the seat order and the seat colours both out of spec.
     const pp = land
-      ? [{ x: cx - rx, y: top }, { x: cx + rx, y: top }, { x: cx, y: top - H * 0.16 }]
-      : [{ x: cx - rx, y: top + H * 0.10 }, { x: cx + rx, y: top + H * 0.10 }, { x: cx, y: top - H * 0.13 }];
+      ? [{ x: cx - rx, y: top }, { x: cx, y: top - H * 0.16 }, { x: cx + rx, y: top }]
+      : [{ x: cx - rx, y: top + H * 0.10 }, { x: cx, y: top - H * 0.13 }, { x: cx + rx, y: top + H * 0.10 }];
     POS.forEach((p, i) => { seats[p] = { x: pp[i].x, y: pp[i].y }; });
     const cw = Math.min(W * 0.13, 64), ch = cw * 1.42;
     return { cx, top, seats, cw, ch, land };
@@ -779,7 +781,9 @@
     // pot
     ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(15);
     const pot = s ? s.pot_total : 0, mine = s ? s.my_bet : 0;
-    ctx.fillText('POT ' + pot + '   ·   YOU ' + mine, W / 2, H * 0.115);
+    // FR-06 wording, not the old "POT"/"YOU" abbreviations.
+    ctx.fillText('Total Bet ' + pot + '   ·   My Total Bet ' + mine,
+                 W / 2, H * 0.115);
 
     // seats
     POS.forEach((p, i) => {
