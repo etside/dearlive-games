@@ -60,6 +60,12 @@ curl -s http://localhost:8000/health
 Ten steps. Steps 1-3 are optional if you just want to look at it; steps 4-10
 are what a real deployment needs.
 
+> **How long this takes:** roughly **1 hour for clients whose wallet API
+> already matches the documented HMAC contract**. Additional time is required
+> if the wallet callbacks need to be built or re-shaped to match it — step 8 is
+> the only step that is real integration work rather than configuration, and it
+> is the one to check before you start.
+
 ### Step 1 — Get the code
 
 ```bash
@@ -439,6 +445,9 @@ provider-specific code.
 | Operate the console, or change a rule | [docs/ADMIN.md](docs/ADMIN.md) |
 | Know what the engine actually does | [docs/GAME_RULES.md](docs/GAME_RULES.md) |
 | Check a security property | [docs/SECURITY.md](docs/SECURITY.md) |
+
+Support: <client-email>
+Integration contract reference: [docs/INTEGRATION.md](docs/INTEGRATION.md)
 
 Stuck after that? Open an issue on the repository with the failing request id —
 every response carries one, and it is the first thing to check.

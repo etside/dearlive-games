@@ -1,5 +1,23 @@
 # Troubleshooting
 
+## Known limitation: no automated visual render
+
+The admin panel and the game HUD are verified **statically** — DOM structure,
+every endpoint each one calls, the `getElementById` wiring, and the path
+traversal guard. They are **not** verified by an automated browser render: the
+environment this package was built in cannot run a headless browser (Chrome
+aborts at startup), so no screenshot or DOM-dump test exists.
+
+What that means in practice:
+
+- Structure, wiring and security are covered by the test suite and will catch
+  regressions.
+- **Visual appearance is unverified.** Fonts may not render as intended, and
+  layout has never been seen on a real device or browser.
+
+Visual validation is expected during integration. If something looks wrong,
+that is a real finding, not a known false positive.
+
 ## `python -m staging.wsgi` does nothing
 
 **Expected before the `__main__` runner was added.** It should now print a

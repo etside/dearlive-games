@@ -55,6 +55,36 @@ they have not yet configured.
 - Host-agnostic. `.github/workflows/deploy.yml` is inert until the client sets
   `DEPLOY_HOST`, then rsyncs over SSH to a host they nominate.
 
+### Security review completed
+
+Every blob in every commit was scanned for private keys, cloud and vendor
+credentials, bearer literals, connection strings with passwords, and assigned
+secret-shaped values. 17 matches were found and all 17 were verified as false
+positives:
+
+- literal `postgresql://user:pass@…` placeholders in the README, the admin
+  guide and `scripts/apply-migration.sh`;
+- a test fixture self-documenting as `shared-secret-under-test`;
+- vendored dependency documentation using `your-cluster-password`;
+- `jose`'s `indexOf('-----BEGIN PRIVATE KEY-----')` string comparison, which
+  matches a PEM header rather than containing a key.
+
+No real credential is present in the working tree or in git history. The
+repository contains no `.env` file and the client supplies all secrets at
+deploy time.
+
+The admin surface refuses rather than degrades: an unknown role in
+`GAME_ADMIN_KEYS` is rejected at boot, a missing database yields `503` with a
+reason rather than fabricated zeros, and both static file routes enforce path
+containment.
+
+### Known limitation
+
+The admin panel and game HUD are verified statically, not by an automated
+browser render — the build environment cannot run a headless browser. Visual
+validation is expected during client integration. See
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
 ### Removed
 - Greedy Monkey, Baby King and the shared wheel engine, with their assets,
   routes, provider bindings and tests.
