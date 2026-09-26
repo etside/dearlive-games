@@ -846,6 +846,21 @@ class Handler(BaseHTTPRequestHandler):
                                  "tbc": list(c.tbc), "seats": list(c.seats),
                                  "denoms": list(c.denoms), "guess_ms": c.guess_ms,
                                  "rake_bps": c.rake_bps})
+            if path == "/api/v1/admin/settlement-health":
+                # Deliberately independent of the admin store. A round stuck in
+                # SETTLED_PENDING exists only in engine memory, and this is the
+                # one signal that must stay readable when Postgres is down --
+                # folding it into the dashboard would hide stranded pots behind
+                # a 503 at exactly the moment they matter.
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                try:
+                    return self.ok(self.svc.settlement_health_report())
+                except Exception as exc:
+                    return self.send(500, E.err(
+                        f"settlement health unavailable: {type(exc).__name__}",
+                        E.E_INTERNAL))
             if path == "/api/v1/admin/dashboard":
                 denied = self.require_role("auditor")
                 if denied:
@@ -855,13 +870,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(503, E.err("admin store unavailable",
                                                 E.E_INTERNAL))
                 try:
-                    return self.ok(store.dashboard_kpis())
+                    kpis = store.dashboard_kpis()
                 except AdminStoreUnavailable as exc:
                     return self.send(503, E.err(str(exc), E.E_INTERNAL))
                 except Exception as exc:
                     return self.send(502, E.err(
                         f"admin dashboard query failed: {type(exc).__name__}",
                         E.E_INTERNAL))
+                # Settlement health is live engine state, not a database fact:
+                # a round stuck in SETTLED_PENDING exists only in memory until it
+                # settles. It used to ride along on the old operator kpis route,
+                # so it is preserved here rather than dropped with that route --
+                # stranded pots must never be invisible.
+                try:
+                    kpis["settlement_health"] = self.svc.settlement_health_report()
+                except Exception:
+                    kpis["settlement_health"] = {"available": False}
+                return self.ok(kpis)
             if path == "/api/v1/admin/audit":
                 denied = self.require_role("auditor")
                 if denied:
@@ -887,54 +912,13 @@ class Handler(BaseHTTPRequestHandler):
                 if svc is None:
                     return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))
                 return self.ok(self.game_config_view(m.group(1), svc))
-            
-            # --- Operator Admin Dashboard Endpoints ---
-            if path == "/api/v1/operator/admin/dashboard/kpis":
-                denied = self.require_role("operator")
-                if denied:
-                    return self.send(*denied)
-                # Return KPIs for operator dashboard
-                return self.ok({
-                    "active_games": len([r for r in self.svc.rooms.values() if r.round and r.round.status == "BETTING_OPEN"]),
-                    "live_rounds": len([r for r in self.svc.rooms.values() if r.round and r.round.status in ("BETTING_OPEN", "RESULT")]),
-                    "total_bets_24h": sum(len([b for b in room.round.bets if b.decision_time_ms > time.time()*1000 - 86400000]) for room in self.svc.rooms.values() if room.round),
-                    "net_revenue_24h": sum(sum(b.amount for b in room.round.bets if b.status == "won") - sum(b.amount for b in room.round.bets if b.status == "lost") for room in self.svc.rooms.values() if room.round),
-                    "online_players": len(self.svc.sessions),
-                    "pending_withdrawals": 0,  # TODO: implement
-                    # Settlement safety: stranded pots are never hidden.
-                    **self.svc.settlement_health_report(),
-                })
-            
-            if path == "/api/v1/operator/admin/dashboard/charts":
-                denied = self.require_role("operator")
-                if denied:
-                    return self.send(*denied)
-                # Return chart data for dashboard
-                # Revenue trend (last 24h)
-                revenue_data = {"labels": [], "values": []}
-                game_dist = {"labels": [], "values": []}
-                player_activity = {"labels": [], "active": [], "betting": [], "idle": []}
-                return self.ok({
-                    "revenue": revenue_data,
-                    "game_dist": game_dist,
-                    "player_activity": player_activity
-                })
-            
-            if path == "/api/v1/operator/admin/dashboard/summary":
-                denied = self.require_role("operator")
-                if denied:
-                    return self.send(*denied)
-                # Summary stats
-                wallet_bal = self.svc.wallet.get_balance("operator") if hasattr(self.svc.wallet, "get_balance") else type('obj', (object,), {'available': 0})()
-                return self.ok({
-                    "wallet_balance": getattr(wallet_bal, 'available', 0),
-                    "today_pnl": 0,
-                    "total_rounds": len(self.svc.rooms),
-                    "total_bets": sum(len(room.round.bets) if room.round else 0 for room in self.svc.rooms.values()),
-                    "active_players": len(self.svc.sessions),
-                    "total_revenue": 0,
-                    "pending_withdrawals": 0
-                })
+
+            # The operator dashboard routes that used to live here
+            # (/api/v1/operator/admin/dashboard/{kpis,charts,summary}) were
+            # removed: they answered 200 with hardcoded zeros for net profit,
+            # revenue and pending withdrawals, which is indistinguishable from
+            # a real trading day. Use GET /api/v1/admin/dashboard, which reads
+            # the database and returns 503 when no database is configured.
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         except ServiceError as exc:
             return self.fail(exc)
@@ -1048,84 +1032,16 @@ class Handler(BaseHTTPRequestHandler):
                     "return_url": return_url
                 }, "Demo session created")
             
-            # --- Operator Admin Dashboard Endpoints ---
-            if path == "/api/v1/operator/admin/dashboard/kpis":
-                denied = self.require_role("operator")
-                if denied:
-                    return self.send(*denied)
-                return self.ok({
-                    "active_games": len([r for r in self.svc.rooms.values() if r.round and r.round.status == "BETTING_OPEN"]),
-                    "live_rounds": len([r for r in self.svc.rooms.values() if r.round and r.round.status in ("BETTING_OPEN", "RESULT")]),
-                    "total_bets_24h": sum(len([b for b in room.round.bets if b.decision_time_ms > time.time()*1000 - 86400000]) for room in self.svc.rooms.values() if room.round),
-                    "net_revenue_24h": sum(sum(b.amount for b in room.round.bets if b.status == "won") - sum(b.amount for b in room.round.bets if b.status == "lost") for room in self.svc.rooms.values() if room.round),
-                    "online_players": len(self.svc.sessions),
-                    "pending_withdrawals": 0
-                })
-            
-            if path == "/api/v1/operator/admin/dashboard/charts":
-                denied = self.require_role("operator")
-                if denied:
-                    return self.send(*denied)
-                return self.ok({
-                    "revenue": {"labels": [], "values": []},
-                    "game_dist": {"labels": [], "values": []},
-                    "player_activity": {"labels": [], "active": [], "betting": [], "idle": []}
-                })
-            
-            if path == "/api/v1/operator/admin/dashboard/summary":
-                denied = self.require_role("operator")
-                if denied:
-                    return self.send(*denied)
-                wallet_bal = self.svc.wallet.get_balance("operator") if hasattr(self.svc.wallet, "get_balance") else type('obj', (object,), {'available': 0})()
-                return self.ok({
-                    "wallet_balance": getattr(wallet_bal, 'available', 0),
-                    "today_pnl": 0,
-                    "total_rounds": len(self.svc.rooms),
-                    "total_bets": sum(len(room.round.bets) if room.round else 0 for room in self.svc.rooms.values()),
-                    "active_players": len(self.svc.sessions),
-                    "total_revenue": 0,
-                    "pending_withdrawals": 0
-                })
-                body, err = parse_body(self)
-                if err:
-                    return self.send(422, err)
-                game_slug = body.get("game_slug", "")
-                currency = body.get("currency", "USD")
-                lang = body.get("lang", "EN")
-                return_url = body.get("return_url", "/")
-                demo_balance = body.get("demo_balance")
-                client_ip = self.headers.get("X-Forwarded-For", self.client_address[0])
-                try:
-                    # Use the service's demo session store
-                    demo_store = getattr(self.svc, 'demo_store', None)
-                    if demo_store is None:
-                        from common.session import DemoSessionStore
-                        demo_store = DemoSessionStore()
-                        self.svc.demo_store = demo_store
-                    session = demo_store.create(
-                        game_slug=game_slug,
-                        ip=client_ip,
-                        currency=currency,
-                        lang=lang,
-                        demo_balance=demo_balance
-                    )
-                    demo_token = f"demo-{session.session_id}"
-                    return self.ok({
-                        "session_id": session.session_id,
-                        "demo_token": demo_token,
-                        "starting_balance": session.starting_balance,
-                        "current_balance": session.current_balance,
-                        "currency": session.currency,
-                        "lang": session.lang,
-                        "expires_at_ms": session.expires_at_ms,
-                        "return_url": body.get("return_url", "/")
-                    }, "Demo session created")
-                except ValueError as e:
-                    return self.send(429, E.err(str(e), E.E_RATE_LIMIT))
-                except ServiceError as exc:
-                    return self.fail(exc)
-                except Exception as e:
-                    return self.send(500, E.err(f"Demo session creation failed: {e}", E.E_INTERNAL))
+            # The operator dashboard routes that used to live here
+            # (/api/v1/operator/admin/dashboard/{kpis,charts,summary}) were
+            # removed: they answered 200 with hardcoded zeros for net profit,
+            # revenue and pending withdrawals, which reads exactly like a real
+            # trading day. Use GET /api/v1/admin/dashboard instead -- it reads
+            # the database and returns 503 when none is configured.
+            #
+            # Removing the summary branch also removed a duplicated copy of the
+            # demo-session handler that had been sitting unreachable inside it,
+            # after that branch's own return.
             
             m = re.fullmatch(r"/api/v1/demo/sessions/(\S+)", path)
             if m:
