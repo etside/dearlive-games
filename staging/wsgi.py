@@ -374,11 +374,14 @@ def _phase1_auth(method, path, headers, body, environ):
     from common import envelope as E
     from provider.operator_auth import (AuthConfigurationError, AuthError,
                                         PinAuth, _client_ip, _country,
-                                        require_operator, require_superadmin)
+                                        require_operator, require_admin)
     clean_path = path.rstrip("/") or "/"
+    # The PIN scopes are `operator` and `admin`. The /api/v1/superadmin/*
+    # path prefix is a historical namespace for operator management; the role
+    # behind it is the top `admin` role, since there is no superadmin tier.
     auth_paths = {
         "/api/v1/operator/auth": "operator",
-        "/api/v1/superadmin/auth": "superadmin",
+        "/api/v1/superadmin/auth": "admin",
     }
     scope = auth_paths.get(clean_path)
     if scope:
@@ -405,7 +408,7 @@ def _phase1_auth(method, path, headers, body, environ):
         finally:
             if redis is not None:
                 redis.close()
-        field = "operator_token" if scope == "operator" else "superadmin_token"
+        field = "operator_token" if scope == "operator" else "admin_token"
         return _phase1_response(200, {
             field: token,
             "expires_at": claims["exp"],
@@ -426,9 +429,9 @@ def _phase1_auth(method, path, headers, body, environ):
             return _phase1_response(200, {"sessions": [],
                                           "operator_id": environ["operator_id"]})
     elif clean_path.startswith("/api/v1/superadmin/"):
-        claims = require_superadmin(headers)
+        claims = require_admin(headers)
         if claims is None:
-            return _phase1_response(401, E.err("superadmin token required", "INVALID_TOKEN"))
+            return _phase1_response(401, E.err("admin token required", "INVALID_TOKEN"))
         environ["operator"] = {
             "scope": claims["scope"],
             "issued_at": claims["iat"],
@@ -469,8 +472,10 @@ def _staging_require_role(headers, minimum, game_id=""):
             json.dumps(payload).encode())
 
 
-def _staging_require_superadmin(headers):
-    return _staging_require_role(headers, "superadmin")
+def _staging_require_admin(headers):
+    """Top-tier gate for the staging control plane. `admin` is the top role;
+    there is no superadmin tier."""
+    return _staging_require_role(headers, "admin")
 
 
 def _staging_audit_event(r, actor, action, entity, entity_id, after):
@@ -555,7 +560,7 @@ def _staging_webhook_config(r, teen, wheels, headers, body):
     from common import envelope as E
     if _is_production():
         return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
-    denied = _staging_require_role(headers, "superadmin")
+    denied = _staging_require_role(headers, "admin")
     if denied is not None:
         return denied
     try:
@@ -662,7 +667,7 @@ def _staging_list_keys(r, headers):
     from provider import dynamic_keys as DK
     if _is_production():
         return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
-    denied = _staging_require_superadmin(headers)
+    denied = _staging_require_admin(headers)
     if denied is not None:
         return denied
     try:
@@ -678,7 +683,7 @@ def _staging_revoke_key(r, headers, body):
     from provider import dynamic_keys as DK
     if _is_production():
         return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
-    denied = _staging_require_superadmin(headers)
+    denied = _staging_require_admin(headers)
     if denied is not None:
         return denied
     try:
@@ -704,7 +709,7 @@ def _staging_rotate_key(r, headers, body):
     from provider import dynamic_keys as DK
     if _is_production():
         return _staging_json_response(403, E.err("staging-only", E.E_FORBIDDEN))
-    denied = _staging_require_superadmin(headers)
+    denied = _staging_require_admin(headers)
     if denied is not None:
         return denied
     try:

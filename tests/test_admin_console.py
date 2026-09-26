@@ -19,7 +19,7 @@ os.environ["APP_ENV"] = "staging"
 from tests.test_asset_lifecycle import CountedCase  # noqa: E402
 
 
-SUPERADMIN = {"X-Admin-Key": "dev-super-key"}
+SUPERADMIN = {"X-Admin-Key": "dev-admin-key"}
 OPERATOR = {"X-Admin-Key": "dev-operator-key"}
 AUDITOR = {"X-Admin-Key": "dev-auditor-key"}
 
@@ -60,10 +60,10 @@ class AdminConsoleTest(CountedCase):
         status, body = wsgi_call("GET", "/api/v1/admin/whoami",
                                  headers=SUPERADMIN)
         self.counted(status == 200, f"whoami ok: {body}")
-        self.counted(body["data"]["role"] == "superadmin", "role reported")
+        self.counted(body["data"]["role"] == "admin", "role reported")
         self.counted(set(body["data"]["games"]) == {"teen_patti_pro"},
                       "unrestricted key sees the one shipped game")
-        self.counted("dev-super-key" not in json.dumps(body),
+        self.counted("dev-admin-key" not in json.dumps(body),
                       "secret is not echoed")
 
     def test_admin_audit_is_persistent_and_game_scoped(self):
@@ -112,7 +112,7 @@ class AdminConsoleTest(CountedCase):
         self.counted(status == 422, f"insecure webhook refused: {body}")
         status, body = wsgi_call("PUT", "/api/v1/admin/webhooks/config", good,
                                  headers=OPERATOR)
-        self.counted(status == 403, f"webhook changes need superadmin: {body}")
+        self.counted(status == 403, f"webhook changes need admin: {body}")
 
     def test_wallet_requires_a_matching_session(self):
         player = "console-wallet-player"

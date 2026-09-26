@@ -22,11 +22,11 @@ class OperatorAuthTest(unittest.TestCase):
         from integrations.redis_store import MinimalRedis
         cls.redis = MinimalRedis()
         cls.operator_pin = secrets.token_urlsafe(18)
-        cls.superadmin_pin = secrets.token_urlsafe(18)
+        cls.admin_pin = secrets.token_urlsafe(18)
         os.environ["OPERATOR_PIN_HASH"] = _hash_pin(cls.operator_pin)
-        os.environ["SUPERADMIN_PIN_HASH"] = _hash_pin(cls.superadmin_pin)
+        os.environ["ADMIN_PIN_HASH"] = _hash_pin(cls.admin_pin)
         os.environ["OPERATOR_TOKEN_SECRET"] = secrets.token_hex(32)
-        os.environ["SUPERADMIN_TOKEN_SECRET"] = secrets.token_hex(32)
+        os.environ["ADMIN_TOKEN_SECRET"] = secrets.token_hex(32)
         os.environ["OPERATOR_TOKEN_TTL"] = "24h"
         os.environ["PIN_RATE_LIMIT"] = "5"
         os.environ["PIN_LOCKOUT_TTL"] = "1h"
@@ -120,21 +120,21 @@ class OperatorAuthTest(unittest.TestCase):
                                  token="not-a-token")
         self.assertEqual(status, 401, body)
 
-    def test_superadmin_auth_success(self):
+    def test_admin_auth_success(self):
         status, body = self.call("POST", "/api/v1/superadmin/auth",
-                                 {"pin": self.superadmin_pin})
+                                 {"pin": self.admin_pin})
         self.assertEqual(status, 200, body)
-        self.assertEqual(body["scope"], "superadmin")
-        self.assertTrue(body["superadmin_token"])
+        self.assertEqual(body["scope"], "admin")
+        self.assertTrue(body["admin_token"])
 
-    def test_superadmin_route_requires_token(self):
+    def test_admin_route_requires_token(self):
         status, body = self.call("GET", "/api/v1/superadmin/audit")
         self.assertEqual(status, 401, body)
         status, auth = self.call("POST", "/api/v1/superadmin/auth",
-                                 {"pin": self.superadmin_pin})
+                                 {"pin": self.admin_pin})
         self.assertEqual(status, 200, auth)
         status, body = self.call("GET", "/api/v1/operator/sessions",
-                                 token=auth["superadmin_token"])
+                                 token=auth["admin_token"])
         self.assertEqual(status, 401, body)
 
     def test_rate_limit_key_isolated_per_ip(self):

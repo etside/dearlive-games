@@ -65,7 +65,7 @@ def _audit(r, scope, operator_id, actor, action, target_type, target_id,
     }
     if scope == "operator":
         return _append(r, _scoped(r, operator_id, "audit"), row)
-    return _append(r, _global("superadmin_audit"), row)
+    return _append(r, _global("admin_audit"), row)
 
 
 def _response(status, data=None, message="OK", code="OK"):
@@ -116,7 +116,10 @@ def dispatch(method, path, query, headers, body, environ, r):
     operator_id = str(environ.get("operator_id", "global"))
     scope = environ.get("operator", {}).get("scope", "")
     try:
-        if scope == "superadmin" and clean.startswith("/api/v1/superadmin/"):
+        # /api/v1/superadmin/* is the operator-management namespace (the
+        # path name is historical). It is gated on the top `admin` role,
+        # since there is no superadmin tier.
+        if scope == "admin" and clean.startswith("/api/v1/superadmin/"):
             return _superadmin(r, method, clean, params, headers, body, ip)
         if scope == "operator" and clean.startswith("/api/v1/operator/admin/"):
             return _operator(r, method, clean, params, body, operator_id, ip)
@@ -145,7 +148,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
             before = dict(row)
             row["status"] = "suspended" if action == "suspend" else "active"
             _write_list(r, _global("operators"), [item for item in _list(r, _global("operators")) if item.get("id") != operator_id] + [row])
-            _audit(r, "superadmin", operator_id, "superadmin", f"operator.{action}", "operator", operator_id, before, row, ip)
+            _audit(r, "admin", operator_id, "superadmin", f"operator.{action}", "operator", operator_id, before, row, ip)
             return _response(200, row)
     if path.startswith("/api/v1/superadmin/operators/") and len(segments) == 6 and segments[5] == "api-keys" and method == "GET":
         operator_id = segments[4]
@@ -171,7 +174,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
             old = dict(row)
             row["revoked"] = True
             _write_list(r, _global("api_keys"), rows)
-            _audit(r, "superadmin", operator_id, "superadmin", "api_key.revoke", "api_key", target, old, row, ip)
+            _audit(r, "admin", operator_id, "superadmin", "api_key.revoke", "api_key", target, old, row, ip)
             return _response(200, row)
         return _error(404, "api key route not found", "NOT_FOUND")
     if path.startswith("/api/v1/superadmin/operators/") and len(segments) == 8 and segments[5] == "api-keys" and method == "POST":
@@ -186,7 +189,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
             old = dict(row)
             row["revoked"] = True
             _write_list(r, _global("api_keys"), rows)
-            _audit(r, "superadmin", operator_id, "superadmin", "api_key.revoke", "api_key", target, old, row, ip)
+            _audit(r, "admin", operator_id, "superadmin", "api_key.revoke", "api_key", target, old, row, ip)
             return _response(200, row)
         return _error(404, "api key route not found", "NOT_FOUND")
     if path == "/api/v1/superadmin/locked-fields" and method == "GET":
@@ -202,10 +205,10 @@ def _superadmin(r, method, path, params, headers, body, ip):
             return _error(422, "game_slug and field_name are required", "VALIDATION_ERROR")
         before = _list(r, _global("locked_fields"))
         row = {"id": str(uuid.uuid4()), "game_slug": game, "field_name": field,
-               "locked_by": "superadmin", "locked_at": int(time.time())}
+               "locked_by": "admin", "locked_at": int(time.time())}
         rows = [item for item in before if not (item.get("game_slug") == game and item.get("field_name") == field)]
         _write_list(r, _global("locked_fields"), rows + [row])
-        _audit(r, "superadmin", "global", "superadmin", "locked_field.create", "locked_field", row["id"], before, row, ip)
+        _audit(r, "admin", "global", "superadmin", "locked_field.create", "locked_field", row["id"], before, row, ip)
         return _response(201, row)
     if path.startswith("/api/v1/superadmin/locked-fields/") and method == "DELETE":
         target = path.rsplit("/", 1)[-1]
@@ -214,7 +217,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
         if row is None:
             return _error(404, "locked field not found", "NOT_FOUND")
         _write_list(r, _global("locked_fields"), [item for item in before if item.get("id") != target])
-        _audit(r, "superadmin", "global", "superadmin", "locked_field.delete", "locked_field", target, row, None, ip)
+        _audit(r, "admin", "global", "superadmin", "locked_field.delete", "locked_field", target, row, None, ip)
         return _response(200, {"deleted": True})
     if path == "/api/v1/superadmin/global-config" and method == "GET":
         return _response(200, {"config": _list(r, _global("platform_config"))})
@@ -229,7 +232,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
         if not row["key"]:
             return _error(422, "key is required", "VALIDATION_ERROR")
         _write_list(r, _global("platform_config"), rows + [row])
-        _audit(r, "superadmin", "global", "superadmin", "platform_config.put", "platform_config", row["key"], before, row, ip)
+        _audit(r, "admin", "global", "superadmin", "platform_config.put", "platform_config", row["key"], before, row, ip)
         return _response(200, row)
     if path == "/api/v1/superadmin/devices" and method == "GET":
         rows = _list(r, _global("devices"))
@@ -249,10 +252,10 @@ def _superadmin(r, method, path, params, headers, body, ip):
         before_copy = dict(row)
         row.update({"status": "kicked", "ended_at": int(time.time())})
         _write_list(r, _global("devices"), [item for item in before if item.get("id") != target] + [row])
-        _audit(r, "superadmin", row.get("operator_id", "global"), "superadmin", "device.kick", "device_session", target, before_copy, row, ip)
+        _audit(r, "admin", row.get("operator_id", "global"), "superadmin", "device.kick", "device_session", target, before_copy, row, ip)
         return _response(200, row)
     if path == "/api/v1/superadmin/audit" and method == "GET":
-        rows = _list(r, _global("superadmin_audit"))
+        rows = _list(r, _global("admin_audit"))
         return _response(200, {"audit": rows, "count": len(rows)})
     if path == "/api/v1/superadmin/health" and method == "GET":
         return _response(200, {"status": "ok", "redis": True, "devices": len(_list(r, _global("devices")))})
@@ -273,7 +276,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
                "symbol": data["symbol"], "decimal_places": data.get("decimal_places", 2),
                "enabled": data.get("enabled", True), "display_order": data.get("display_order", 0)}
         _write_list(r, _global("currencies"), before + [row])
-        _audit(r, "superadmin", "global", "superadmin", "currency.create", "currency", row["id"], before, row, ip)
+        _audit(r, "admin", "global", "superadmin", "currency.create", "currency", row["id"], before, row, ip)
         return _response(201, row)
     if path.startswith("/api/v1/superadmin/currencies/") and method == "PUT":
         target = path.rsplit("/", 1)[-1]
@@ -287,7 +290,7 @@ def _superadmin(r, method, path, params, headers, body, ip):
         old = dict(row)
         row.update({key: data[key] for key in ("name", "symbol", "decimal_places", "enabled", "display_order") if key in data})
         _write_list(r, _global("currencies"), [item for item in before if item.get("id") != target] + [row])
-        _audit(r, "superadmin", "global", "superadmin", "currency.update", "currency", target, old, row, ip)
+        _audit(r, "admin", "global", "superadmin", "currency.update", "currency", target, old, row, ip)
         return _response(200, row)
     return _error(404, "superadmin route not found", "NOT_FOUND")
 

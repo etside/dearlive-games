@@ -49,7 +49,7 @@ class SingleGameApiTest(unittest.TestCase):
         cls._orig_keys = dict(api_mod.ADMIN_KEYS)
         cls._orig_scopes = dict(getattr(api_mod, "ADMIN_SCOPES", {}))
         api_mod.ADMIN_KEYS.clear()
-        api_mod.ADMIN_KEYS.update({"x-sup": "superadmin"})
+        api_mod.ADMIN_KEYS.update({"x-sup": "admin"})
         w = MemoryWallet()
         w.fund("g1", 20000)
         Handler.svc = TeenPattiService(
@@ -147,7 +147,7 @@ class SingleGameApiTest(unittest.TestCase):
         entries = Handler.svc.audit.list("game", 5)
         updates = [e for e in entries if e["action"] == "config.update"]
         self.assertTrue(updates)
-        self.assertEqual(updates[-1]["actor"], "superadmin")
+        self.assertEqual(updates[-1]["actor"], "admin")
         self.assertEqual(updates[-1]["after"].get("reason"), "maintenance window")
         st, _ = call("PUT",
                      self.base + "/api/v1/admin/games/teen-patti-pro/config",

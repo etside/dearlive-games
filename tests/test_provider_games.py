@@ -238,7 +238,7 @@ class AdminScopeTest(unittest.TestCase):
         cls._orig_scopes = api_module.ADMIN_SCOPES
         api_module.ADMIN_KEYS = {"teen-op": "operator", "all-op": "operator",
                                  "wrong-op": "operator",
-                                 "ro": "auditor", "super": "superadmin"}
+                                 "ro": "auditor", "super": "admin"}
         # "wrong-op" is scoped to a retired game name. With one shipped game
         # there is no second live game to be denied on, so cross-game scope
         # enforcement is exercised by scoping a key to something this

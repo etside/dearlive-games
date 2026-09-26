@@ -132,7 +132,7 @@ class PinAuth:
         self.remote_addr = remote_addr
         self._memory = {}
         self._lock = threading.Lock()
-        prefix = "OPERATOR" if scope == "operator" else "SUPERADMIN"
+        prefix = "OPERATOR" if scope == "operator" else "ADMIN"
         self.pin_hash = os.environ.get(f"{prefix}_PIN_HASH", "")
         self.token_secret = os.environ.get(f"{prefix}_TOKEN_SECRET", "")
         self.token_ttl = _parse_ttl(os.environ.get("OPERATOR_TOKEN_TTL", "24h"), 86400)
@@ -270,5 +270,11 @@ def require_operator(headers):
     return _auth_from_headers(headers, "operator")
 
 
-def require_superadmin(headers):
-    return _auth_from_headers(headers, "superadmin")
+def require_admin(headers):
+    """Top-tier PIN scope. Formerly `superadmin`.
+
+    There is no separate superadmin tier: `admin` is the top role, matching
+    Handler.ROLE_LEVEL. PIN login is optional -- it exists for humans, and the
+    supported integration path is an API key in GAME_ADMIN_KEYS.
+    """
+    return _auth_from_headers(headers, "admin")

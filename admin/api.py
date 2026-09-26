@@ -1,14 +1,20 @@
-"""Admin control surface for Teen Patti Pro (game-agnostic pattern for 2/3).
+"""Admin control surface for Teen Patti Pro.
 
 Transport lives in games/teen_patti_pro/api.py (/api/v1/admin/*). This module
-owns the RBAC matrix + privileged-action audit wrapper so every game reuses it.
+owns the RBAC matrix + privileged-action audit wrapper.
 
-Roles:
-  superadmin: everything (config versions, API clients, launch-token policy,
-              webhook destinations, permissions, bot policy, maintenance).
-  admin:      live ops (rounds, rooms, players, bets, results, settlements,
-              monitoring, reports, webhook status) + non-breaking config.
-  viewer:     read-only (monitoring, reports, audit).
+Roles (mirrors Handler.ROLE_LEVEL, which is the enforced hierarchy):
+  admin:    top role -- live ops (rounds, rooms, players, bets, results,
+            settlements, monitoring, reports) plus config writes, API clients,
+            webhook destinations, maintenance and operator management.
+  operator: run rounds and read operational state; cannot write config.
+  auditor:  read-only (monitoring, reports, audit).
+
+There is no superadmin role. Scope a key down with GAME_ADMIN_SCOPES rather
+than escalating to a god-mode credential.
+
+Note: the name `viewer` is retained below as an alias for `auditor` so existing
+call sites keep working; it is not a separate tier.
 
 Every privileged call MUST pass through require() + audit.record().
 Bots (auto-play) use the same place_bet path as players: same validation,
@@ -19,18 +25,21 @@ from typing import Callable, Dict
 
 
 MATRIX: Dict[str, set] = {
-    "config.read": {"superadmin", "admin", "viewer"},
-    "config.write": {"superadmin"},
-    "config.confirm": {"superadmin"},  # flipping confirmed=True (TBC sign-off)
-    "rounds.control": {"superadmin", "admin"},  # start/close/result/settle/cancel
-    "rooms.manage": {"superadmin", "admin"},
-    "players.view": {"superadmin", "admin", "viewer"},
-    "bets.view": {"superadmin", "admin", "viewer"},
-    "results.view": {"superadmin", "admin", "viewer"},
-    "settlements.view": {"superadmin", "admin", "viewer"},
-    "webhooks.manage": {"superadmin"},
-    "audit.view": {"superadmin", "admin", "viewer"},
-    "maintenance": {"superadmin"},
+    "config.read": {"admin", "viewer"},
+    "config.write": {"admin"},
+    "config.confirm": {"admin"},  # flipping confirmed=True (TBC sign-off)
+    "rounds.control": {"admin", "operator"},  # start/close/result/settle/cancel
+    "rooms.manage": {"admin", "operator"},
+    "players.view": {"admin", "operator", "viewer"},
+    "players.override": {"admin"},
+    "bets.view": {"admin", "operator", "viewer"},
+    "results.view": {"admin", "operator", "viewer"},
+    "settlements.view": {"admin", "operator", "viewer"},
+    "reports.view": {"admin", "operator", "viewer"},
+    "packages.manage": {"admin"},
+    "webhooks.manage": {"admin"},
+    "audit.view": {"admin", "viewer"},
+    "maintenance": {"admin"},
 }
 
 

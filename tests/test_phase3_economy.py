@@ -20,9 +20,9 @@ class Phase3EconomyTest(unittest.TestCase):
         from integrations.redis_store import MinimalRedis
         cls.redis = MinimalRedis()
         os.environ["OPERATOR_PIN_HASH"] = _hash_pin(secrets.token_urlsafe(16))
-        os.environ["SUPERADMIN_PIN_HASH"] = _hash_pin(secrets.token_urlsafe(16))
+        os.environ["ADMIN_PIN_HASH"] = _hash_pin(secrets.token_urlsafe(16))
         os.environ["OPERATOR_TOKEN_SECRET"] = secrets.token_hex(32)
-        os.environ["SUPERADMIN_TOKEN_SECRET"] = secrets.token_hex(32)
+        os.environ["ADMIN_TOKEN_SECRET"] = secrets.token_hex(32)
         os.environ["OPERATOR_TOKEN_TTL"] = "24h"
         os.environ["PIN_RATE_LIMIT"] = "5"
         os.environ["PIN_LOCKOUT_TTL"] = "1h"
@@ -31,12 +31,12 @@ class Phase3EconomyTest(unittest.TestCase):
         for key in self.redis.command("KEYS", "phase3:*") or []:
             self.redis.command("DEL", key)
         self.operator = PinAuth("operator", redis_client=self.redis)
-        self.superadmin = PinAuth("superadmin", redis_client=self.redis)
+        self.admin_auth = PinAuth("admin", redis_client=self.redis)
         self.operator_token = self.operator._jwt({
             "scope": "operator", "iat": 1, "exp": 9999999999,
             "operator_id": "operator-a"})
-        self.superadmin_token = self.superadmin._jwt({
-            "scope": "superadmin", "iat": 1, "exp": 9999999999,
+        self.admin_token = self.admin_auth._jwt({
+            "scope": "admin", "iat": 1, "exp": 9999999999,
             "operator_id": "global"})
 
     def call(self, method, path, body=None, token=None):
@@ -67,11 +67,11 @@ class Phase3EconomyTest(unittest.TestCase):
     def test_scope_is_enforced(self):
         status, _ = self.call("GET", "/api/v1/superadmin/dashboard", token=self.operator_token)
         self.assertEqual(status, 401)
-        status, _ = self.call("GET", "/api/v1/operator/admin/dashboard", token=self.superadmin_token)
+        status, _ = self.call("GET", "/api/v1/operator/admin/dashboard", token=self.admin_token)
         self.assertEqual(status, 401)
 
     def test_empty_dashboards_return_zeroes(self):
-        status, body = self.call("GET", "/api/v1/superadmin/dashboard", token=self.superadmin_token)
+        status, body = self.call("GET", "/api/v1/superadmin/dashboard", token=self.admin_token)
         self.assertEqual(status, 200)
         self.assertEqual(body["data"]["operators"], 0)
         status, body = self.call("GET", "/api/v1/operator/admin/dashboard", token=self.operator_token)
@@ -129,7 +129,7 @@ class Phase3EconomyTest(unittest.TestCase):
 
     def test_device_kick_closes_session(self):
         self.seed("phase3:global:devices", [{"id": "device-a", "operator_id": "operator-a", "status": "active"}])
-        status, body = self.call("POST", "/api/v1/superadmin/devices/device-a/kick", {}, self.superadmin_token)
+        status, body = self.call("POST", "/api/v1/superadmin/devices/device-a/kick", {}, self.admin_token)
         self.assertEqual(status, 200, body)
         self.assertEqual(body["data"]["status"], "kicked")
         self.assertIn("ended_at", body["data"])
@@ -137,19 +137,19 @@ class Phase3EconomyTest(unittest.TestCase):
     def test_locked_field_is_visible_to_operator(self):
         status, field = self.call("POST", "/api/v1/superadmin/locked-fields", {
             "game_slug": "teen-patti-pro", "field_name": "max_bet"
-        }, self.superadmin_token)
+        }, self.admin_token)
         self.assertEqual(status, 201, field)
         status, body = self.call("GET", "/api/v1/operator/admin/dashboard", token=self.operator_token)
         self.assertEqual(status, 200)
         self.assertEqual(body["data"]["locked_fields"][0]["locked"], True)
         self.assertEqual(body["data"]["locked_fields"][0]["editable"], False)
 
-    def test_superadmin_currency_and_audit(self):
+    def test_admin_currency_and_audit(self):
         status, currency = self.call("POST", "/api/v1/superadmin/currencies", {
             "code": "USD", "name": "US Dollar", "symbol": "USD"
-        }, self.superadmin_token)
+        }, self.admin_token)
         self.assertEqual(status, 201, currency)
-        status, body = self.call("GET", "/api/v1/superadmin/audit", token=self.superadmin_token)
+        status, body = self.call("GET", "/api/v1/superadmin/audit", token=self.admin_token)
         self.assertEqual(status, 200)
         self.assertTrue(any(row.get("action") == "currency.create" for row in body["data"]["audit"]))
 

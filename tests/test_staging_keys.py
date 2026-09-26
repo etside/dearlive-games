@@ -1,6 +1,6 @@
 """Staging-only scoped provider API keys.
 
-Covers PIN-gated issuance, superadmin listing/revocation/rotation, per-game
+Covers PIN-gated issuance, admin listing/revocation/rotation, per-game
 scope enforcement on the same provider contract, and production refusal. The
 raw secret is asserted exactly once (at issuance); the list API must never
 return it. Requires local Redis, like the existing staging stack tests.
@@ -26,7 +26,7 @@ from provider import auth as PA  # noqa: E402
 from tests.test_asset_lifecycle import CountedCase  # noqa: E402
 
 
-SUPERADMIN = {"X-Admin-Key": "dev-super-key"}
+SUPERADMIN = {"X-Admin-Key": "dev-admin-key"}
 
 
 def wsgi_call(method, path, body=None, headers=None, query=""):
@@ -115,7 +115,7 @@ class StagingKeyManagementTest(CountedCase):
 
         status, body = wsgi_call("GET", "/api/v1/staging/api-keys",
                                    headers=SUPERADMIN)
-        self.counted(status == 200, f"superadmin lists keys: {body}")
+        self.counted(status == 200, f"admin lists keys: {body}")
         listed = {row["key_id"]: row for row in body["data"]["keys"]}
         self.counted(issued["key_id"] in listed, "issued key is listed")
         self.counted("key_secret" not in listed[issued["key_id"]],
@@ -127,7 +127,7 @@ class StagingKeyManagementTest(CountedCase):
             "POST", "/api/v1/staging/api-keys/revoke", {"key_id": issued["key_id"]},
             headers=SUPERADMIN)
         self.counted(status == 200 and body["data"]["revoked"] is True,
-                      f"superadmin revokes: {body}")
+                      f"admin revokes: {body}")
         status, body = signed_call("GET", "/api/v1/games", issued["key_id"],
                                    issued["key_secret"])
         self.counted(status == 401, f"revoked key no longer authenticates: {body}")
@@ -144,7 +144,7 @@ class StagingKeyManagementTest(CountedCase):
         self.counted(status == 422, f"unknown game refused: {body}")
         status, body = wsgi_call(
             "POST", "/api/v1/staging/api-keys/provision",
-            {"pin": "test-pin-8567", "label": label, "role": "superadmin",
+            {"pin": "test-pin-8567", "label": label, "role": "admin",
              "games": ["teen_patti_pro"]})
         self.counted(status == 422, f"admin roles cannot be minted by PIN: {body}")
         status, body = wsgi_call("GET", "/api/v1/staging/api-keys",

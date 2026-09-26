@@ -37,7 +37,7 @@ def _load_admin_keys():
     if single:
         keys.setdefault(single, "admin")
     if not keys and os.environ.get("APP_ENV", "sandbox").lower() != "production":
-        keys = {"dev-admin-key": "admin", "dev-super-key": "superadmin",
+        keys = {"dev-admin-key": "admin",
                 "dev-operator-key": "operator", "dev-auditor-key": "auditor"}
     return keys
 
@@ -270,10 +270,16 @@ class Handler(BaseHTTPRequestHandler):
     def admin_role(self):
         return ADMIN_KEYS.get(self.headers.get("X-Admin-Key", ""))
 
-    # RBAC hierarchy: superadmin > admin > operator > auditor. Unknown or
-    # missing roles are denied. Reads need auditor+, round operations need
-    # operator+, config writes need superadmin (do_PUT).
-    ROLE_LEVEL = {"auditor": 1, "operator": 2, "admin": 3, "superadmin": 4}
+    # RBAC hierarchy: admin > operator > auditor. Unknown or missing roles are
+    # denied. Reads need auditor+, round operations need operator+, config
+    # writes need admin.
+    #
+    # There is deliberately no superadmin tier. A role that overrides everything
+    # is the one credential worth stealing, and with a single game there was
+    # nothing left for it to be uniquely able to do. `admin` is the top role;
+    # scope a key down with GAME_ADMIN_SCOPES instead of escalating to a
+    # god-mode key.
+    ROLE_LEVEL = {"auditor": 1, "operator": 2, "admin": 3}
 
     def admin_scopes(self):
         """Games this key may act on, or None when unrestricted."""
@@ -831,11 +837,28 @@ class Handler(BaseHTTPRequestHandler):
                 pin = body.get("pin", "")
                 if not pin:
                     return self.send(422, E.err("PIN required", E.E_VALIDATION))
-                # Verify PIN against OPERATOR_PIN_HASH
-                import bcrypt
+                # Check configuration BEFORE importing bcrypt. Importing first
+                # meant a host with no PIN configured but a broken or missing
+                # bcrypt raised ModuleNotFoundError, which dropped the
+                # connection with no response at all.
                 pin_hash = os.environ.get("OPERATOR_PIN_HASH", "")
                 if not pin_hash:
-                    return self.send(500, E.err("Operator PIN not configured", E.E_INTERNAL))
+                    # 501, not 500: this is an unconfigured optional feature, not
+                    # a fault. PIN login is a convenience for humans; the
+                    # supported integration path is an API key in GAME_ADMIN_KEYS.
+                    return self.send(501, E.err(
+                        "PIN login is not configured. Set OPERATOR_PIN_HASH to "
+                        "enable it, or authenticate with an X-Admin-Key from "
+                        "GAME_ADMIN_KEYS (see docs/INTEGRATION.md).",
+                        E.E_VALIDATION))
+                try:
+                    import bcrypt
+                except ImportError:
+                    return self.send(501, E.err(
+                        "PIN login needs the bcrypt package "
+                        "(pip install -r requirements.txt). An X-Admin-Key from "
+                        "GAME_ADMIN_KEYS needs no extra dependency.",
+                        E.E_VALIDATION))
                 try:
                     if not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
                         return self.send(401, E.err("Invalid PIN", E.E_AUTH))
@@ -848,7 +871,11 @@ class Handler(BaseHTTPRequestHandler):
                 from common import jwtx as jwt
                 token_secret = os.environ.get("OPERATOR_TOKEN_SECRET", "")
                 if not token_secret:
-                    return self.send(500, E.err("Operator token secret not configured", E.E_INTERNAL))
+                    return self.send(501, E.err(
+                        "OPERATOR_TOKEN_SECRET is not set, so a session token "
+                        "cannot be signed. Set it, or authenticate with an "
+                        "X-Admin-Key instead (see docs/INTEGRATION.md).",
+                        E.E_VALIDATION))
                 now = int(time.time())
                 expires_at = now + 24 * 3600          # 24h TTL
                 payload = {
@@ -1199,13 +1226,13 @@ class Handler(BaseHTTPRequestHandler):
         try:
             m = re.fullmatch(r"/api/v1/admin/games/(\S+)/config", path)
             if m:
-                role = self.admin_role()
-                if role != "superadmin":
-                    return self.send(403, E.err("superadmin key required",
-                                                E.E_FORBIDDEN))
-                denied = self.require_role("superadmin", m.group(1))
+                denied = self.require_role("admin", m.group(1))
                 if denied:
                     return self.send(*denied)
+                # Captured for the audit record: apply_game_config attributes
+                # the change to a role, not to a key, so a key that is rotated
+                # later still leaves a readable actor behind.
+                role = self.admin_role()
                 svc = self.game_service(m.group(1))
                 if svc is None:
                     return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))

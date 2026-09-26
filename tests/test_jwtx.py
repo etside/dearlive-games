@@ -47,7 +47,7 @@ class TamperTest(unittest.TestCase):
     def test_modified_payload_is_rejected(self):
         token = jwtx.encode({"scope": "operator"}, SECRET)
         head, _, sig = token.split(".")
-        forged = jwtx._b64url(b'{"scope":"superadmin"}')
+        forged = jwtx._b64url(b'{"scope":"admin"}')
         with self.assertRaises(jwtx.InvalidSignatureError):
             jwtx.decode(f"{head}.{forged}.{sig}", SECRET)
 
@@ -59,7 +59,7 @@ class TamperTest(unittest.TestCase):
     def test_alg_none_forgery_is_rejected(self):
         # {"alg":"none"} + admin claims, unsigned.
         head = jwtx._b64url(b'{"alg":"none","typ":"JWT"}')
-        body = jwtx._b64url(b'{"scope":"superadmin"}')
+        body = jwtx._b64url(b'{"scope":"admin"}')
         with self.assertRaises(jwtx.InvalidTokenError):
             jwtx.decode(f"{head}.{body}.", SECRET)
 

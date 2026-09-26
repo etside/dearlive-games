@@ -1,7 +1,7 @@
 """RBAC hierarchy + config audit fields (deployability §9-§10).
 
-Roles: superadmin > admin > operator > auditor. Auditor reads admin
-endpoints; operator also runs round lifecycle; superadmin alone writes
+Roles: admin > operator > auditor. Auditor reads admin
+endpoints; operator also runs round lifecycle; admin alone writes
 config. Config updates record before/after/reason/updated_by/applied_at.
 """
 import json
@@ -49,7 +49,7 @@ class RBACTest(CountedCase):
         cls._saved = dict(api_mod.ADMIN_KEYS)
         api_mod.ADMIN_KEYS.clear()
         api_mod.ADMIN_KEYS.update({"t-op": "operator", "t-ro": "auditor",
-                                   "t-adm": "admin", "t-sup": "superadmin",
+                                   "t-adm": "admin", "t-sup": "admin",
                                    "t-bogus": "intern"})
         w = MemoryWallet()
         Handler.svc = TeenPattiService(config=TeenPattiConfig(confirmed=True), wallet=w)
@@ -95,17 +95,17 @@ class RBACTest(CountedCase):
         st, _ = call("GET", self.base + "/api/v1/admin/games")
         self.counted(st == 403, "missing key denied")
 
-    def test_superadmin_config_write_audits_before_reason(self):
+    def test_admin_config_write_audits_before_reason(self):
         st, body = call("PUT", self.base + "/api/v1/admin/games/teen-patti-pro/config",
                         {"enabled": False, "reason": "maintenance window"}, SU)
-        self.counted(st == 200, "superadmin writes config")
+        self.counted(st == 200, "admin writes config")
         entries = Handler.svc.audit.list("game", 5)
         updates = [e for e in entries if e["action"] == "config.update"]
         self.counted(len(updates) >= 1, "config.update audited")
         last = updates[-1]
-        self.counted(last["actor"] == "superadmin", "actor recorded")
+        self.counted(last["actor"] == "admin", "actor recorded")
         self.counted(last["after"].get("reason") == "maintenance window", "reason recorded")
-        self.counted(last["after"].get("updated_by") == "superadmin", "updated_by recorded")
+        self.counted(last["after"].get("updated_by") == "admin", "updated_by recorded")
         self.counted("applied_at_ms" in last["after"], "applied_at recorded")
         self.counted("enabled" in (last.get("before") or {}), "before-image recorded")
         st, _ = call("PUT", self.base + "/api/v1/admin/games/teen-patti-pro/config",
