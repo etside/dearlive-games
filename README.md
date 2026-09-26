@@ -429,6 +429,29 @@ Push-to-deploy is wired but **inert until you set `DEPLOY_HOST`**. See
 Deploying any other way is fine — the package is host-agnostic and has no
 provider-specific code.
 
+## Support
+
+| I need to… | Go to |
+| --- | --- |
+| Understand an error message | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
+| Deploy, or configure an environment variable | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| Wire the wallet callbacks or webhooks | [docs/INTEGRATION.md](docs/INTEGRATION.md) |
+| Operate the console, or change a rule | [docs/ADMIN.md](docs/ADMIN.md) |
+| Know what the engine actually does | [docs/GAME_RULES.md](docs/GAME_RULES.md) |
+| Check a security property | [docs/SECURITY.md](docs/SECURITY.md) |
+
+Stuck after that? Open an issue on the repository with the failing request id —
+every response carries one, and it is the first thing to check.
+
+Before reporting a bug, please confirm:
+
+1. `python -m pytest -q` passes on your checkout.
+2. `/health` returns `200` on the host you are testing.
+3. The `requestId` from the failing response is in the message.
+
 ## License
 
 Proprietary. All rights reserved. See [LICENSE](LICENSE).
+
+Copyright (c) 2026 DearLive. This software may not be redistributed, sublicensed
+or sold without written permission.

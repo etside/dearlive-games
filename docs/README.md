@@ -11,7 +11,6 @@ Start at the [top-level README](../README.md) for the 5-minute quickstart.
 | [WEBSOCKET.md](WEBSOCKET.md) | push protocol and frames |
 | [STATE-MACHINE.md](STATE-MACHINE.md) | round lifecycle |
 | [GAME_RULES.md](GAME_RULES.md) | Teen Patti Pro ruleset |
-| [GAME_RULES_WHEELS.md](GAME_RULES_WHEELS.md) | Greedy Monkey / Baby King rules |
 
 ## Integration
 

@@ -44,7 +44,7 @@ to inherit — these need a number from the business):
 
 ## 2. Greedy Lion and Monkey Wheel — sign-off checklist
 
-Source: `GAME_RULES_WHEELS.md` §8.
+Source: `GAME_RULES_WHEELS.md` §8 (that document was removed with the wheel games; this section is retained as a record only).
 
 | ID | Decision | Current default (proposal) | Approved value |
 |---|---|---|---|
@@ -57,7 +57,7 @@ Source: `GAME_RULES_WHEELS.md` §8.
 | W-RAKE | Wheel rake | **no rake exists in the engine** | |
 
 **Wheel-specific gaps that also need a decision** (detail in
-`GAME_RULES_WHEELS.md` §9.2):
+`GAME_RULES_WHEELS.md` §9.2 — removed, see note above):
 
 | Decision | Why it is needed |
 |---|---|
