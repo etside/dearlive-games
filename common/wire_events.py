@@ -74,6 +74,7 @@ WS_NAMES: Dict[str, str] = {
     "settlement.started": "settlement.started",
     "settlement.pending": "settlement.started",
     "settlement.failed": "error",
+    "balance.updated": "balance.updated",
     "settlement.completed": "settlement.completed",
     "round.cancelled": "round.closed",
     "player.left": "round.updated",
@@ -94,6 +95,7 @@ WEBHOOK_NAMES: Dict[str, str] = {
     "result.published": "game.result.published",
     "settlement.started": "game.settlement.completed",
     "settlement.pending": "game.settlement.completed",
+    "balance.updated": "game.settlement.completed",
     "settlement.completed": "game.settlement.completed",
     "round.cancelled": "game.error",
     "settlement.failed": "game.error",
@@ -101,14 +103,11 @@ WEBHOOK_NAMES: Dict[str, str] = {
     "error": "game.error",
 }
 
-# SRS section 8 events the engine does not emit yet. Listed so the gap is
-# explicit rather than discovered by a client waiting for an event that never
-# arrives. `balance.updated` is the one still missing: emitting it per credit
-# means touching every wallet path, and a client polling
-# GET /api/v1/wallet/balance is correct today.
-DECLARED_ONLY = {
-    "balance.updated": None,
-}
+# All eleven SRS section 8 events now have an emit site. Kept as an explicit
+# empty set, asserted by tests/test_readme_accuracy.py, because "every spec
+# event is emitted" is exactly the kind of claim that rots silently: a refactor
+# that drops one emit site would not fail anything else.
+DECLARED_ONLY: Dict[str, None] = {}
 
 
 def ws_name(kind: str) -> str:

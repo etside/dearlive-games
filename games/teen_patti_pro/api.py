@@ -246,6 +246,23 @@ class Handler(BaseHTTPRequestHandler):
             cfg.update({k: v for k, v in (body or {}).items() if v is not None})
             rounds = int(body.get("rounds", 10000) or 10000)
             return self.ok(simulate(cfg, rounds=rounds))
+        m = re.fullmatch(r"/api/v1/admin/games/([^/]+)/rules/rollback", path)
+        if m:
+            # SRS section 11. The version to roll back to is named in the body,
+            # not the path, because rollback CREATES a new version rather than
+            # moving the pointer -- history is never rewritten, so an auditor
+            # can see both the change and the undo.
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            version = str((body or {}).get("version", "")).strip()
+            if not version:
+                return self.send(422, E.err("version is required",
+                                            E.E_VALIDATION))
+            return self._admin_write(
+                lambda st: st.rollback_game_config(m.group(1), version),
+                audit_action="game.rules.rollback", audit_entity="game",
+                audit_entity_id=m.group(1), before={"to_version": version})
         if path == "/api/v1/admin/scheduled-changes/apply":
             # Manual trigger. The background sweeper normally does this on a
             # timer; an operator who just scheduled a change for "now" should

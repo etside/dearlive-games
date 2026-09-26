@@ -91,6 +91,22 @@ class TeenPattiService:
             self.rooms[room_id] = Room(room_id, self.config)
         return self.rooms[room_id]
 
+    def _fire_balance(self, player_id: str, room_id: str, reason: str):
+        """Emit SRS section 8 `balance.updated` after a balance moves.
+
+        Reads the balance back from the wallet rather than echoing the delta,
+        so a client that missed an event can still resync from this value. The
+        read is deliberately not allowed to fail the operation that triggered
+        it: a balance notification is a convenience, the settlement is not.
+        """
+        try:
+            balance = self.wallet.get_balance(player_id).available
+        except Exception:
+            return
+        self._fire("balance.updated", {
+            "player_id": player_id, "room_id": room_id,
+            "balance": balance, "reason": reason})
+
     def _fire(self, kind: str, data: dict):
         ev = build_event(kind, data)
         self.event_log.append(ev)
@@ -245,6 +261,7 @@ class TeenPattiService:
         self.idempotency.complete(key, result)
         self.audit.record(player_id, "bet.place", "bet", bet.bet_id, after=result)
         self._fire("bet.accepted", {"bet_id": bet.bet_id, "room_id": room_id, **result})
+        self._fire_balance(player_id, room_id, "bet_debit")
         self._skill("on_bet", {"room_id": room_id, "bet_id": bet.bet_id})
         return result
 
@@ -295,6 +312,10 @@ class TeenPattiService:
                         self.wallet.credit(stored["player_id"], stored["payout"],
                                            ref=f"settle:{stored['bet_id']}",
                                            idempotency_key=f"settle:{stored['bet_id']}")
+                        # After the credit, not before: the payload is read back
+                        # from the wallet, so firing first would publish the
+                        # pre-credit balance.
+                        self._fire_balance(stored["player_id"], room_id, "win_credit")
                     self.settlements.mark_credited(stored["bet_id"])
                     credited.append(row)
                     self.audit.record("system", "settlement.credit", "settlement",

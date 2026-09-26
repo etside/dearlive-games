@@ -20,6 +20,7 @@ EVENTS = ("game.session.created", "player.joined", "player.left",
           # emit site without its entry here fails loudly at first use rather
           # than delivering an event nobody documented.
           "round.created", "result.processing", "settlement.started",
+          "balance.updated",
           # Settlement-failure lifecycle (money safety). Consumers should
           # alert on settlement.failed; settlement.pending is retryable.
           "settlement.pending", "settlement.failed")

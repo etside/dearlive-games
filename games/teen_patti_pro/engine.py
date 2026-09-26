@@ -77,7 +77,8 @@ def _is_sequence(ranks: List[int], ace_low_rank: str = "lowest") -> Tuple[bool, 
     return False, ()
 
 
-def best_expansion(hand: List[Card], ace_low_rank: str = "lowest") -> List[Card]:
+def best_expansion(hand: List[Card], ace_low_rank: str = "lowest",
+                   ranking_order: Optional[Tuple[str, ...]] = None) -> List[Card]:
     """Resolve wild jokers to the optimal substitution (reference getMax).
     No jokers -> hand unchanged. Rules mirror esrrhs maxCards: substitutes must
     come from the 52-deck excluding cards already present (no duplicates).
@@ -106,45 +107,102 @@ def best_expansion(hand: List[Card], ace_low_rank: str = "lowest") -> List[Card]
             if cand in present:
                 continue
             resolved = plain + [cand]
-            key = evaluate_hand(resolved, ace_low_rank)
+            key = evaluate_hand(resolved, ace_low_rank, ranking_order)
             if best_key is None or key > best_key:
                 best, best_key = resolved, key
     return best
 
 
-def score_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:
+def score_hand(hand: List[Card], ace_low_rank: str = "lowest",
+               ranking_order: Optional[Tuple[str, ...]] = None) -> Tuple[int, Tuple]:
     """Authoritative hand score: resolve jokers first, then O(1) table lookup
-    for plain hands (parity-guaranteed with evaluate_hand by construction)."""
+    for plain hands (parity-guaranteed with evaluate_hand by construction).
+
+    The lookup table is precomputed under the DEFAULT ranking. Under an
+    admin-configured order the cached numbers are wrong -- the category names
+    are still right but their strengths are not -- so a non-default order
+    bypasses the cache. That is the correct trade: an admin who reorders the
+    ranking is a rare, deliberate act, and silently scoring against a stale
+    table would be far worse than a slower evaluation.
+    """
+    custom = bool(ranking_order) and tuple(ranking_order) != DEFAULT_RANKING_ORDER
     if any(is_joker(c) for c in hand):
-        return evaluate_hand(best_expansion(hand, ace_low_rank), ace_low_rank)
+        return evaluate_hand(best_expansion(hand, ace_low_rank, ranking_order),
+                             ace_low_rank, ranking_order)
+    if custom:
+        return evaluate_hand(hand, ace_low_rank, ranking_order)
     from . import table as _table
     try:
         return _table.score(hand, ace_low_rank)
     except (ValueError, KeyError):
-        return evaluate_hand(hand, ace_low_rank)  # fail-open to live evaluator
+        return evaluate_hand(hand, ace_low_rank, ranking_order)  # fail-open
 
 
-def evaluate_hand(hand: List[Card], ace_low_rank: str = "lowest") -> Tuple[int, Tuple]:
-    """-> (category_rank, tiebreak). Higher wins. Standard Teen Patti
-    (TBC G3-BR-01 default): trail 6 > pure_seq 5 > seq 4 > color 3 > pair 2 > high 1.
+# The hand categories the evaluator can produce, weakest first. This is the
+# vocabulary an operator reorders in `ranking_order`; it is deliberately a
+# module constant so a typo in an admin-supplied order is a loud KeyError at
+# validation time rather than a silently ignored rule.
+HAND_CATEGORIES = ("high", "pair", "color", "seq", "pure_seq", "trail")
+
+# The documented default, weakest first. Kept here so score_hand can tell an
+# admin-configured order from the default without importing the config module
+# (which would be circular: config imports nothing from engine, but engine
+# importing config at module scope would be).
+DEFAULT_RANKING_ORDER = HAND_CATEGORIES
+
+
+def rank_scale(ranking_order: Tuple[str, ...]) -> Dict[str, int]:
+    """Map each category to its numeric strength from an admin-supplied order.
+
+    BR-11 requires the ranking to be admin-configurable. The previous code
+    returned hardcoded 6/5/4/3/2/1 and never read `ranking_order` at all, so the
+    config field was decoration: an operator could reorder it and nothing would
+    change. Now the order in the config *is* the order in force.
+    """
+    if not ranking_order:
+        return {}
+    unknown = [c for c in ranking_order if c not in HAND_CATEGORIES]
+    if unknown:
+        raise ValueError(f"unknown hand categories in ranking_order: {unknown}")
+    if len(set(ranking_order)) != len(ranking_order):
+        raise ValueError(f"duplicate categories in ranking_order: {ranking_order}")
+    # Weakest first -> rank 1, strongest -> rank N. Higher wins.
+    return {cat: i + 1 for i, cat in enumerate(ranking_order)}
+
+
+def evaluate_hand(hand: List[Card], ace_low_rank: str = "lowest",
+                  ranking_order: Optional[Tuple[str, ...]] = None) -> Tuple[int, Tuple]:
+    """-> (category_rank, tiebreak). Higher wins.
+
+    Default order (TBC G3-BR-01): trail > pure_seq > seq > color > pair > high,
+    which is the same as returning 6/5/4/3/2/1. Pass `ranking_order` to apply
+    an admin-configured ordering; the tiebreak within a category is unchanged
+    because it is a property of the cards, not of the ordering.
     """
     ranks = sorted(c[0] for c in hand)
     suits = [c[1] for c in hand]
     flush = len(set(suits)) == 1
     seq, seq_tb = _is_sequence(ranks, ace_low_rank)
+
     if ranks[0] == ranks[2]:
-        return 6, (ranks[0],)
-    if flush and seq:
-        return 5, seq_tb
-    if seq:
-        return 4, seq_tb
-    if flush:
-        return 3, tuple(sorted(ranks, reverse=True))
-    if ranks[0] == ranks[1]:
-        return 2, (ranks[0], ranks[2])
-    if ranks[1] == ranks[2]:
-        return 2, (ranks[1], ranks[0])
-    return 1, tuple(sorted(ranks, reverse=True))
+        category, tiebreak = "trail", (ranks[0],)
+    elif flush and seq:
+        category, tiebreak = "pure_seq", seq_tb
+    elif seq:
+        category, tiebreak = "seq", seq_tb
+    elif flush:
+        category, tiebreak = "color", tuple(sorted(ranks, reverse=True))
+    elif ranks[0] == ranks[1]:
+        category, tiebreak = "pair", (ranks[0], ranks[2])
+    elif ranks[1] == ranks[2]:
+        category, tiebreak = "pair", (ranks[1], ranks[0])
+    else:
+        category, tiebreak = "high", tuple(sorted(ranks, reverse=True))
+
+    if ranking_order:
+        return rank_scale(ranking_order)[category], tiebreak
+    # No order supplied: the documented default, weakest first.
+    return HAND_CATEGORIES.index(category) + 1, tiebreak
 
 
 @dataclass
@@ -157,6 +215,8 @@ class Bet:
     decision_time_ms: int
     idempotency_key: str
     status: str = "accepted"  # accepted | won | lost | voided
+    # BR-14 payout ceiling for this bet (max_win_cap x amount). None = no cap.
+    cap_limit: Optional[int] = None
 
 
 @dataclass
@@ -188,6 +248,11 @@ class Round:
     # The real status to restore before a retry. SETTLED_PENDING cannot say
     # whether calculate_result() or settle() still needs to run.
     _settle_resume_from: Optional[str] = None
+
+    # BR-14: per-bet payout ceiling, set by _cap_overage when the configured
+    # max_win_cap binds. Empty means no cap applied. cap_binds records the
+    # change_ids affected so the result payload can report it.
+    cap_binds: List[dict] = field(default_factory=list)
 
     def emit(self, kind: str, data: dict, now_ms: int) -> dict:
         self._seq += 1
@@ -320,10 +385,35 @@ class Room:
             r.emit("result.processing", {"round_id": r.round_id}, now_ms)
             r.resolved = {p: best_expansion(h, self.config.ace_low_rank)
                           for p, h in r.hands.items()}
-            scored = {p: evaluate_hand(h, self.config.ace_low_rank)
-                      for p, h in r.resolved.items()}
+            # Only seats that actually staked are candidates. Previously every
+            # dealt seat was scored, so with 3 seats and 2 players the best hand
+            # landing on the EMPTY seat voided the pot: both players lost their
+            # entire stake to cards nobody had bet on and the money carried
+            # forward. Only money in the pot may win it.
+            staked = {b.position for b in r.bets if b.status == "accepted"}
+            candidates = {p: h for p, h in r.resolved.items() if p in staked}
+            if not candidates:
+                # Nobody staked: no result to declare.
+                r.winner_positions = []
+                transition(r.status, RoundStatus.RESULT)
+                r.status = RoundStatus.RESULT
+                r.emit("result.published", {
+                    "round_id": r.round_id, "winners": [],
+                    "hands": {p: [fmt_card(c) for c in h]
+                              for p, h in r.resolved.items()},
+                    "raw_hands": {p: [fmt_card(c) for c in h]
+                                  for p, h in r.hands.items()},
+                    "deck_commit": r.deck_commit, "seed": r.seed_hex}, now_ms)
+                return r
+            scored = {p: evaluate_hand(h, self.config.ace_low_rank,
+                                        self.config.ranking_order)
+                      for p, h in candidates.items()}
             best = max(scored.values())
             r.winner_positions = sorted(p for p, s in scored.items() if s == best)
+            # BR-14: cap a single win at max_win_cap x the winner's own stake.
+            # A cap is meaningless unless it can change the payout, so it is
+            # applied where the money splits, not merely reported.
+            self._cap_overage(r)
             transition(r.status, RoundStatus.RESULT)
             r.status = RoundStatus.RESULT
             r.emit("result.published", {
@@ -333,6 +423,23 @@ class Room:
                 "raw_hands": {p: [fmt_card(c) for c in h] for p, h in r.hands.items()},
                 "deck_commit": r.deck_commit, "seed": r.seed_hex}, now_ms)
             return r
+
+    def _cap_overage(self, r: Round) -> None:
+        """Record how much a max-win cap would claw back, per winning bet.
+
+        Deliberately non-destructive at this point: the winner set is already
+        published and the cap is applied in settle(), where payouts are built.
+        Storing the per-bet allowance here keeps the arithmetic in one place
+        and lets the result payload report that a cap bound, which is the
+        information an operator needs to explain a smaller-than-expected win.
+        """
+        cap_mult = getattr(self.config, "max_win_cap", 0) or 0
+        r.cap_binds = []
+        if cap_mult <= 0:
+            return
+        for b in r.bets:
+            if b.position in set(r.winner_positions) and b.status == "accepted":
+                b.cap_limit = cap_mult * b.amount
 
     def settle(self, now_ms: int) -> List[dict]:
         """Deterministic, idempotent-by-construction: re-running returns the
@@ -367,18 +474,36 @@ class Room:
                 # Floor dust -> carry_out (no seat bias). TBC G3-BR-03.
                 stake = sum(b.amount for b in win_bets)
                 ordered = sorted(win_bets, key=lambda x: x.bet_id)
-                paid = 0
-                for i, b in enumerate(ordered):
-                    share = distributable * b.amount // stake if stake else 0
-                    if i == len(ordered) - 1:
-                        share = distributable - paid
-                    else:
-                        paid += share
-                    b.status = "won"
-                    rows.append({"settlement_id": f"stl-{b.bet_id}", "bet_id": b.bet_id,
+                shares = [distributable * b.amount // stake if stake else 0
+                          for b in ordered]
+                # Last one absorbs the rounding remainder, as before.
+                if shares:
+                    shares[-1] = distributable - sum(shares[:-1])
+
+                # BR-14: clamp each payout to its own ceiling. The clamped
+                # amount does NOT vanish -- it goes back to carry_out, so the
+                # house keeps it rather than the money being created or lost.
+                # Previously max_win_cap was a config field nothing read, so an
+                # operator who set a cap had no cap.
+                capped = []
+                for b, share in zip(ordered, shares):
+                    cap_applied = False
+                    if b.cap_limit is not None and share > b.cap_limit:
+                        capped.append({"bet_id": b.bet_id,
+                                       "uncapped_payout": share,
+                                       "cap_limit": b.cap_limit})
+                        share = b.cap_limit
+                        cap_applied = True
+                    rows.append({"settlement_id": f"stl-{b.bet_id}",
+                                 "bet_id": b.bet_id,
                                  "player_id": b.player_id, "payout": share,
+                                 "cap_applied": cap_applied,
                                  "config_version": r.config_version})
-                r.carry_out = 0
+                    b.status = "won"
+                r.cap_binds = capped
+                clawback = sum(c["uncapped_payout"] - c["cap_limit"]
+                               for c in capped)
+                r.carry_out = clawback
             else:
                 # No winnable bets (zero bets, or no bets on winners):
                 # carry distributable forward (JEV tie fix); losers already recorded.
