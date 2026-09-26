@@ -1,10 +1,31 @@
-"""API response envelope per BRD SRS 10.1.
+"""The single response envelope.
 
-{success, code, message, data, serverTime, requestId}
-Server time is ALWAYS authoritative (client clocks untrusted).
+SRS section 7 defines the shape:
+
+    {success, code, message, data, serverTime, requestId}
+
+`serverTime` is ISO8601 as the SRS specifies, so an operator reading a log line
+or a webhook payload sees a date rather than needing to divide by 1000. That
+change would break every consumer that wanted a number, so `serverTimeMs`
+carries epoch milliseconds alongside it. Both are always present: a client
+that guesses which one it is getting is a client that breaks on the next
+change.
 """
 import time
 import uuid
+from datetime import datetime, timezone
+
+
+def now_iso(ms: int = None) -> str:
+    """ISO8601 UTC, millisecond precision, e.g. 2026-09-26T12:00:00.123+00:00."""
+    if ms is None:
+        ms = int(time.time() * 1000)
+    return (datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+            .isoformat(timespec="milliseconds"))
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def ok(data=None, message="OK", code="OK", request_id=None):
@@ -13,7 +34,7 @@ def ok(data=None, message="OK", code="OK", request_id=None):
         "code": code,
         "message": message,
         "data": data,
-        "serverTime": int(time.time() * 1000),
+        "serverTime": now_iso(), "serverTimeMs": now_ms(),
         "requestId": request_id or uuid.uuid4().hex,
     }
 
@@ -24,7 +45,7 @@ def err(message, code="BAD_REQUEST", data=None, request_id=None):
         "code": code,
         "message": message,
         "data": data,
-        "serverTime": int(time.time() * 1000),
+        "serverTime": now_iso(), "serverTimeMs": now_ms(),
         "requestId": request_id or uuid.uuid4().hex,
     }
 

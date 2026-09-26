@@ -7,11 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:super-admin": "npm run dev --workspace=apps/super-admin",
     "dev:admin": "npm run dev --workspace=apps/admin",
     "dev:player": "npm run dev --workspace=apps/player",
     "build:all": "npm run build --workspaces",
-    "build:super-admin": "npm run build --workspace=apps/super-admin",
     "build:admin": "npm run build --workspace=apps/admin",
     "build:player": "npm run build --workspace=apps/player",
     "test": "npm run test --workspaces",

@@ -77,7 +77,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        admin_raw = _get("GAME_ADMIN_KEYS", "")  # "key1:admin,key2:superadmin"
+        admin_raw = _get("GAME_ADMIN_KEYS", "")  # "key1:admin,key2:operator" -- roles are admin|operator|auditor only
         pairs = []
         for part in admin_raw.split(","):
             part = part.strip()

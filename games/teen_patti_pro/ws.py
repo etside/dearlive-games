@@ -30,6 +30,8 @@ PROVIDER_EVENTS = {
 UNSUPPORTED_PROVIDER_EVENTS = (
     "turn.started", "player.folded", "show.requested",
 )
+
+from common.wire_events import ws_name  # noqa: E402  (needs PROVIDER_EVENTS above)
 import argparse
 import base64
 import hashlib
@@ -217,7 +219,14 @@ def start_background(svc, tokens=None, host="127.0.0.1", port=5003):
         ev = orig_fire(kind, data)
         room = data.get("room_id") or ""
         if room:
+            # Three vocabularies travel together, deliberately:
+            #   kind          internal, what skills and the event log use
+            #   ws_event      SRS section 8 name, what a WebSocket client uses
+            #   provider_event the live DearLive platform name
+            # Renaming `kind` would break the existing client and the platform
+            # integration; the SRS names are additive, so both hold.
             hub.push(room, {"seq": -1, "kind": kind,
+                            "ws_event": ws_name(kind),
                             "provider_event": PROVIDER_EVENTS.get(kind, kind),
                             "serverTime": ev["serverTime"], **data})
         return ev

@@ -37,6 +37,21 @@ def _load_admin_keys():
     single = os.environ.get("GAME_ADMIN_KEY", "")
     if single:
         keys.setdefault(single, "admin")
+    # Reject unknown roles at load rather than at request time. A typo like
+    # "key:superadmin" otherwise produces a key that parses fine and then 403s
+    # on every call, which is a much worse way to find out.
+    valid = {"admin", "operator", "auditor"}
+    bad = {k: r for k, r in keys.items() if r not in valid}
+    for k, r in bad.items():
+        print(f"WARNING: ignoring GAME_ADMIN_KEYS entry with unknown role "
+              f"{r!r} (valid: {sorted(valid)}); that key will not authenticate",
+              flush=True)
+    keys = {k: r for k, r in keys.items() if r in valid}
+    if bad and os.environ.get("APP_ENV", "sandbox").lower() == "production":
+        raise SystemExit(
+            f"Refusing production boot: {len(bad)} GAME_ADMIN_KEYS entr"
+            f"{'y has' if len(bad) == 1 else 'ies have'} an unknown role. "
+            f"Valid roles: {sorted(valid)}")
     if not keys and os.environ.get("APP_ENV", "sandbox").lower() != "production":
         keys = {"dev-admin-key": "admin",
                 "dev-operator-key": "operator", "dev-auditor-key": "auditor"}
@@ -64,6 +79,19 @@ def _load_admin_scopes(raw: str = ""):
 
 ADMIN_KEYS = _load_admin_keys()
 ADMIN_SCOPES = _load_admin_scopes()
+
+
+def _revoke_for_player(store, player_id: str, actor: str) -> bool:
+    """Revoke a player's live override, by player id rather than row id.
+
+    Returns True when something was actually revoked. A player with no live
+    override is not an error: the requested end state already holds.
+    """
+    live = store.get_live_player_override(player_id)
+    if not live:
+        return False
+    return bool(store.revoke_player_override(str(live.get("override_id", "")),
+                                             actor))
 
 
 def _new_id(prefix):
@@ -244,6 +272,25 @@ class Handler(BaseHTTPRequestHandler):
                 audit_action="config.schedule", audit_entity="scheduled_change",
                 before=body)
         # --- player overrides ---
+        m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/override", path)
+        if m:
+            denied = need("admin")
+            if denied:
+                return self.send(*denied)
+            body = dict(body or {})
+            body["player_id"] = m.group(1)
+            return self._admin_write(
+                lambda st: st.create_player_override(
+                    override_id=body.get("override_id") or _new_id("ovr"),
+                    player_id=m.group(1),
+                    house_edge_pct=body.get("house_edge_pct"),
+                    token_delta=int(body.get("token_delta", 0) or 0),
+                    custom_loss_limit=body.get("custom_loss_limit"),
+                    expires_at=body.get("expires_at"),
+                    reason=str(body.get("reason", "")),
+                    actor=self.admin_role() or "admin"),
+                audit_action="player.override", audit_entity="player",
+                audit_entity_id=m.group(1), before=body)
         if path == "/api/v1/admin/player-overrides":
             denied = need("admin")
             if denied:
@@ -360,6 +407,22 @@ class Handler(BaseHTTPRequestHandler):
                 lambda st: st.update_package(m.group(1), **body),
                 audit_action="package.update", audit_entity="package",
                 audit_entity_id=m.group(1), before=body)
+        m = re.fullmatch(r"/api/v1/admin/games/([^/]+)/rules", path)
+        if m:
+            # Every save is a new version, never an in-place edit: a round that
+            # is already running holds a snapshot, and a rollback has to name a
+            # version to go back to.
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not isinstance(body, dict) or not body:
+                return self.send(422, E.err("rules body required",
+                                            E.E_VALIDATION))
+            return self._admin_write(
+                lambda st: st.put_game_rules(m.group(1), body,
+                                             self.admin_role() or "admin"),
+                audit_action="game.rules.update", audit_entity="game",
+                audit_entity_id=m.group(1), before=body)
         return None
 
     def _admin_delete(self, path):
@@ -387,6 +450,19 @@ class Handler(BaseHTTPRequestHandler):
                 lambda st: {"cancelled": st.cancel_scheduled_change(m.group(1))},
                 audit_action="config.schedule.cancel",
                 audit_entity="scheduled_change", audit_entity_id=m.group(1))
+        m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/override", path)
+        if m:
+            # Delete by player id revokes whatever live override that player
+            # has, so a panel holding a player id does not have to look up the
+            # override id first.
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            return self._admin_write(
+                lambda st: {"player_id": m.group(1), "revoked": _revoke_for_player(
+                    st, m.group(1), self.admin_role() or "admin")},
+                audit_action="player.override.revoke", audit_entity="player",
+                audit_entity_id=m.group(1))
         m = re.fullmatch(r"/api/v1/admin/player-overrides/([^/]+)", path)
         if m:
             denied = self.require_role("admin")
@@ -1253,6 +1329,41 @@ class Handler(BaseHTTPRequestHandler):
                 limit = _int_arg(qs, "limit", 50, 1, 500)
                 return self._admin_read(
                     lambda st: {"overrides": st.list_player_overrides(player_id, limit)})
+            if path == "/api/v1/admin/players":
+                # SRS section 7. Paginated because a platform with real traffic
+                # has more players than fit in one response.
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                player_id = _text_arg(qs, "player_id", max_len=64)
+                limit = _int_arg(qs, "limit", 50, 1, 500)
+                offset = _int_arg(qs, "offset", 0, 0, 1_000_000)
+                return self._admin_read(lambda st: {
+                    "players": st.list_player_overrides(player_id or None,
+                                                        limit),
+                    "limit": limit, "offset": offset})
+            m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/override", path)
+            if m:
+                # SRS section 7 addresses an override by player id, where the
+                # collection route addresses it by override id. Both are
+                # supported because a panel has a player in hand, and an
+                # operator has a row in hand.
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                return self._admin_read(lambda st: {
+                    "player_id": m.group(1),
+                    "override": st.get_live_player_override(m.group(1))})
+            m = re.fullmatch(r"/api/v1/admin/games/([^/]+)/rules", path)
+            if m:
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                # Spread, not nest: the store result already has a "rules"
+                # key, so wrapping it would give data.rules.rules.
+                return self._admin_read(lambda st: dict(
+                    st.get_game_rules(m.group(1)),
+                    versions=st.list_game_config_versions(m.group(1), 10)))
             m = re.fullmatch(r"/api/v1/admin/players/([^/]+)/appearance", path)
             if m:
                 denied = self.require_role("auditor")

@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.wallet import MemoryWallet
-from games.teen_patti_pro.config import TeenPattiConfig
+from games.teen_patti_pro.config import DEFAULT_CONFIG, TeenPattiConfig
 from games.teen_patti_pro.service import TeenPattiService
 
 LIVE = TeenPattiConfig(confirmed=True)
@@ -89,7 +89,7 @@ class TestSweep(unittest.TestCase):
         s.start_round("r")
         s.place_bet("r", "p1", "A", 100, "k1")
         s.place_bet("r", "p2", "B", 500, "k2")
-        s._now = lambda: T0 + 20_000 + 1  # past default guess_ms
+        s._now = lambda: T0 + DEFAULT_CONFIG.guess_ms + 1  # past betting end
         reports = s.sweep()
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]["actions"], ["closed", "result", "settled"])

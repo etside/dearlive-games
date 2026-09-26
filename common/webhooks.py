@@ -16,6 +16,10 @@ EVENTS = ("game.session.created", "player.joined", "player.left",
           "round.started", "bet.accepted", "bet.rejected", "betting.closed",
           "result.published", "settlement.completed", "session.completed",
           "round.cancelled", "error",
+          # SRS section 8 lifecycle. The catalogue is an allow-list, so a new
+          # emit site without its entry here fails loudly at first use rather
+          # than delivering an event nobody documented.
+          "round.created", "result.processing", "settlement.started",
           # Settlement-failure lifecycle (money safety). Consumers should
           # alert on settlement.failed; settlement.pending is retryable.
           "settlement.pending", "settlement.failed")
@@ -31,8 +35,15 @@ def verify(secret: str, body: bytes, signature: str) -> bool:
 
 def build_event(kind: str, data: Dict[str, Any]) -> dict:
     assert kind in EVENTS, f"unknown webhook event {kind}"
-    return {"event_id": uuid.uuid4().hex, "kind": kind, "data": data,
-            "serverTime": int(time.time() * 1000)}
+    # `kind` stays the internal name; `event` is the SRS section 14 name the
+    # client matches on. Both are emitted because a webhook consumer that
+    # hardcodes the internal name breaks when the engine is refactored, and a
+    # consumer that only sees the SRS name cannot correlate with the log.
+    from common.envelope import now_iso, now_ms
+    from common.wire_events import webhook_name
+    return {"event_id": uuid.uuid4().hex, "kind": kind,
+            "event": webhook_name(kind), "data": data,
+            "serverTime": now_iso(), "serverTimeMs": now_ms()}
 
 
 class MemoryDeliveryLog:
@@ -75,7 +86,10 @@ class WebhookSender:
         headers = {"Content-Type": "application/json",
                    "X-Webhook-Event": event.get("kind", ""),
                    "X-Webhook-Delivery": event.get("event_id", ""),
-                   "X-Webhook-Timestamp": str(event.get("serverTime", 0)),
+                   # Epoch ms, not the ISO string: this is a signature input
+                   # and a replay-window comparison, both numeric.
+                   "X-Webhook-Timestamp": str(event.get(
+                       "serverTimeMs", event.get("serverTime", 0))),
                    "X-Webhook-Signature": sig}
         last_err = ""
         for attempt in range(1, max_attempts + 1):

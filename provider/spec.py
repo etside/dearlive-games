@@ -411,7 +411,10 @@ SPEC = {
                     "code": {"type": "string"},
                     "message": {"type": "string"},
                     "data": {"type": ["object", "array", "null"]},
-                    "serverTime": {"type": "integer",
+                    "serverTime": {"type": "string", "format": "date-time",
+                               "description": "ISO8601 UTC, authoritative. "
+                                              "Use serverTimeMs for arithmetic."},
+                    "serverTimeMs": {"type": "integer",
                                    "description": "Server clock in ms; client clocks are untrusted."},
                     "requestId": {"type": "string"},
                 },

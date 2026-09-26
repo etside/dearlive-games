@@ -20,6 +20,7 @@ from provider.games import (BINDINGS, TEEN_CODE,
                              binding_for_code, binding_for_slug, canonical_code)
 from provider.ledger import WalletError_
 from provider.sessions import SessionTokenError, resolve as resolve_token
+from common.envelope import now_iso
 from provider.tables import (Table, TableCatalog, list_tables, room_status,
                              select_table, table_detail, seat_count)
 
@@ -260,7 +261,7 @@ def h_health(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
         "tables": len(ctx.catalog.all()),
         "live_tables": len(live),
         "redis": ctx.redis,
-        "serverTime": int(time.time() * 1000),
+        "serverTime": now_iso(), "serverTimeMs": int(time.time() * 1000),
     }
     return 200, payload
 

@@ -74,7 +74,7 @@ docs at `/docs`.
 
 ```bash
 npm install
-npm run dev:player        # or dev:admin / dev:super-admin
+npm run dev:player        # or dev:admin
 npm run build:all
 npm run lint
 npm test

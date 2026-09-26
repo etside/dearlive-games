@@ -127,6 +127,13 @@ class TeenPattiService:
         room.config = self.config
         r = room.start_round(self._now())
         self.audit.record(actor, "round.start", "round", r.round_id)
+        # SRS section 8 lists round.created and round.opened as separate events.
+        # created = the round object exists; opened = betting is live. Firing
+        # only one of them leaves a client that renders on "created" showing an
+        # empty table for the whole betting window.
+        self._fire("round.created", {"round_id": r.round_id, "room_id": room_id,
+                                     "round_no": r.round_no,
+                                     "config_version": r.config_version})
         self._fire("round.started", {"round_id": r.round_id, "room_id": room_id,
                                      "betting_end_at": r.betting_end_at_ms})
         self._skill("on_round_start", {"room_id": room_id, "round_id": r.round_id})
@@ -244,6 +251,14 @@ class TeenPattiService:
     # ---- result + settle ----
     def publish_result(self, room_id: str) -> dict:
         room = self._room(room_id)
+        # Announced before evaluation, not after: a client showing a spinner
+        # needs to know the wait is deliberate.
+        # Named to match the engine's own emit at engine.py, so the live event
+        # and the reconnect-replay event for this moment agree. Previously this
+        # was "result.pending" and the engine said "result.processing" -- two
+        # names for one moment, which a client cannot reconcile.
+        self._fire("result.processing", {"round_id": room.round.round_id,
+                                         "room_id": room_id})
         r = room.calculate_result(self._now())
         self.audit.record("system", "result.publish", "round", r.round_id,
                           after={"winners": r.winner_positions})
@@ -259,6 +274,9 @@ class TeenPattiService:
     def settle(self, room_id: str, round_id: str = "") -> dict:
         self._require_confirmed()
         room = self._room(room_id)
+        self._fire("settlement.started", {
+            "round_id": room.round.round_id, "room_id": room_id,
+            "bets": len(room.round.bets)})
         rows = room.settle(self._now())
         credited = []
         try:

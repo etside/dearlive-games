@@ -12,6 +12,7 @@ import re
 import uuid
 
 from staging import state as ST
+from common.envelope import now_iso
 
 
 _PROCESS_STARTED = __import__("time").time()
@@ -569,7 +570,7 @@ def _staging_webhook_config(r, teen, wheels, headers, body):
     except ValueError as exc:
         return _staging_json_response(422, E.err(str(exc), E.E_VALIDATION))
     import time as _time
-    config.update({"updated_by": "super-admin",
+    config.update({"updated_by": "staging",
                    "updated_at_ms": int(_time.time() * 1000),
                    "reason": str(data.get("reason") or "")})
     ST.save_webhook_config(r, {"enabled": config["enabled"],
@@ -577,7 +578,7 @@ def _staging_webhook_config(r, teen, wheels, headers, body):
     teen.webhook_destinations = list(config["destinations"]) if config["enabled"] else []
     for svc in wheels.values():
         svc.webhook_destinations = list(teen.webhook_destinations)
-    _staging_audit_event(r, "super-admin", "staging.webhooks.configure",
+    _staging_audit_event(r, "staging", "staging.webhooks.configure",
                          "webhooks", "staging",
                          {"enabled": config["enabled"],
                           "destinations": config["destinations"],
@@ -692,11 +693,11 @@ def _staging_revoke_key(r, headers, body):
         return _staging_json_response(422, E.err(str(exc), E.E_VALIDATION))
     try:
         revoked = DK.revoke_provider_key(
-            r, data.get("key_id"), actor="super-admin", audit=None)
+            r, data.get("key_id"), actor="staging", audit=None)
     except DK.DynamicKeyError as exc:
         return _staging_json_response(exc.status, E.err(str(exc), exc.code))
     if revoked:
-        _staging_key_audit(r, "super-admin", "staging.api-key.revoke",
+        _staging_key_audit(r, "staging", "staging.api-key.revoke",
                            str(data.get("key_id") or ""),
                            {"revoked": True})
         return _staging_json_response(200, E.ok({"revoked": True}))
@@ -719,11 +720,11 @@ def _staging_rotate_key(r, headers, body):
     try:
         rotated = DK.rotate_provider_key(
             r, data.get("key_id"), pin=data.get("pin"),
-            ttl_seconds=data.get("ttl_seconds"), actor="super-admin",
+            ttl_seconds=data.get("ttl_seconds"), actor="staging",
             audit=None)
     except DK.DynamicKeyError as exc:
         return _staging_json_response(exc.status, E.err(str(exc), exc.code))
-    _staging_key_audit(r, "super-admin", "staging.api-key.rotate",
+    _staging_key_audit(r, "staging", "staging.api-key.rotate",
                        rotated["key_id"],
                        {"label": rotated["label"], "role": rotated["role"],
                         "games": rotated["games"],
@@ -844,7 +845,7 @@ def _degraded_health(reason):
         "live_tables": 0,
         "redis": False,
         "reason": str(reason)[:200],
-        "serverTime": int(_t.time() * 1000),
+        "serverTime": now_iso(), "serverTimeMs": int(_t.time() * 1000),
     })).encode()
 
 

@@ -219,6 +219,134 @@ class ReadmeLinkTest(unittest.TestCase):
             return json.loads(r.read())
 
 
+class EnvelopeShapeTest(unittest.TestCase):
+    """SRS section 7 fixes the envelope, including the type of serverTime."""
+
+    def test_server_time_is_iso8601(self):
+        from common.envelope import err, now_iso, ok
+        import datetime
+        for env in (ok({"a": 1}), err("nope", "X")):
+            self.assertIsInstance(env["serverTime"], str)
+            parsed = datetime.datetime.fromisoformat(env["serverTime"])
+            self.assertIsNotNone(parsed.tzinfo, "serverTime must carry a timezone")
+
+    def test_epoch_millis_is_available_alongside(self):
+        # Removing the numeric form would break every consumer that computes a
+        # clock skew, so both are always present.
+        from common.envelope import ok
+        env = ok()
+        self.assertIsInstance(env["serverTimeMs"], int)
+        self.assertGreater(env["serverTimeMs"], 1_600_000_000_000)
+
+    def test_request_id_is_present_and_unique(self):
+        from common.envelope import ok
+        a, b = ok(), ok()
+        self.assertTrue(a["requestId"])
+        self.assertNotEqual(a["requestId"], b["requestId"])
+
+    def test_all_srs_envelope_keys_are_present(self):
+        from common.envelope import ok
+        for key in ("success", "code", "message", "data", "serverTime",
+                    "requestId"):
+            self.assertIn(key, ok(), key)
+
+    def test_the_readme_shows_the_same_shape(self):
+        for key in ("success", "code", "message", "data", "serverTime",
+                    "requestId"):
+            self.assertIn(f'"{key}"', README, f"README envelope omits {key}")
+
+
+class WireEventNameTest(unittest.TestCase):
+    """SRS sections 8 and 14 name the same moments differently."""
+
+    def test_every_srs_websocket_event_is_declared(self):
+        from common.wire_events import WS_EVENTS
+        for name in ("round.created", "round.opened", "round.updated",
+                     "betting.closed", "result.processing", "result.declared",
+                     "settlement.started", "settlement.completed",
+                     "balance.updated", "round.closed", "error"):
+            self.assertIn(name, WS_EVENTS, name)
+
+    def test_every_srs_webhook_event_is_declared(self):
+        from common.wire_events import WEBHOOK_EVENTS
+        for name in ("game.session.created", "game.round.started",
+                     "game.bet.accepted", "game.result.published",
+                     "game.settlement.completed", "game.error"):
+            self.assertIn(name, WEBHOOK_EVENTS, name)
+
+    def test_internal_kinds_map_to_srs_websocket_names(self):
+        from common.wire_events import WS_EVENTS, ws_name
+        self.assertEqual(ws_name("round.started"), "round.opened")
+        self.assertEqual(ws_name("result.published"), "result.declared")
+        self.assertEqual(ws_name("result.processing"), "result.processing")
+        for kind in ("round.created", "round.started", "result.processing",
+                     "settlement.started", "settlement.completed",
+                     "betting.closed", "round.cancelled", "error"):
+            self.assertIn(ws_name(kind), WS_EVENTS, kind)
+
+    def test_internal_kinds_map_to_srs_webhook_names(self):
+        from common.wire_events import WEBHOOK_EVENTS, webhook_name
+        self.assertEqual(webhook_name("round.started"), "game.round.started")
+        self.assertEqual(webhook_name("result.published"),
+                         "game.result.published")
+        for kind in ("round.started", "result.published",
+                     "settlement.completed", "bet.accepted", "error"):
+            self.assertIn(webhook_name(kind), WEBHOOK_EVENTS, kind)
+
+    def test_an_unknown_kind_does_not_leak_a_raw_name(self):
+        # A client cannot handle an event it has never heard of.
+        from common.wire_events import webhook_name, ws_name
+        self.assertEqual(ws_name("something.new"), "error")
+        self.assertEqual(webhook_name("something.new"), "game.error")
+
+    def test_every_internal_kind_the_engine_emits_is_mapped(self):
+        # An unmapped kind silently becomes "error" on the wire, which is a
+        # much harder bug to find than a missing dict entry.
+        import re
+        from common.wire_events import WS_NAMES, WEBHOOK_NAMES
+        from common.webhooks import EVENTS
+        engine = (ROOT / "games/teen_patti_pro/engine.py").read_text()
+        service = (ROOT / "games/teen_patti_pro/service.py").read_text()
+        fired = set(re.findall(r'_fire\("([^"]+)"', service))
+        for kind in sorted(fired):
+            self.assertIn(kind, WS_NAMES, f"{kind} has no ws_event mapping")
+            self.assertIn(kind, WEBHOOK_NAMES, f"{kind} has no webhook mapping")
+            self.assertIn(kind, EVENTS, f"{kind} missing from the EVENTS allow-list")
+
+    def test_hub_only_events_need_a_ws_mapping_but_no_webhook(self):
+        # round.tick is pushed straight from the ws hub, so it never becomes a
+        # webhook. It still has to have a ws_event name or the client sees the
+        # internal name.
+        from common.wire_events import WS_EVENTS, WS_NAMES
+        hub = (ROOT / "games/teen_patti_pro/ws.py").read_text()
+        import re
+        # "event"/"snapshot"/"pong" are envelope discriminators in ws.py, not
+        # event names -- they are the frame type, not something a client routes
+        # on by business meaning.
+        pushed = set(re.findall(r'"kind": "([a-z_.]+)"', hub)) - {
+            "event", "snapshot", "pong"}
+        for kind in pushed:
+            self.assertIn(kind, WS_NAMES, f"{kind} has no ws_event mapping")
+            self.assertIn(WS_NAMES[kind], WS_EVENTS)
+
+    def test_the_readme_lists_the_spec_event_names(self):
+        for name in ("round.opened", "result.declared", "settlement.started",
+                     "balance.updated", "round.closed"):
+            self.assertIn(name, README, name)
+
+
+class BettingWindowTest(unittest.TestCase):
+    def test_default_betting_window_is_thirty_seconds(self):
+        from games.teen_patti_pro.config import DEFAULT_CONFIG
+        self.assertEqual(DEFAULT_CONFIG.guess_ms, 30_000,
+                         "SRS section 1: 30s default betting")
+
+    def test_the_rules_page_states_the_configured_window(self):
+        from games.teen_patti_pro.config import DEFAULT_CONFIG
+        page = (ROOT / "games/teen_patti_pro/client/how-to-play.html").read_text()
+        self.assertIn(f"{DEFAULT_CONFIG.guess_ms // 1000} seconds", page)
+
+
 class ReadmeHygieneTest(unittest.TestCase):
     def test_no_secret_shaped_strings(self):
         # A README that ships a working credential is a leaked credential.

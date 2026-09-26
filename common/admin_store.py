@@ -197,6 +197,9 @@ class AdminStore:
                                  confirmed: bool = False,
                                  tbc: Optional[list] = None) -> Dict[str, Any]: ...
     def rollback_game_config(self, game_id: str, version: str) -> Dict[str, Any]: ...
+    def get_game_rules(self, game_id: str) -> Dict[str, Any]: ...
+    def put_game_rules(self, game_id: str, payload: Dict[str, Any],
+                       actor: str = "") -> Dict[str, Any]: ...
 
 
 class UnavailableAdminStore:
@@ -1078,6 +1081,40 @@ class PostgresAdminStore(AdminStore):
             raise
         finally:
             self._close(cur)
+
+    def get_game_rules(self, game_id: str) -> Dict[str, Any]:
+        """The currently effective rules for a game, with the version that
+        produced them. Returns an empty rules dict rather than raising when
+        nothing is configured: "no rules stored" is a real state a panel must
+        render, not a fault."""
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT version, confirmed, tbc, payload, created_at "
+                        "FROM game_configuration WHERE game_id = %s "
+                        "ORDER BY created_at DESC LIMIT 1", (game_id,))
+            r = cur.fetchone()
+            if not r:
+                return {"game_id": game_id, "version": None, "confirmed": False,
+                        "tbc": [], "rules": {}, "created_at": None}
+            return {"game_id": game_id, "version": r[0], "confirmed": bool(r[1]),
+                    "tbc": r[2] if isinstance(r[2], list) else json.loads(r[2] or "[]"),
+                    "rules": r[3] if isinstance(r[3], dict) else json.loads(r[3] or "{}"),
+                    "created_at": r[4]}
+        finally:
+            self._close(cur)
+
+    def put_game_rules(self, game_id: str, payload: Dict[str, Any],
+                       actor: str = "") -> Dict[str, Any]:
+        """Save a new rules version. Never edits in place.
+
+        The actor is recorded inside the payload so the version history says who
+        changed the rules, not just when.
+        """
+        body = dict(payload or {})
+        body["updated_by"] = actor or body.get("updated_by", "")
+        return self.save_game_config_version(
+            game_id, body, confirmed=bool(body.get("confirmed", False)),
+            tbc=body.get("tbc"))
 
     def rollback_game_config(self, game_id: str, version: str) -> Dict[str, Any]:
         """Copy an old version forward as a new version.

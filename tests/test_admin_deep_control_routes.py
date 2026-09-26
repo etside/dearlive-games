@@ -310,6 +310,118 @@ class AdminDeepControlTest(unittest.TestCase):
                           {"appearance": {}}, OPERATOR)
         self.assertEqual(st, 403)
 
+    # -- SRS section 7 shapes ---------------------------------------------
+
+    def test_players_list(self):
+        Handler.admin_store = _Store(list_player_overrides=[{
+            "override_id": "o1", "player_id": "qa-player"}])
+        st, b = self.call("GET", "/api/v1/admin/players?limit=10", headers=AUDITOR)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(b["data"]["players"][0]["player_id"], "qa-player")
+
+    def test_override_read_by_player_id(self):
+        Handler.admin_store = _Store(get_live_player_override={
+            "override_id": "o7", "player_id": "qa-player"})
+        st, b = self.call("GET", "/api/v1/admin/players/qa-player/override",
+                          headers=AUDITOR)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(b["data"]["override"]["override_id"], "o7")
+
+    def test_override_read_when_the_player_has_none(self):
+        # No live override is a real state, not a 404: the panel must render
+        # "no override" rather than an error.
+        Handler.admin_store = _Store(get_live_player_override=None)
+        st, b = self.call("GET", "/api/v1/admin/players/nobody/override",
+                          headers=AUDITOR)
+        self.assertEqual(st, 200, b)
+        self.assertIsNone(b["data"]["override"])
+
+    def test_override_create_by_player_id(self):
+        store = _Store(create_player_override={"override_id": "o9"})
+        Handler.admin_store = store
+        st, b = self.call("POST", "/api/v1/admin/players/qa-player/override",
+                          {"reason": "vip comp", "token_delta": 500}, ADMIN)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(store.calls[0][2]["player_id"], "qa-player")
+        self.assertEqual(store.calls[0][2]["reason"], "vip comp")
+
+    def test_override_delete_by_player_id_resolves_the_row_first(self):
+        store = _Store(get_live_player_override={"override_id": "o7"},
+                       revoke_player_override=True)
+        Handler.admin_store = store
+        st, b = self.call("DELETE", "/api/v1/admin/players/qa-player/override",
+                          headers=ADMIN)
+        self.assertEqual(st, 200, b)
+        self.assertTrue(b["data"]["revoked"])
+        self.assertEqual(store.calls[-1][1][0], "o7",
+                         "must revoke the row id, not the player id")
+
+    def test_override_delete_is_a_no_op_when_there_is_none(self):
+        Handler.admin_store = _Store(get_live_player_override=None,
+                                     revoke_player_override=True)
+        st, b = self.call("DELETE", "/api/v1/admin/players/nobody/override",
+                          headers=ADMIN)
+        self.assertEqual(st, 200)
+        self.assertFalse(b["data"]["revoked"])
+
+    def test_override_create_requires_admin(self):
+        Handler.admin_store = _Store()
+        for who in (OPERATOR, AUDITOR):
+            st, _ = self.call("POST", "/api/v1/admin/players/p/override",
+                              {"reason": "x"}, who)
+            self.assertEqual(st, 403)
+
+    def test_game_rules_read(self):
+        Handler.admin_store = _Store(get_game_rules={
+            "version": "v3", "rules": {"min_bet": 20}}, list_game_config_versions=[])
+        st, b = self.call("GET", "/api/v1/admin/games/teen-patti-pro/rules",
+                          headers=AUDITOR)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(b["data"]["rules"]["min_bet"], 20)
+
+    def test_game_rules_read_when_none_configured(self):
+        Handler.admin_store = _Store(get_game_rules={
+            "version": None, "rules": {}, "confirmed": False},
+            list_game_config_versions=[])
+        st, b = self.call("GET", "/api/v1/admin/games/teen-patti-pro/rules",
+                          headers=AUDITOR)
+        self.assertEqual(st, 200, b)
+        self.assertIsNone(b["data"]["version"])
+
+    def test_game_rules_write_saves_a_new_version(self):
+        store = _Store(put_game_rules={"version": "v4"})
+        Handler.admin_store = store
+        st, b = self.call("PUT", "/api/v1/admin/games/teen-patti-pro/rules",
+                          {"min_bet": 50}, ADMIN)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(b["data"]["version"], "v4")
+        self.assertEqual(store.calls[0][1][0], "teen-patti-pro")
+
+    def test_game_rules_write_needs_a_body(self):
+        Handler.admin_store = _Store()
+        st, _ = self.call("PUT", "/api/v1/admin/games/teen-patti-pro/rules",
+                          {}, ADMIN)
+        self.assertEqual(st, 422)
+
+    def test_game_rules_write_requires_admin(self):
+        Handler.admin_store = _Store()
+        st, _ = self.call("PUT", "/api/v1/admin/games/teen-patti-pro/rules",
+                          {"min_bet": 50}, OPERATOR)
+        self.assertEqual(st, 403)
+
+    def test_spec_routes_503_without_a_database(self):
+        Handler.admin_store = _Store(
+            raises=AdminStoreUnavailable("DATABASE_URL is not configured"))
+        for method, path in (("GET", "/api/v1/admin/players"),
+                             ("GET", "/api/v1/admin/players/p/override"),
+                             ("GET", "/api/v1/admin/games/teen-patti-pro/rules"),
+                             ("POST", "/api/v1/admin/players/p/override"),
+                             ("PUT", "/api/v1/admin/games/teen-patti-pro/rules"),
+                             ("DELETE", "/api/v1/admin/players/p/override")):
+            st, b = self.call(method, path, {"reason": "x"}, ADMIN)
+            self.assertEqual(st, 503, path)
+            self.assertIsNone(b["data"], path)
+
     # -- failure modes -----------------------------------------------------
 
     def test_no_database_is_503_with_a_reason_and_no_payload(self):

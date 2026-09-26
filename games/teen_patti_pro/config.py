@@ -36,7 +36,8 @@ class TeenPattiConfig:
     denoms: Tuple[int, ...] = (20, 100, 500, 1000)
     min_bet: int = 20
     max_bet: int = 100_000
-    guess_ms: int = 20_000
+    # SRS section 1: 30s betting by default, configurable per deployment.
+    guess_ms: int = 30_000
     max_bets_per_player_per_round: int = 50
     # Ranking (standard): trail > pure_seq > seq > color > pair > high.
     # Ace high (A-K-Q) and Ace-low (A-2-3) straights admitted. TBC G3-BR-01.

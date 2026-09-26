@@ -317,7 +317,9 @@ Server time is authoritative. Never trust a client clock.
 
 ### Admin
 
-Auth is `X-Admin-Key`. Reads need `auditor`, writes need `admin`.
+Auth is `X-Admin-Key`. Reads need `auditor`, writes need `admin`. Roles are
+`admin`, `operator`, `auditor` — there is no `superadmin`. An entry with any
+other role is refused at boot with a warning, not silently accepted.
 
 | Method | Path |
 | --- | --- |
@@ -336,7 +338,14 @@ Auth is `X-Admin-Key`. Reads need `auditor`, writes need `admin`.
 | POST | `/api/v1/admin/games/{slug}/disable` |
 | GET · PUT | `/api/v1/admin/games/{id}/config` |
 | GET | `/api/v1/admin/audit` |
-| GET · PUT | `/api/v1/admin/players/{id}/appearance` |
+| GET | `/api/v1/admin/players` |
+| GET | `/api/v1/admin/players/{id}/override` |
+| POST | `/api/v1/admin/players/{id}/override` |
+| DELETE | `/api/v1/admin/players/{id}/override` |
+| GET | `/api/v1/admin/games/{slug}/rules` |
+| PUT | `/api/v1/admin/games/{slug}/rules` |
+| GET | `/api/v1/admin/players/{id}/appearance` |
+| PUT | `/api/v1/admin/players/{id}/appearance` |
 
 ### WebSocket
 

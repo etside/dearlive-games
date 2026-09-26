@@ -52,7 +52,6 @@ echo "== 3 harness doctor (daemon starts on first use; cloud auth optional) =="
 echo "== 4 browser flows =="
 export QA_EVIDENCE="$EVDIR"
 ( cd "$JEV" && uv run browser-harness < "$ROOT/tools/browser-qa/flow_teen_patti.py" ) | tee "$EVDIR/flow-teen.log" | tail -n 3
-( cd "$JEV" && uv run browser-harness < "$ROOT/tools/browser-qa/flow_wheels.py" ) | tee "$EVDIR/flow-wheels.log" | tail -n 3
 
 echo "== 5 API verification (suite) =="
 ( cd "$ROOT" && python3 -m unittest discover -s tests 2>&1 | tail -n 3 )

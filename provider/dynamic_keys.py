@@ -244,7 +244,7 @@ def list_provider_keys(redis, *, now_ms: Optional[int] = None) -> List[dict]:
     return out
 
 
-def revoke_provider_key(redis, key_id: str, *, actor: str = "super-admin",
+def revoke_provider_key(redis, key_id: str, *, actor: str = "staging",
                         now_ms: Optional[int] = None, audit=None) -> bool:
     """Revoke one staging key. Keeps a short tombstone, deletes the secret."""
     if _app_env() != "staging":
@@ -273,7 +273,7 @@ def revoke_provider_key(redis, key_id: str, *, actor: str = "super-admin",
 
 def rotate_provider_key(redis, old_key_id: str, *, pin: object,
                         ttl_seconds: object = None, now_ms: Optional[int] = None,
-                        actor: str = "super-admin", audit=None) -> dict:
+                        actor: str = "staging", audit=None) -> dict:
     """Replace one staging key with an equivalent key, then revoke the old one."""
     old = _read_record(redis, str(old_key_id or "").strip())
     if old is None or old.get("revoked"):
