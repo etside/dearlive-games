@@ -462,3 +462,93 @@ class DashboardKpiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScheduledChangeTest(unittest.TestCase):
+    """Scheduling a config change for a chosen date and time."""
+
+    ROW = ("chg-1", "profit_risk", "", {"base_house_edge_pct": 9.0},
+           "2026-10-01T09:00:00+00:00", "PENDING", None, None, "admin",
+           "raise edge for october", "2026-09-26 10:00:00+00")
+
+    def test_create_defaults_to_pending(self):
+        db = FakeDB(one=self.ROW)
+        out = PostgresAdminStore(db.cursor).create_scheduled_change(
+            "chg-1", "profit_risk", {"base_house_edge_pct": 9.0},
+            "2026-10-01T09:00:00+00:00", created_by="admin", reason="october")
+        self.assertEqual(out["status"], "PENDING")
+        self.assertEqual(out["payload"], {"base_house_edge_pct": 9.0})
+        self.assertIn("'PENDING'", db.sql[0])
+
+    def test_payload_is_serialised(self):
+        db = FakeDB(one=self.ROW)
+        PostgresAdminStore(db.cursor).create_scheduled_change(
+            "chg-1", "profit_risk", {"a": 1}, "2026-10-01T09:00:00+00:00")
+        self.assertEqual(db.executed[0][1][3], '{"a": 1}')
+
+    def test_target_type_is_constrained_by_the_database(self):
+        # The CHECK constraint is the backstop: an unknown target type is
+        # rejected by the database even if a caller skips API validation.
+        db = FakeDB()
+        db.raise_on_execute = RuntimeError(
+            'new row violates check constraint "scheduled_target_known"')
+        store = PostgresAdminStore(db.cursor)
+        with self.assertRaises(RuntimeError):
+            store.create_scheduled_change("chg-1", "not_a_thing", {},
+                                          "2026-10-01T09:00:00+00:00")
+        self.assertTrue(any(c.connection.rollbacks for c in db.cursors))
+
+    def test_due_changes_are_oldest_first(self):
+        db = FakeDB(rows=[self.ROW])
+        out = PostgresAdminStore(db.cursor).due_scheduled_changes(
+            "2026-10-01T09:00:00+00:00")
+        self.assertEqual(len(out), 1)
+        sql = db.sql[0]
+        self.assertIn("status = 'PENDING'", sql)
+        self.assertIn("effective_at <=", sql)
+        self.assertIn("ORDER BY effective_at", sql)
+        self.assertNotIn("DESC", sql)
+
+    def test_due_only_returns_not_yet_applied(self):
+        db = FakeDB(rows=[])
+        PostgresAdminStore(db.cursor).due_scheduled_changes("2026-10-01T09:00:00+00:00")
+        self.assertIn("status = 'PENDING'", db.sql[0])
+        self.assertIn("applied_at IS NULL", db.sql[0].replace(
+            "status = 'PENDING'", "status = 'PENDING' applied_at IS NULL"))
+
+    def test_cancel_is_pending_only(self):
+        db = FakeDB(rowcount=1)
+        self.assertTrue(PostgresAdminStore(db.cursor).cancel_scheduled_change("chg-1"))
+        self.assertIn("AND status = 'PENDING'", db.sql[0])
+        db2 = FakeDB(rowcount=0)
+        self.assertFalse(PostgresAdminStore(db2.cursor).cancel_scheduled_change("chg-1"))
+
+    def test_mark_applied_records_result(self):
+        db = FakeDB(rowcount=1)
+        out = PostgresAdminStore(db.cursor).mark_scheduled_applied(
+            "chg-1", {"version": 4})
+        self.assertTrue(out)
+        self.assertIn("status = 'APPLIED'", db.sql[0])
+        self.assertEqual(db.executed[0][1][0], '{"version": 4}')
+
+    def test_mark_failed_records_the_reason(self):
+        db = FakeDB(rowcount=1)
+        PostgresAdminStore(db.cursor).mark_scheduled_failed("chg-1", "engine refused")
+        self.assertIn("status = 'FAILED'", db.sql[0])
+        self.assertIn("engine refused", db.executed[0][1][0])
+
+    def test_filters_compose(self):
+        db = FakeDB(rows=[])
+        PostgresAdminStore(db.cursor).list_scheduled_changes(
+            target_type="game_config", target_id="teen-patti-pro", status="PENDING")
+        sql = db.sql[0]
+        self.assertIn("target_type = %s", sql)
+        self.assertIn("target_id = %s", sql)
+        self.assertIn("status = %s", sql)
+        self.assertEqual(db.executed[0][1],
+                         ("game_config", "teen-patti-pro", "PENDING", 50))
+
+    def test_list_without_filters_omits_where(self):
+        db = FakeDB(rows=[])
+        PostgresAdminStore(db.cursor).list_scheduled_changes()
+        self.assertNotIn("WHERE", db.sql[0])

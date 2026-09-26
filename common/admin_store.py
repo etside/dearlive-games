@@ -111,6 +111,23 @@ def _row_to_pr(row) -> Dict[str, Any]:
 class AdminStore:
     """Interface for admin reads/writes. See module docstring."""
 
+    # -- scheduled config changes --
+    def create_scheduled_change(self, change_id: str, target_type: str,
+                                payload: Dict[str, Any], effective_at: str,
+                                target_id: str = "", created_by: str = "",
+                                reason: str = "") -> Dict[str, Any]: ...
+    def list_scheduled_changes(self, target_type: Optional[str] = None,
+                               target_id: Optional[str] = None,
+                               status: Optional[str] = None,
+                               limit: int = 50) -> List[Dict[str, Any]]: ...
+    def get_scheduled_change(self, change_id: str) -> Optional[Dict[str, Any]]: ...
+    def cancel_scheduled_change(self, change_id: str) -> bool: ...
+    def due_scheduled_changes(self, now_iso: str,
+                               limit: int = 25) -> List[Dict[str, Any]]: ...
+    def mark_scheduled_applied(self, change_id: str,
+                               result: Optional[Dict[str, Any]] = None) -> bool: ...
+    def mark_scheduled_failed(self, change_id: str, reason: str) -> bool: ...
+
     # -- dashboard --
     def dashboard_kpis(self) -> Dict[str, Any]: ...
 
@@ -458,6 +475,143 @@ class PostgresAdminStore(AdminStore):
             self._commit(cur)
             return {"game_id": r[0], "name": r[1], "status": r[2],
                     "enabled": bool(r[3]), "message": message}
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    # -- scheduled config changes --
+
+    _SCHED_COLS = ("change_id", "target_type", "target_id", "payload",
+                   "effective_at", "status", "applied_at", "result",
+                   "created_by", "reason", "created_at")
+
+    def _sched_row(self, r) -> Dict[str, Any]:
+        return {
+            "change_id": r[0], "target_type": r[1], "target_id": r[2],
+            "payload": r[3] if isinstance(r[3], dict) else json.loads(r[3] or "{}"),
+            "effective_at": r[4], "status": r[5], "applied_at": r[6],
+            "result": (r[7] if isinstance(r[7], dict) else json.loads(r[7] or "null")),
+            "created_by": r[8], "reason": r[9], "created_at": r[10],
+        }
+
+    def create_scheduled_change(self, change_id: str, target_type: str,
+                                payload: Dict[str, Any], effective_at: str,
+                                target_id: str = "", created_by: str = "",
+                                reason: str = "") -> Dict[str, Any]:
+        cur = self._cursor_factory()
+        try:
+            cur.execute(
+                "INSERT INTO scheduled_config_change (change_id, target_type, "
+                "target_id, payload, effective_at, status, created_by, reason) "
+                "VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s) RETURNING " +
+                ", ".join(self._SCHED_COLS),
+                (change_id, target_type, target_id, json.dumps(payload),
+                 effective_at, str(created_by or ""), str(reason or "")))
+            r = cur.fetchone()
+            self._commit(cur)
+            return self._sched_row(r)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    def list_scheduled_changes(self, target_type: Optional[str] = None,
+                               target_id: Optional[str] = None,
+                               status: Optional[str] = None,
+                               limit: int = 50) -> List[Dict[str, Any]]:
+        where, params = [], []
+        if target_type:
+            where.append("target_type = %s"); params.append(target_type)
+        if target_id:
+            where.append("target_id = %s"); params.append(target_id)
+        if status:
+            where.append("status = %s"); params.append(status)
+        sql = ("SELECT " + ", ".join(self._SCHED_COLS) +
+               " FROM scheduled_config_change ")
+        if where:
+            sql += "WHERE " + " AND ".join(where) + " "
+        sql += "ORDER BY effective_at LIMIT %s"
+        params.append(int(limit))
+        cur = self._cursor_factory()
+        try:
+            cur.execute(sql, tuple(params))
+            return [self._sched_row(r) for r in cur.fetchall()]
+        finally:
+            self._close(cur)
+
+    def get_scheduled_change(self, change_id: str) -> Optional[Dict[str, Any]]:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT " + ", ".join(self._SCHED_COLS) +
+                        " FROM scheduled_config_change WHERE change_id = %s",
+                        (change_id,))
+            r = cur.fetchone()
+            return self._sched_row(r) if r else None
+        finally:
+            self._close(cur)
+
+    def cancel_scheduled_change(self, change_id: str) -> bool:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("UPDATE scheduled_config_change SET status = 'CANCELLED' "
+                        "WHERE change_id = %s AND status = 'PENDING'", (change_id,))
+            changed = cur.rowcount
+            self._commit(cur)
+            return bool(changed)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    def due_scheduled_changes(self, now_iso: str,
+                               limit: int = 25) -> List[Dict[str, Any]]:
+        """Pending changes whose effective time has arrived, oldest first.
+
+        Oldest-first matters: if several changes for the same target come due
+        together, applying them in scheduled order is the only way the last one
+        wins for the right reason.
+        """
+        cur = self._cursor_factory()
+        try:
+            cur.execute("SELECT " + ", ".join(self._SCHED_COLS) +
+                        " FROM scheduled_config_change WHERE status = 'PENDING' "
+                        "AND effective_at <= %s ORDER BY effective_at LIMIT %s",
+                        (now_iso, int(limit)))
+            return [self._sched_row(r) for r in cur.fetchall()]
+        finally:
+            self._close(cur)
+
+    def mark_scheduled_applied(self, change_id: str,
+                               result: Optional[Dict[str, Any]] = None) -> bool:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("UPDATE scheduled_config_change SET status = 'APPLIED', "
+                        "applied_at = NOW(), result = %s "
+                        "WHERE change_id = %s AND status = 'PENDING'",
+                        (json.dumps(result or {}), change_id))
+            changed = cur.rowcount
+            self._commit(cur)
+            return bool(changed)
+        except Exception:
+            self._rollback(cur)
+            raise
+        finally:
+            self._close(cur)
+
+    def mark_scheduled_failed(self, change_id: str, reason: str) -> bool:
+        cur = self._cursor_factory()
+        try:
+            cur.execute("UPDATE scheduled_config_change SET status = 'FAILED', "
+                        "applied_at = NOW(), result = %s "
+                        "WHERE change_id = %s AND status = 'PENDING'",
+                        (json.dumps({"error": str(reason)[:500]}), change_id))
+            changed = cur.rowcount
+            self._commit(cur)
+            return bool(changed)
         except Exception:
             self._rollback(cur)
             raise
