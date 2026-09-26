@@ -49,14 +49,14 @@ settlement secrets. Never pass it with real provider credentials attached.
 
 ## B. Staging adapter (requires Redis)
 
-`staging/wsgi.py` is the adapter used by the Vercel deployment. It serves the
+`staging/wsgi.py` is the staging/UAT adapter. It serves the
 same game logic but keeps state in Redis and exposes `/api/v1/staging/*` test
 routes. It **refuses to serve under `APP_ENV=production`**.
 
 ```bash
 export APP_ENV=staging
 export REDIS_HOST=127.0.0.1 REDIS_PORT=6379
-export GAME_ADMIN_KEYS="dev-admin-key:superadmin"
+export GAME_ADMIN_KEYS="dev-admin-key:admin"
 python -m staging.wsgi
 # staging server   http://0.0.0.0:8000
 #   redis          127.0.0.1:6379   (required)
@@ -137,31 +137,43 @@ This is the real-money gate. A refusal lists exactly what is missing.
 
 ---
 
-## D. Vercel (staging)
+## D. Any host
 
-`vercel.json` maps `/api/*` to the serverless entrypoint `api/index.py`
-(10s max duration), which re-exports `staging.wsgi:app`. Static clients and
-master assets are served directly, with `no-store` on `/api/*`.
+The server is host-agnostic: it is a WSGI app plus one process with an
+attached WebSocket. Pick whichever fits the deployment.
 
-| Var | Value |
+| Host | Command |
 |---|---|
-| `APP_ENV` | `staging` |
-| `REDIS_HOST` / `REDIS_PORT` | Upstash host / `6379` |
-| `REDIS_USERNAME` / `REDIS_PASSWORD` | `default` / **secret** |
-| `REDIS_TLS` | `true` |
-| `REDIS_DB` | `0` |
-| `GAME_ADMIN_KEYS` | `op-<rand>:operator,ro-<rand>:auditor,admin-<rand>:admin,super-<rand>:superadmin` |
-| `COIN_CURRENCY` | `TEST` |
+| Local / a VM / any VPS | `python3 -m staging.wsgi` behind nginx, or the container in section C |
+| Embedded in the DearLive app | mount the repo and run `python3 -m games.teen_patti_pro.api`; the app talks to it over HTTP |
+| Serverless / FaaS | `api/index.py` exposes a WSGI callable; any WSGI adapter will serve it |
+| Zero-infrastructure demo | `python3 -m games.teen_patti_pro.api --confirmed` (no Redis, no keys) |
 
-```
-vercel build      # must pass; inspects .vercel/output
-vercel deploy     # preview URL
-vercel --prod     # only for an agreed promotion
-```
+Production runs the **provider API** (`games.teen_patti_pro.api`, HTTP 5002 +
+WebSocket 5003). The staging adapter (`staging.wsgi`, port 8000) is for
+staging/UAT and refuses to boot under `APP_ENV=production`.
 
-Note that the code reads `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`/`REDIS_TLS`
-(and optionally `REDIS_USERNAME`/`REDIS_DB`). It does **not** read
-`REDIS_URL`; that name appears only in tests.
+### Setting the base URL
+
+Nothing in this repository hardcodes a hostname. The clients resolve the API
+in this order:
+
+1. `?api=<origin>` on the game client URL, e.g.
+   `https://your-host/teen-patti-pro/?api=https://api.your-host`
+2. `VITE_API_BASE` at build time, for the `apps/*` frontends
+3. The page origin, which is the default
+
+So serving the API and the client from one host needs no configuration at
+all. Only a cross-origin setup needs step 1 or 2.
+
+The server also needs to know its own public address so it can build launch
+links: set `PROVIDER_PUBLIC_BASE_URL` to the externally reachable API origin.
+
+### TLS
+
+The app speaks plain HTTP and expects a reverse proxy to terminate TLS. Never
+expose 5002 or 5003 directly to the internet. The bundled `Dockerfile` plus an
+nginx container is the shortest path; see section C.
 
 ---
 
@@ -206,9 +218,9 @@ have no effect. See "Names that do not apply" below.
 | `REDIS_DB` | Redis logical database | no (`0`) |
 | `OPERATOR_PIN_HASH` | bcrypt hash of the operator PIN | yes to log in |
 | `OPERATOR_TOKEN_SECRET` | HS256 key for operator bearer tokens | yes |
-| `SUPERADMIN_PIN_HASH` | bcrypt hash of the superadmin PIN | yes to log in |
-| `SUPERADMIN_TOKEN_SECRET` | HS256 key for superadmin tokens | yes |
-| `GAME_ADMIN_KEYS` | `key:role` pairs → operator/auditor/admin/superadmin | yes |
+| `ADMIN_PIN_HASH` | bcrypt hash of the admin PIN (optional) | no |
+| `ADMIN_TOKEN_SECRET` | HS256 key for admin PIN sessions (optional) | no |
+| `GAME_ADMIN_KEYS` | `key:role` pairs → auditor/operator/admin | **yes** |
 | `PROVIDER_API_KEYS` | B2B HMAC keys (`key_id:secret`) | yes for the provider API |
 | `PROVIDER_PUBLIC_BASE_URL` | Public base URL used in launch links | recommended |
 | `SETTLEMENT_SIGNING_SECRET` | Signs settlement webhooks | production only |
@@ -323,7 +335,6 @@ gh secret set REDIS_PASSWORD         --body "$REDIS_PASSWORD"
 gh secret set OPERATOR_TOKEN_SECRET  --body "$(openssl rand -hex 32)"
 gh secret set SUPERADMIN_TOKEN_SECRET --body "$(openssl rand -hex 32)"
 gh secret set SETTLEMENT_SIGNING_SECRET --body "$(openssl rand -hex 32)"
-gh secret set VERCEL_TOKEN           --body "$VERCEL_TOKEN"
 ```
 
 PIN hashes are bcrypt, generated locally so the plaintext PIN never leaves the

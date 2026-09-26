@@ -25,7 +25,7 @@ curl "http://127.0.0.1:5002/demo/session?room=c-room&player=dev"
 
 # B. staging adapter — needs Redis
 export APP_ENV=staging REDIS_HOST=127.0.0.1 REDIS_PORT=6379
-export GAME_ADMIN_KEYS="dev-admin-key:superadmin"
+export GAME_ADMIN_KEYS="dev-admin-key:admin"
 python -m staging.wsgi               # http://0.0.0.0:8000
 ```
 
@@ -52,8 +52,8 @@ The suite is hermetic — it does not need Redis, a database, or network.
 | `common/` | config, envelopes, errors, session/token stores |
 | `provider/` | B2B contract: router, HMAC auth, ledger, spec |
 | `integrations/` | store factories, Redis impls, DearLive wallet |
-| `staging/wsgi.py` | staging/UAT WSGI adapter (Vercel) |
-| `api/index.py` | Vercel serverless entry, re-exports the adapter |
+| `staging/wsgi.py` | staging/UAT WSGI adapter (`python3 -m staging.wsgi`) |
+| `api/index.py` | generic WSGI entry for serverless hosts |
 | `tools/` | spec generator, browser QA, asset pipeline |
 
 ## Regenerating the API spec

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { apiUrl } from '../config/apiBase';
 
 interface WalletState {
   balance: number;
@@ -16,7 +17,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const fetchBalance = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE || 'https://dearlive-games.vercel.app'}/api/v1/players/me/balance`, {
+      const response = await fetch(apiUrl(`/api/v1/players/me/balance`), {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('player_session_token')}`,
         },

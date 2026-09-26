@@ -1,9 +1,9 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://dearlive-games.vercel.app';
+import { API_BASE, apiUrl } from '../config/apiBase';
 
 export async function api<T>(endpoint: string, options: RequestInit = {}): Promise<any> {
-  const url = `${import.meta.env.VITE_API_BASE || 'https://dearlive-games.vercel.app'}${endpoint}`;
+  const url = apiUrl(endpoint);
   
-  const response = await fetch(endpoint.startsWith('http') ? endpoint : `${import.meta.env.VITE_API_BASE || 'https://dearlive-games.vercel.app'}${endpoint}`, {
+  const response = await fetch(endpoint.startsWith('http') ? endpoint : apiUrl(endpoint), {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -28,7 +28,7 @@ export const api = {
 };
 
 async function apiRequest(method: string, endpoint: string, data?: any) {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE || 'https://dearlive-games.vercel.app'}${endpoint}`, {
+  const response = await fetch(apiUrl(endpoint), {
     method,
     headers: {
       'Content-Type': 'application/json',

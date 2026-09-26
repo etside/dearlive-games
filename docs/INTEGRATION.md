@@ -56,7 +56,7 @@ renders game tiles from the catalog; the game source supplies metadata only.
 | Currency | `COIN_CURRENCY` (default `COIN`) | integer minor units everywhere |
 | Webhooks | `SETTLEMENT_WEBHOOK_URL`, `SETTLEMENT_SIGNING_SECRET` | DearLive receiver URL |
 | Game DB | `DATABASE_URL` | game records only (no balances) |
-| Admin | `GAME_ADMIN_KEYS=key:role,...` | roles `admin|superadmin` |
+| Admin | `GAME_ADMIN_KEYS=key:role,...` | roles `admin` (top), `operator`, `auditor` |
 
 Validate prod: `Settings.validate_for_production()` (all above required).
 
@@ -129,7 +129,7 @@ transport-agnostic and map 1:1 to Socket.IO. Full map: `docs/realtime.md`.
 - Players: `Authorization: Bearer <session_id>` (issued by token redeem).
   Unknown/missing → `401 UNAUTHENTICATED`.
 - Admin/operator: `X-Admin-Key: <key>` mapped to roles via `GAME_ADMIN_KEYS`
-  (`admin`, `superadmin`) + RBAC matrix (`admin/api.py`: config, rounds,
+  (`admin`, `operator`, `auditor`) + RBAC matrix (`admin/api.py`: config, rounds,
   rooms, players/bets/results/settlements/audit view, webhooks, maintenance).
   No game action can force wins/losses.
 - DearLive upstream calls: `X-Api-Key` + `X-Client-Id`, Bearer client secret

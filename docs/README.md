@@ -28,7 +28,7 @@ Start at the [top-level README](../README.md) for the 5-minute quickstart.
 
 | Doc | Contents |
 |---|---|
-| [DEPLOYMENT.md](DEPLOYMENT.md) | local, Docker, Vercel, production |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | local, Docker, any host, base URL, production |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | layout, tests, spec generation |
 | [SECURITY.md](SECURITY.md) | threat model, signing, known gaps |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | common failures |

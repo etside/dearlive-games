@@ -2,7 +2,7 @@
 
 Envelope: `{success, code, message, data, serverTime, requestId}` (serverTime authoritative).
 Auth: player `Authorization: Bearer <session_id>` (any game's session accepted
-cross-game); admin `X-Admin-Key` (+ RBAC matrix; config PUT = superadmin only).
+single game); admin `X-Admin-Key` (+ RBAC matrix; config PUT = admin only).
 Bets: `Idempotency-Key` header (or `idempotencyKey` body field for tables clients).
 Lifecycle: `UPCOMING → BETTING_OPEN → BETTING_CLOSED → RESULT_PROCESSING →
 RESULT → SETTLED → CLOSED`. Full contract: `docs/INTEGRATION.md`,
@@ -24,7 +24,7 @@ machine spec: `api/openapi.yaml`, traceability: `docs/traceability.md`.
 | GET | `/api/v1/games/{gameId}/tables/{tableId}/state` | G3 table state (players, pots, timer, card visibility) |
 | POST | `/api/v1/games/{gameId}/rooms/{room}/rounds/start\|close\|result\|settle` | round control (admin) |
 | GET | `/api/v1/admin/games` | game inventory (admin) |
-| GET/PUT | `/api/v1/admin/games/{gameId}/config` | game config read (admin) / update (superadmin) |
+| GET/PUT | `/api/v1/admin/games/{gameId}/config` | game config read (admin) / update (admin) |
 
 ## Provider API (B2B, HMAC-signed)
 

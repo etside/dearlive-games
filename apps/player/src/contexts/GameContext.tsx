@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { apiUrl } from '../config/apiBase';
 
 interface Game {
   game_code: string;
@@ -34,7 +35,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const fetchGames = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE || 'https://dearlive-games.vercel.app'}/api/v1/games`);
+      const response = await fetch(apiUrl(`/api/v1/games`));
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data?.games) {

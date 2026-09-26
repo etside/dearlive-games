@@ -13,7 +13,7 @@ export default defineConfig({
     port: 3001,
     proxy: {
       '/api': {
-        target: 'https://dearlive-games.vercel.app',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5002',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api'),
       },

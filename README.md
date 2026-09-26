@@ -98,7 +98,7 @@ python -m pytest -q                 # 265 passed, 1 skipped
 | [INTEGRATION.md](docs/INTEGRATION.md) | platform ↔ games contract |
 | [PROVIDER-INTEGRATION.md](docs/PROVIDER-INTEGRATION.md) | B2B HMAC API guide |
 | [IDEMPOTENCY.md](docs/IDEMPOTENCY.md) | keys, retries, error codes |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | local, Docker, Vercel, production |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | local, Docker, any host, base URL, production |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | layout, tests, spec generation |
 | [SECURITY.md](docs/SECURITY.md) | threat model, signing, known gaps |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | common failures |
