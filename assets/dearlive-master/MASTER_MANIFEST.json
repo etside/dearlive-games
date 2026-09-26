@@ -2,12 +2,6 @@
   "type": "reconstructed-master-pack",
   "files": [
     "README.md",
-    "source-reference/card_reference.png",
-    "source-reference/chips_reference.png",
-    "source-reference/icons_reference.png",
-    "source-reference/timer_reference.png",
-    "source-reference/winner_reference.png",
-    "source-reference/video_audio_reference.wav",
     "teen-patti-pro/lottie/card_deal.json",
     "teen-patti-pro/lottie/win_fireworks.json",
     "teen-patti-pro/lottie/timer_pulse.json",

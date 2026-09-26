@@ -944,6 +944,30 @@ class Handler(BaseHTTPRequestHandler):
                 return self.ok({"player_id": balance.player_id,
                                 "available": balance.available,
                                 "currency": balance.currency})
+            if path == "/api/v1/wallet/transactions":
+                # SRS section 9: an immutable ledger, corrections made by
+                # compensating transactions rather than edits. The statement is
+                # served by whichever wallet the deployment uses; a client
+                # wallet that exposes no statement answers 501 rather than an
+                # empty list, because an empty list reads as "no activity" and
+                # would hide a missing integration.
+                identity = self.session_identity_any()
+                if identity is None:
+                    return self.send(401, E.err("Bearer session required", E.E_AUTH))
+                svc = self.game_service(identity.get("game_id", "teen-patti-pro"))
+                if svc is None:
+                    return self.send(404, E.err("Unknown game", E.E_NOT_FOUND))
+                limit = _int_arg(qs, "limit", 50, 1, 500)
+                try:
+                    rows = svc.wallet.transactions(identity["player_id"], limit)
+                except NotImplementedError:
+                    return self.send(501, E.err(
+                        "This wallet does not expose a transaction statement. "
+                        "Implement GET /operator/transactions on the provider "
+                        "wallet, or call the platform's own statement API.",
+                        E.E_VALIDATION))
+                return self.ok({"player_id": identity["player_id"],
+                                "transactions": rows, "count": len(rows)})
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rounds/current", path)
             if m:
                 room = qs.get("room", ["default"])[0]
@@ -1774,8 +1798,11 @@ def _start_config_sweeper(store, interval_s: int = 60):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=int(__import__("os").environ.get("GAME_API_PORT", "5002")))
+    ap.add_argument("--port", type=int, default=None,
+                    help="HTTP port (default: GAME_API_PORT, or 5002; 8000 in demo mode)")
     ap.add_argument("--host", default=__import__("os").environ.get("GAME_API_HOST", "127.0.0.1"))
+    ap.add_argument("--demo", action="store_true",
+                    help="Zero-dependency demo: in-memory stores, no Postgres, no Redis")
     ap.add_argument("--confirmed", action="store_true",
                     help="Run with TBC rules confirmed (dev/demo only, NOT real money)")
     ap.add_argument("--no-sweeper", action="store_true",
@@ -1788,10 +1815,22 @@ def main():
     from common.config import Settings
     from integrations import build_stores
     settings = Settings.from_env()
-    if args.port:
-        pass
-    else:
+    if args.demo:
+        # The demo is the one mode that must not silently acquire a dependency.
+        # Force the in-memory stores and a non-production APP_ENV so a
+        # DATABASE_URL left over in the shell cannot make it half-real.
+        os.environ["APP_ENV"] = "sandbox"
+        os.environ.pop("DATABASE_URL", None)
+        os.environ["DEMO_MODE"] = "1"
+        if args.port is None:
+            args.port = int(os.environ.get("GAME_DEMO_PORT", "8000"))
+        # Demo rules are always confirmed: a demo that refused to deal because
+        # the rules are TBC would be useless, and no real money is involved.
+        args.confirmed = True
+    if args.port is None:
         args.port = settings.api_port
+    if args.demo and settings.is_production():
+        raise SystemExit("Refusing to start --demo with APP_ENV=production")
     cfg = TeenPattiConfig(confirmed=args.confirmed) if args.confirmed else DEFAULT_CONFIG
     if settings.is_production():
         errs = settings.validate_for_production()

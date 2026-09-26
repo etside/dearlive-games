@@ -15,6 +15,46 @@ and what backing stores you point it at.
 
 ---
 
+## Schema alignment: legacy names vs the SRS data model
+
+The SRS (section 13) names 16 tables. This package's migrations create the SRS
+names in **007**, alongside the names earlier migrations (001-006) already
+introduced. Nothing was rewritten, so an already-migrated staging database
+keeps working.
+
+Two tables are named identically in both: `player`, `wallet_transaction`,
+`profit_risk_config`, `player_override`.
+
+| SRS section 13 name | Pre-existing table | Notes |
+| --- | --- | --- |
+| `player` | `player` (002) | same table |
+| `wallet_account` | `wallet` (002) | SRS splits account from balance; the legacy table holds both |
+| `wallet_transaction` | `wallet_transaction` (002) | same table, `DECIMAL(18,4)`, immutability trigger from 002 |
+| `game` | — | created in 007 |
+| `game_configuration` | — | created in 007; current effective config |
+| `config_version` | — | created in 007; append-only history + 90-day rollback window |
+| `game_round` | — | created in 007; `round_no` unique per game, stores `seed_hex` + `deck_commitment` |
+| `game_option` | — | created in 007; per-game admin-editable rules as key/value |
+| `game_bet` | `bets` (in-memory store) | created in 007; `bet_id` PK, partial unique on `idempotency_key` |
+| `game_result` | — | created in 007; `round_id` UNIQUE, stores the BR-04 audit material |
+| `game_settlement` | `settlements` (002/004) | created in 007 with `bet_id` UNIQUE; the legacy table gained the same constraint in 004 |
+| `admin_audit` | `superadmin_audit` (002) | created in 007; the `superadmin` **role** was removed, the audit table was not |
+| `profit_risk_config` | `profit_risk_config` (005) | same table |
+| `player_override` | `player_override` (005) | same table |
+| `token_package` | `coin_config` (002) | created in 007 |
+
+**Reading through today.** The runtime still reads and writes the legacy tables
+(`common/admin_store.py`, `provider/`). The 007 tables are populated going
+forward by the round writer; historical rows are deliberately **not**
+backfilled, because inventing `game_round` rows for rounds that were settled
+in memory would put unverified amounts into an auditable table.
+
+**What this costs.** Until the runtime is switched over, there are two names
+for some concepts and a reader has to know which is live. That is a real cost
+and it is tracked rather than hidden: the switch-over is a separate change,
+because it touches money paths and should be reviewed on its own rather than
+smuggled in behind a migration.
+
 ## A. Zero-dependency demo
 
 No Redis, no database, no provider keys, no `.env`. Everything runs in one

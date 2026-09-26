@@ -29,6 +29,38 @@ DearLive auth/player/room/wallet APIs  [CLIENT API REQUIRED]
   status=planned (no money paths until rules confirmed). Old ids kept as aliases.
 - `admin/api.py` — RBAC matrix + audited() wrapper. `tools/jev_review.py` — review harness.
 
+## Data model: which table is which
+
+```
+                 game  (007)  one row: teen-patti-pro
+                   |  config_version
+        game_configuration / game_option
+                   |
+        game_round (007)  round_no unique per game, seed_hex + deck_commitment
+              /        \
+    game_bet (007)   game_result (007)
+         |                  |
+         +---- game_settlement (007)  bet_id UNIQUE, state incl. settled_pending
+```
+
+The SRS names are created in `db/migrations/007_spec_tables.up.sql`. Earlier
+migrations created a parallel set of names (`wallet`, `coin_config`,
+`superadmin_audit`, `settlements`); the full mapping, and which one the runtime
+reads today, is in [DEPLOYMENT.md](DEPLOYMENT.md#schema-alignment-legacy-names-vs-the-srs-data-model).
+
+Two invariants are enforced by the database rather than by application code,
+because application code cannot enforce them across processes or restarts:
+
+- `game_settlement.bet_id` UNIQUE — one settlement per bet, so no double payout
+  (BR-07). The legacy `settlements` table has the same constraint from 004.
+- `game_bet.idempotency_key` unique where present — a retried request cannot
+  produce a second bet (BR-06). Partial, so a client that sends no key does not
+  collide with other such clients.
+
+`admin_audit` is append-only: `REVOKE UPDATE, DELETE` is issued in 007. That
+closes the accidental-mutation case; a role that genuinely lacks UPDATE/DELETE
+is the client's to configure, and this is stated rather than implied.
+
 ## Key decisions (all JEV-reviewed)
 1. Server-authoritative everything financial; client renders snapshots only.
 2. Per-room mutex serializes bet-decision vs close; decision_time invariant.

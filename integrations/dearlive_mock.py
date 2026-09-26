@@ -59,8 +59,10 @@ class MockDearLiveWallet(WalletAdapter):
             return self._keys[key]
         self._seq += 1
         txn = TxnRef(f"DL-TXN-{self._seq:08d}", key)
-        self.ledger.append({"txn_id": txn.txn_id, "kind": kind, "player": player_id,
-                            "amount": amount, "ref": ref, "at": int(time.time() * 1000)})
+        self.ledger.append({"txn_id": txn.txn_id, "kind": kind,
+                            "player": player_id, "amount": amount, "ref": ref,
+                            "idempotency_key": key,
+                            "at": int(time.time() * 1000)})
         self._keys[key] = txn
         return txn
 
@@ -92,6 +94,38 @@ class MockDearLiveWallet(WalletAdapter):
             return self._keys[idempotency_key]
         # Compensating entry; caller re-credits the stake via credit().
         return self._record("void", player_id, 0, ref, idempotency_key)
+
+    def transactions(self, player_id: str, limit: int = 50) -> List[dict]:
+        """Newest first, shaped like the MemoryWallet statement.
+
+        The mock's ledger uses the DearLive column names (kind/player/at) while
+        the in-memory wallet uses the SRS names (type/player_id/created_at).
+        Both are mapped to the SRS shape here so a client sees one contract
+        regardless of which wallet a deployment is running.
+        """
+        limit = max(1, min(int(limit or 50), 500))
+        kind_to_type = {"debit": "BET_DEBIT", "credit": "WIN_CREDIT",
+                        "void": "REFUND"}
+        rows = [r for r in self.ledger if r["player"] == player_id]
+        return [{
+            "txn_id": r["txn_id"],
+            "player_id": r["player"],
+            "type": kind_to_type.get(r["kind"], r["kind"].upper()),
+            "amount": r["amount"],
+            "ref": r["ref"],
+            "idempotency_key": r.get("idempotency_key", ""),
+            "created_at": r["at"],
+        } for r in reversed(rows)][:limit]
+
+    def verify_balance(self, player_id: str) -> dict:
+        stored = self.balances.get(player_id, 0)
+        computed = sum(r["amount"] for r in self.ledger
+                       if r["player"] == player_id)
+        return {"player_id": player_id, "balance": stored,
+                "ledger_sum": computed, "reconciled": stored == computed,
+                "transaction_count": sum(1 for r in self.ledger
+                                         if r["player"] == player_id),
+                "difference": stored - computed}
 
 
 class MockDearLiveTokens(TokenStore):

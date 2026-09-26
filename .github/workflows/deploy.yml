@@ -1,0 +1,171 @@
+# Deploy (client-driven)
+#
+# INERT BY DEFAULT. This workflow does nothing at all until the client sets
+# DEPLOY_HOST in their repository secrets. Until then every job is skipped and
+# the run is a no-op, so it is safe to ship in the package.
+#
+# Why a deploy workflow at all, when the package is host-agnostic: the SRS
+# asks for one, and a client who wants push-to-deploy should not have to write
+# CI themselves. It deploys over plain SSH to a host *they* nominate, with
+# *their* secrets. It does not assume a cloud provider, a container registry,
+# or any particular hosting vendor.
+#
+# ---------------------------------------------------------------------------
+# Required repository secrets (all supplied by the client, none committed here)
+# ---------------------------------------------------------------------------
+#   DEPLOY_HOST       SSH hostname or IP.  Absent -> every job skips.
+#   DEPLOY_USER       SSH user, e.g. "deploy"
+#   DEPLOY_SSH_KEY    Private SSH key for that user
+#   DEPLOY_PATH       Absolute path on the host to deploy into
+#
+# Optional:
+#   DEPLOY_PORT       SSH port (default 22)
+#   GAME_API_PORT     Port the API listens on for the post-deploy health check
+#                     (default 5002)
+#
+# The client also sets DATABASE_URL, REDIS_*, JWT/HMAC secrets and TLS material
+# in their own server environment. Those are never passed through CI, never
+# echoed, and never written to the runner's disk by this workflow.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys overlap: a half-finished deploy that gets interrupted by
+# the next push is how you end up with a mixed-version build on the host.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Check deploy configuration
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Decide whether this repository is set up to deploy
+        id: check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "${DEPLOY_HOST}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::DEPLOY_HOST is not set on this"
+            echo "::notice::repository. Nothing was deployed. See the Required"
+            echo "::notice::repository secrets block in .github/workflows/deploy.yml."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify before deploying
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Run the test suite
+        # A deploy is blocked by a failing test. The suite needs no database
+        # and no Redis, which is the point of the package.
+        run: python -m pytest -q
+
+  deploy:
+    name: Deploy to host
+    needs: [preflight, verify]
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Host keys are pinned by the client, not accepted blindly: without
+          # this, the first connection trusts whatever answers, which is how a
+          # deploy gets redirected to an attacker's host.
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: rsync the package to the host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          # Everything the client must not have on the host, or must not have
+          # overwritten: VCS metadata, caches, and local env files.
+          EXCLUDES=(
+            --exclude '.git'
+            --exclude '__pycache__'
+            --exclude '*.pyc'
+            --exclude '.pytest_cache'
+            --exclude '.env'
+            --exclude '.env.*'
+            --exclude 'node_modules'
+          )
+          mkdir -p /tmp/stage && rm -rf /tmp/stage/*
+          rsync -az --delete "${EXCLUDES[@]}" ./ /tmp/stage/
+          ssh -p "${DEPLOY_PORT:-22}" -i ~/.ssh/id_deploy \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p '${DEPLOY_PATH}'"
+          rsync -az --delete "${EXCLUDES[@]}" /tmp/stage/ \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+          rm -rf /tmp/stage
+
+      - name: Restart the service and check it answers
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GAME_API_PORT: ${{ secrets.GAME_API_PORT }}
+        run: |
+          # The restart command is the client's to define, because the unit
+          # name is a property of their host and not of this package.
+          RESTART_CMD='${{ secrets.DEPLOY_RESTART_CMD }}'
+          if [ -z "$RESTART_CMD" ]; then
+            echo "::error::DEPLOY_RESTART_CMD is not set; cannot restart the service"
+            exit 1
+          fi
+          ssh -p "${DEPLOY_PORT:-22}" -i ~/.ssh/id_deploy \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && ${RESTART_CMD}"
+
+          PORT="${GAME_API_PORT:-5002}"
+          # Poll rather than sleep-and-hope: a service that binds its port in
+          # 200ms and one that takes 20s should both be handled.
+          for attempt in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+              "http://127.0.0.1:${PORT}/health" || echo 000)
+            if [ "$CODE" = "200" ]; then
+              echo "API healthy after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy on port ${PORT}"
+          exit 1
+
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

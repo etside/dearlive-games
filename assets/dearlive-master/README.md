@@ -7,7 +7,6 @@ These are **reconstructed master-equivalent development assets**, manufactured f
 - Real GIF files reconstructed from supplied visual references.
 - Real Lottie JSON animation files generated as editable vector-animation masters.
 - Real WAV files generated from scratch for UI/game sound effects.
-- `source-reference/video_audio_reference.wav` contains the audio extracted from the supplied MP4 and is reference material only.
 
 ## Animation intent
 - `card_deal`: card entrance/deal motion

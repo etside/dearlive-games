@@ -19,6 +19,17 @@ def build_stores():
     from common.idempotency import MemoryIdempotencyStore
     from common.session import MemorySessionStore, MemoryTokenStore
 
+    # DEMO_MODE forces every in-memory store regardless of what is in the
+    # environment. Without this, a REDIS_HOST left over in the shell would
+    # quietly make "the zero-dependency demo" depend on Redis -- and fail on a
+    # laptop that does not have it running.
+    if _env("DEMO_MODE", "").strip().lower() in ("1", "true", "yes"):
+        from integrations.dearlive_mock import (MockDearLiveSessions,
+                                                MockDearLiveTokens,
+                                                MockDearLiveWallet)
+        return (MockDearLiveWallet(), MockDearLiveTokens(),
+                MockDearLiveSessions(), MemoryIdempotencyStore(),
+                "demo(in-memory)")
     use_redis = bool(_env("REDIS_HOST", ""))
     use_http_wallet = bool(_env("WALLET_BASE_URL", _env("DEARLIVE_API_BASE_URL", "")))
     if not use_redis and not use_http_wallet:
