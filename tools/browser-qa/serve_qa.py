@@ -27,9 +27,6 @@ from common.config import Settings  # noqa: E402
 from games.teen_patti_pro.api import Handler  # noqa: E402
 from games.teen_patti_pro.config import TeenPattiConfig  # noqa: E402
 from games.teen_patti_pro.service import TeenPattiService  # noqa: E402
-from games.wheel_common.configs import (  # noqa: E402
-    baby_king_config, greedy_config, greedy_lion_config)
-from games.wheel_common.service import WheelService  # noqa: E402
 from integrations import build_stores  # noqa: E402
 
 settings = Settings.from_env()
@@ -39,20 +36,13 @@ Handler.svc = TeenPattiService(config=cfg, wallet=wallet, tokens=tokens,
                                sessions=sessions, idempotency=idem,
                                webhook_secret="dev-secret")
 Handler.svc.admin_keys_note = note + " +qa-faucet"
-for _mkcfg in (greedy_config, baby_king_config, greedy_lion_config):
-    _wc = _mkcfg()
-    _wc.confirmed = True
-    _w, _t, _s, _i, _n = build_stores()
-    Handler.wheels[_wc.game_id] = WheelService(
-        config=_wc, wallet=_w, tokens=_t, sessions=_s, idempotency=_i,
-        webhook_secret="dev-secret")
 Handler.game_enabled = {}
 Handler.game_packages = {}
 Handler.game_labels = {}
 
-# QA faucet: fund test players on every wallet (REST + each wheel service).
+# QA faucet: fund the test players.
 for pid, amount in QA_PLAYERS.items():
-    for w in [wallet] + [svc.wallet for svc in Handler.wheels.values()]:
+    for w in [wallet]:
         try:
             w.fund(pid, amount)
         except AttributeError:
@@ -117,11 +107,21 @@ class QAHandler(Handler):
             player, room, game = (body.get("player", "qa-player"),
                                   body.get("room", "qa-room"),
                                   body.get("game", "teen-patti-pro"))
-            # Resolve delivery aliases to the canonical service/game.
-            canonical = {"monkey-wheel": "greedy-monkey",
-                         "monkey_wheel": "greedy-monkey"}.get(game, game)
-            svc = Handler.wheels.get(canonical, Handler.svc) if canonical != "teen-patti-pro" else Handler.svc
-            tok = svc.tokens.mint(player, room, canonical).token
+            # One game ships in this package. A request naming anything else
+            # is refused rather than quietly served as Teen Patti, which would
+            # make a QA run against the wrong game look like it passed.
+            if game != "teen-patti-pro":
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                payload = _json.dumps(
+                    {"error": f"unknown game {game!r}; only teen-patti-pro "
+                              "is shipped in this package"}).encode()
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            svc = Handler.svc
+            tok = svc.tokens.mint(player, room, "teen-patti-pro").token
             payload = _json.dumps({"launch_token": tok}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

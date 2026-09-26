@@ -17,7 +17,7 @@ needed to try it, build it, or run its tests.
 | **Game** | Teen Patti Pro — one game. Not traditional Teen Patti: no Blind, Chaal, Pack, Show or Sideshow. Three seats, three cards, highest approved hand takes the pot. |
 | **API** | REST over HTTP, plus a WebSocket feed on the same process and the same game state. |
 | **Admin** | Operator console at `/admin`, served by the same process: dashboard, profit & risk, player overrides, token packages, game rules, enable/disable, audit log, reports, settings, scheduling. |
-| **Frontend** | Canvas game client, lobby, and a rules page. WebView-ready — no build step, no bundler. |
+| **Frontend** | Canvas game client with a DOM HUD (back, sound, help, menu, round pill, connection state, measured latency), lobby, and a rules page. Loading / empty / error / reconnecting states are distinct. WebView-ready — no build step, no bundler. |
 | **Demo** | `--demo` runs the whole thing in memory: no Postgres, no Redis, no keys. |
 | **Migrations** | Additive SQL, applied by you against your own database. |
 

@@ -145,6 +145,87 @@
     announce(text);
   }
   function clearToast() { if (toastTimer) clearTimeout(toastTimer); showErr(''); }
+
+  // ---- HUD (UI-01 header, UI-02 round pill, UI-11 connection, UI-12 states) ----
+  //
+  // These live in the DOM, not on the canvas, so they are real buttons:
+  // focusable, labelled, and announced. The canvas keeps the table.
+  const hud = {
+    roundNo: document.getElementById('roundNo'),
+    room: document.getElementById('roomName'),
+    conn: document.getElementById('connPill'),
+    connText: document.getElementById('connText'),
+    latency: document.getElementById('latency'),
+    veil: document.getElementById('veil'),
+    veilTitle: document.getElementById('veilTitle'),
+    veilText: document.getElementById('veilText'),
+    veilSpin: document.getElementById('veilSpin'),
+    veilBtn: document.getElementById('veilBtn')
+  };
+
+  function setRoundPill(roundNo, room) {
+    if (hud.roundNo) hud.roundNo.textContent = roundNo ? ('#' + roundNo) : '--';
+    if (hud.room) hud.room.textContent = room ? String(room).slice(0, 12) : '';
+  }
+
+  function setConnection(state, text) {
+    if (hud.conn) hud.conn.dataset.conn = state;
+    if (hud.connText) hud.connText.textContent = text || state;
+  }
+
+  /* Latency is measured, never estimated: a WebSocket ping round trip, falling
+     back to the REST round trip when the socket is down. Showing a made-up
+     number is worse than showing none, so an unmeasured value renders empty. */
+  function setLatency(ms) {
+    if (!hud.latency) return;
+    if (ms === null || ms === undefined || isNaN(ms)) {
+      hud.latency.textContent = '';
+      hud.latency.dataset.state = 'ok';
+      return;
+    }
+    hud.latency.textContent = ms + 'ms';
+    hud.latency.dataset.state = ms > 400 ? 'bad' : (ms > 180 ? 'warn' : 'ok');
+  }
+
+  /* One veil for loading, empty and error. `kind` drives the affordance:
+     loading gets a spinner and no button, empty explains itself, error offers
+     a retry -- because a dead end with no action is the worst of the three. */
+  // An empty table is not an error and not still-loading: say which one it is,
+  // because "Connecting" over a table with no players reads as a hang.
+  function setVeilForState(snap) {
+    if (!snap || !snap.round) {
+      setVeil('empty', 'Waiting for players',
+        'No round is running at this table yet. The next one starts automatically.');
+      return;
+    }
+    setVeil(null);
+  }
+
+  function setVeil(kind, title, text, onRetry) {
+    if (!hud.veil) return;
+    if (!kind) { hud.veil.dataset.show = '0'; return; }
+    hud.veil.dataset.show = '1';
+    if (hud.veilTitle) hud.veilTitle.textContent = title || '';
+    if (hud.veilText) hud.veilText.textContent = text || '';
+    if (hud.veilSpin) hud.veilSpin.style.display = kind === 'loading' ? 'block' : 'none';
+    if (hud.veilBtn) {
+      if (kind === 'error' && onRetry) {
+        hud.veilBtn.style.display = 'block';
+        hud.veilBtn.onclick = onRetry;
+      } else {
+        hud.veilBtn.style.display = 'none';
+        hud.veilBtn.onclick = null;
+      }
+    }
+  }
+
+  function measureLatency() {
+    const t0 = Date.now();
+    fetch(API + '/health', { cache: 'no-store' })
+      .then(function () { setLatency(Date.now() - t0); })
+      .catch(function () { setLatency(null); });
+  }
+
   function status(text, kind) {
     S.msg = text || '';
     S.msgKind = kind || 'info';
@@ -941,6 +1022,8 @@
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       refreshAppearances(S.snap);
+      setRoundPill(S.snap && S.snap.round_no, ROOM);
+      setVeilForState(S.snap);
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
       
       // Round reset: animate cards flying back to deck before new deal
@@ -1086,15 +1169,53 @@
     if (k === 'm' || k === 'M') { S.panel = 'menu'; e.preventDefault(); return; }
     if (k === 's' || k === 'S') { toggleSound(); status('Sound ' + (S.sound ? 'on' : 'off'), 'info'); e.preventDefault(); }
   });
+  // Header wiring (UI-01). Each button drives the same code path as its
+  // keyboard shortcut, so there is one implementation of "toggle sound"
+  // rather than two that can drift.
+  function wireHud() {
+    const on = function (id, fn) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', function (e) { e.preventDefault(); fn(); });
+    };
+    on('hBack', function () {
+      // Prefer a real history entry so Back does not leave the game; fall back
+      // to the lobby, which is where a player without history actually is.
+      if (window.history.length > 1) window.history.back();
+      else window.location.href = './lobby.html';
+    });
+    on('hSound', function () {
+      toggleSound();
+      const b = document.getElementById('hSound');
+      if (b) b.setAttribute('aria-pressed', S.sound ? 'true' : 'false');
+      status('Sound ' + (S.sound ? 'on' : 'off'), 'info');
+    });
+    on('hHelp', function () { S.panel = S.panel === 'help' ? null : 'help'; });
+    on('hMenu', function () { S.panel = S.panel === 'menu' ? null : 'menu'; });
+    const sb = document.getElementById('hSound');
+    if (sb) sb.setAttribute('aria-pressed', S.sound ? 'true' : 'false');
+    setRoundPill(null, ROOM);
+    setConnection('connecting', 'connecting');
+    setVeil('loading', 'Connecting', 'Finding your table.');
+  }
+
   function connect() {
     if (!SESSION) {
       status('No session — open via the launch URL from your operator, or view demo.html', 'error');
+      setConnection('offline', 'no session');
+      setVeil('error', 'No session',
+        'This table needs a launch session. Open it from the lobby, or view demo.html.',
+        function () { window.location.reload(); });
       return;
     }
     if (!WS) {
       S.connected = true; S._everConnected = true;
       window.__tppAnim.AnimLayer.hardReset();
       startPolling();
+      // The HUD has to say "polling", not "connecting": polling is a working
+      // connection, just not a live one, and leaving it on "connecting" tells a
+      // perfectly playable table that it is broken.
+      setConnection('polling', 'polling');
+      measureLatency();
       refresh();
       refreshWallet();
       return;
@@ -1103,6 +1224,10 @@
     try { ws = new WebSocket(WS); } catch (e) { startPolling(); scheduleWsRetry(); return; }
     ws.onopen = () => {
       S.connected = true; S._everConnected = true;
+      setConnection('live', 'live');
+      setVeil(null);
+      measureLatency();
+      setInterval(measureLatency, 15000);
       stopRoundPolling();
       window.__tppAnim.AnimLayer.hardReset();
       ws.send(JSON.stringify({ action: 'subscribe', room: ROOM, session: SESSION }));
@@ -1111,7 +1236,12 @@
     ws.onmessage = ev => {
       try {
         const m = JSON.parse(ev.data);
-        if (m.kind === 'snapshot' && m.data) { S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now(); refreshAppearances(m.data); }
+        if (m.kind === 'snapshot' && m.data) {
+          S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now();
+          refreshAppearances(m.data);
+          setRoundPill(m.data.round_no, ROOM);
+          setVeil(null);
+        }
         else if (m.kind === 'event' && m.data) {
           if (m.data.seq > S.lastSeq) S.lastSeq = m.data.seq;
           // Handle specific event types for animations
@@ -1164,9 +1294,24 @@
       startPolling();
       window.__tppAnim.AnimLayer.hardReset();
       scheduleWsRetry();
+      // Reconnecting is not the same as offline: polling still works, so the
+      // table stays playable and the player is told the truth about why the
+      // socket went away.
+      if (S._everConnected) {
+        setConnection('polling', 'polling');
+        setVeil(null);
+        setLatency(null);
+        measureLatency();
+      } else {
+        setConnection('offline', 'offline');
+        setVeil('error', 'Cannot reach the table',
+          'The connection dropped before it was established.',
+          function () { window.location.reload(); });
+      }
     };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* noop */ } };
     setInterval(() => { try { ws.readyState === 1 && ws.send(JSON.stringify({ action: 'ping' })); } catch (e) { /* noop */ } }, 25000);
   }
+  wireHud();
   refresh(); connect(); requestAnimationFrame(draw);
 })();

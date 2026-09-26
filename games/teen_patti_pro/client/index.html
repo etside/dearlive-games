@@ -31,6 +31,61 @@
 
   /* Status toast. Errors persist until the next successful action; transient
      messages fade on their own. Sized and contrasted to stay legible. */
+  /* UI-01 header, UI-02 round pill, UI-11 connection, UI-12 states.
+     Kept in the DOM rather than painted on the canvas so they are real
+     buttons: focusable, labelled, and reachable by a screen reader. */
+  .hud{position:fixed;top:calc(var(--sat) + 8px);left:calc(var(--sal) + 8px);
+    right:calc(var(--sar) + 8px);z-index:9;display:flex;align-items:flex-start;
+    justify-content:space-between;gap:8px;pointer-events:none}
+  .hud > *{pointer-events:auto}
+  .hud-left,.hud-right{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .iconbtn{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+    background:rgba(8,12,24,.82);border:1px solid rgba(255,255,255,.16);
+    color:#e8eefc;font-size:1.05rem;cursor:pointer;padding:0;
+    -webkit-tap-highlight-color:transparent}
+  .iconbtn:hover{background:rgba(30,40,70,.9)}
+  .iconbtn:focus-visible{outline:3px solid var(--dl-cyan);outline-offset:2px}
+  .iconbtn[aria-pressed="true"]{border-color:var(--dl-accent);color:var(--dl-accent)}
+  .pill{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;
+    border-radius:999px;background:rgba(8,12,24,.82);
+    border:1px solid rgba(255,255,255,.16);font-size:.82rem;font-weight:600;
+    white-space:nowrap}
+  .pill b{color:var(--dl-accent)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:#8fa3c8;flex:0 0 auto}
+  .pill[data-conn="live"] .dot{background:#4ade80}
+  .pill[data-conn="polling"] .dot{background:var(--dl-accent)}
+  .pill[data-conn="offline"] .dot{background:#f87171}
+  .pill[data-conn="connecting"] .dot{background:#fbbf24;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .latency{font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
+  .latency[data-state="bad"]{color:#f87171}
+  .latency[data-state="warn"]{color:var(--dl-accent)}
+  /* UI-12: loading and empty. Shown over the canvas, never instead of it. */
+  .veil{position:fixed;inset:0;z-index:8;display:none;place-items:center;
+    background:rgba(5,9,20,.86);padding:24px;text-align:center}
+  .veil[data-show="1"]{display:grid}
+  .veil .box{max-width:44ch}
+  .veil h2{margin:0 0 8px;font-size:1.1rem}
+  .veil p{margin:0 0 14px;color:var(--dl-muted);font-size:.92rem}
+  .veil .spin{width:26px;height:26px;border:3px solid rgba(255,255,255,.18);
+    border-top-color:var(--dl-accent);border-radius:50%;animation:spin .9s linear infinite;
+    margin:0 auto 14px;display:block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){
+    .veil .spin{animation-duration:3s}
+    .pill[data-conn="connecting"] .dot{animation:none}
+  }
+  /* UI-14: the canvas renderer is resolution independent, so there is nothing
+     to reflow; these rules only stop the HUD crowding a 360px phone. */
+  @media (max-width:420px){
+    .hud{gap:6px}
+    .pill{font-size:.76rem;padding:0 10px;height:34px}
+    .iconbtn{width:34px;height:34px}
+  }
+  @media (min-width:1280px){
+    .hud{left:calc(var(--sal) + 16px);right:calc(var(--sar) + 16px)}
+  }
+
   #err{position:fixed;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);
     top:calc(var(--sat) + 8px);z-index:10;display:none;
     padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.4;
@@ -56,6 +111,31 @@
 </style>
 </head>
 <body>
+<div class="hud">
+  <div class="hud-left">
+    <button type="button" class="iconbtn" id="hBack" aria-label="Back to lobby">&#8592;</button>
+    <span class="pill" id="roundPill" title="Current round">
+      <b id="roundNo">--</b><span id="roomName"></span>
+    </span>
+  </div>
+  <div class="hud-right">
+    <span class="pill" id="connPill" data-conn="connecting">
+      <span class="dot" aria-hidden="true"></span><span id="connText">connecting</span>
+      <span class="latency" id="latency" data-state="ok" aria-live="off"></span>
+    </span>
+    <button type="button" class="iconbtn" id="hSound" aria-label="Toggle sound" aria-pressed="true">&#9835;</button>
+    <button type="button" class="iconbtn" id="hHelp" aria-label="How to play">?</button>
+    <button type="button" class="iconbtn" id="hMenu" aria-label="Menu">&#9776;</button>
+  </div>
+</div>
+<div class="veil" id="veil" data-show="0" role="status" aria-live="polite">
+  <div class="box">
+    <div class="spin" id="veilSpin"></div>
+    <h2 id="veilTitle">Connecting</h2>
+    <p id="veilText">Finding your table.</p>
+    <button type="button" class="iconbtn" id="veilBtn" style="display:none;margin:0 auto">Retry</button>
+  </div>
+</div>
 <canvas id="c" role="img" aria-label="Teen Patti Pro table. Select a seat, choose a chip value, then tap the seat again to bet. Keyboard: keys 1 to 4 choose a chip, A, B or C choose a seat, Enter places the bet, H history, question mark help, M menu, S sound, Escape closes panels."></canvas>
 <div id="err" role="status" aria-live="polite"><button type="button" aria-label="Dismiss message">&times;</button><span id="errtext"></span></div>
 <div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
