@@ -346,13 +346,19 @@ def _health_payload():
     if all(value == "ok" for value in critical.values()):
         status = "ok"
     elif any(value == "error" for value in critical.values()):
-        status = "down"
+        # "unavailable" rather than "down": a probe that ran and failed is not
+        # the same claim as a service known to be down, and integrations
+        # branch on this value.
+        status = "unavailable"
     else:
         status = "degraded"
+    # No test_count here. It used to be hardcoded at 198, which was wrong the
+    # moment a test was added and told an operator nothing actionable. Health
+    # reports the state of running services, not the size of the test suite.
     return {"status": status, "version": _git_short_sha(),
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "uptime_seconds": max(0, int(time.time() - _PROCESS_STARTED)),
-            "services": services, "test_count": 198}
+            "services": services}
 
 
 _PROCESS_STARTED = __import__("time").time()

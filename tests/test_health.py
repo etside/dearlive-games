@@ -30,10 +30,18 @@ class HealthEndpointTests(unittest.TestCase):
             response, payload = self.call_health()
         self.assertEqual(response["status"], 200)
         self.assertEqual(set(payload), {
-            "status", "version", "timestamp", "uptime_seconds", "services", "test_count"
+            "status", "version", "timestamp", "uptime_seconds", "services"
         })
         self.assertIsInstance(payload["uptime_seconds"], int)
-        self.assertEqual(payload["test_count"], 198)
+
+    def test_health_reports_no_hardcoded_test_count(self):
+        # It used to assert test_count == 198, a literal that went stale on
+        # every added test and told an operator nothing about service health.
+        with patch("staging.wsgi._probe_database", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_redis", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_websocket", return_value={"status": "ok"}):
+            _, payload = self.call_health()
+        self.assertNotIn("test_count", payload)
 
     def test_health_reports_services(self):
         with patch("staging.wsgi._probe_database", return_value={"status": "ok"}), \
@@ -69,6 +77,30 @@ class HealthEndpointTests(unittest.TestCase):
         self.assertEqual(payload["services"]["database"], {
             "status": "unavailable", "reason": "DATABASE_URL is not configured"
         })
+
+    def test_probe_error_reports_unavailable_not_down(self):
+        # Integrations branch on this value. A probe that ran and failed is
+        # reported as "unavailable"; the vocabulary is ok | degraded |
+        # unavailable, and "down" is not part of it.
+        with patch("staging.wsgi._probe_database", return_value={
+            "status": "error", "reason": "connection refused"
+        }), patch("staging.wsgi._probe_redis", return_value={"status": "ok"}), \
+             patch("staging.wsgi._probe_websocket", return_value={"status": "ok"}):
+            response, payload = self.call_health()
+        self.assertEqual(response["status"], 503)
+        self.assertEqual(payload["status"], "unavailable")
+        self.assertNotEqual(payload["status"], "down")
+
+    def test_status_vocabulary_is_exactly_three_values(self):
+        seen = set()
+        for db, redis in (("ok", "ok"), ("unavailable", "ok"),
+                          ("error", "ok"), ("ok", "error")):
+            with patch("staging.wsgi._probe_database", return_value={"status": db}), \
+                 patch("staging.wsgi._probe_redis", return_value={"status": redis}), \
+                 patch("staging.wsgi._probe_websocket", return_value={"status": "ok"}):
+                _, payload = self.call_health()
+            seen.add(payload["status"])
+        self.assertTrue(seen <= {"ok", "degraded", "unavailable"}, seen)
 
 
 if __name__ == "__main__":

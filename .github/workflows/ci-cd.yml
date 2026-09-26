@@ -31,7 +31,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          # Matches pyproject's requires-python (>=3.12). This was pinned to
+          # 3.11, which the project does not claim to support, so a failure
+          # here could have been a version artefact rather than a real defect.
+          python-version: '3.12'
           cache: 'pip'
 
       - name: Install Python dependencies

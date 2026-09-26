@@ -185,3 +185,159 @@ without a `DATABASE_URL`.
 - Terminate TLS in front of 5002/5003.
 - Set `REDIS_TLS=true` and use credentials — never a bare Redis.
 - Keep settlement secrets out of the WebView bundle.
+
+---
+
+## External dependencies (supplied by the integrator)
+
+The DearLive app developer provides infrastructure and secrets at deploy
+time. The table lists the variable names this codebase **actually reads** —
+several common names (`JWT_SECRET`, `SESSION_TOKEN_SECRET`, `CORS_ORIGINS`,
+`REDIS_URL`, `ENABLE_REAL_MONEY`) do not exist here, and setting them would
+have no effect. See "Names that do not apply" below.
+
+| Env var | Purpose | Required |
+|---|---|---|
+| `DATABASE_URL` | Postgres (Neon/Supabase/RDS) for admin reads | **yes** for admin routes |
+| `REDIS_HOST` | Redis host | yes for the staging adapter |
+| `REDIS_PORT` | Redis port (default `6379`) | yes for the staging adapter |
+| `REDIS_TLS` | `true` for Upstash-style TLS | no (`false` locally) |
+| `REDIS_USERNAME` / `REDIS_PASSWORD` | Redis credentials | when the server requires auth |
+| `REDIS_DB` | Redis logical database | no (`0`) |
+| `OPERATOR_PIN_HASH` | bcrypt hash of the operator PIN | yes to log in |
+| `OPERATOR_TOKEN_SECRET` | HS256 key for operator bearer tokens | yes |
+| `SUPERADMIN_PIN_HASH` | bcrypt hash of the superadmin PIN | yes to log in |
+| `SUPERADMIN_TOKEN_SECRET` | HS256 key for superadmin tokens | yes |
+| `GAME_ADMIN_KEYS` | `key:role` pairs → operator/auditor/admin/superadmin | yes |
+| `PROVIDER_API_KEYS` | B2B HMAC keys (`key_id:secret`) | yes for the provider API |
+| `PROVIDER_PUBLIC_BASE_URL` | Public base URL used in launch links | recommended |
+| `SETTLEMENT_SIGNING_SECRET` | Signs settlement webhooks | production only |
+| `WALLET_BASE_URL` / `WALLET_API_KEY` | Real wallet instead of the mock | production only |
+| `APP_ENV` | `production` activates the boot gate | yes in production |
+
+### Names that do not apply
+
+These appear in some integration runbooks but are **not read by this codebase**.
+Do not set them expecting an effect:
+
+`JWT_SECRET`, `JWT_REFRESH_SECRET`, `SESSION_TOKEN_SECRET`, `CORS_ORIGINS`,
+`API_PUBLIC_URL`, `WS_PUBLIC_URL`, `ENABLE_REAL_MONEY`, `ENABLE_DEMO_MODE`,
+`REDIS_URL`.
+
+Notes on the ones with a real equivalent:
+
+- **Token signing** uses `OPERATOR_TOKEN_SECRET` / `SUPERADMIN_TOKEN_SECRET`
+  via `common/jwtx.py` (HS256, standard library only). There is no refresh
+  token; sessions are stateless with a 24h expiry.
+- **Redis** is configured with discrete `REDIS_HOST` / `REDIS_PORT` /
+  `REDIS_TLS` / `REDIS_USERNAME` / `REDIS_PASSWORD` / `REDIS_DB`. A single
+  `REDIS_URL` is never read.
+- **Public URLs** are `PROVIDER_PUBLIC_BASE_URL` (server-side) and
+  `PROVIDER_CLIENT_PATH` (launch path). The client reads them from the launch
+  response rather than from its own build-time config.
+- **Real money** is gated by `APP_ENV=production` plus the nine-variable boot
+  gate, not by a feature flag. `ENABLE_REAL_MONEY` is not read.
+- **Demo mode** is the absence of `APP_ENV=production`. There is no
+  `ENABLE_DEMO_MODE` flag; `GET /demo/session` 404s under production.
+
+## Zero-dependency demo (no infrastructure at all)
+
+```bash
+python3 -m games.teen_patti_pro.api --confirmed
+curl "http://127.0.0.1:5002/demo/session?room=c-room&player=stranger"
+```
+
+No database, no Redis, no provider keys, no `.env`. There is **no `--demo`
+flag** — the demo route is simply active whenever `APP_ENV` is not
+`production`, and it returns 404 when it is.
+
+## DearLive integration — infrastructure setup
+
+1. The integrator provides `DATABASE_URL`, Redis host/port, and the secrets
+   above.
+2. Apply the schema:
+
+   ```bash
+   export DATABASE_URL='postgresql://...'
+   bash scripts/apply-migration.sh
+   ```
+
+   The script is idempotent and verifies that `profit_risk_config`,
+   `player_override`, `vip_tier` and `withdrawal_request` exist afterwards.
+3. Fill in `.env` (`bash scripts/setup-dev.sh` creates it from the template).
+4. Start the stack: `python3 -m staging.wsgi`
+5. Verify: `curl localhost:8000/api/v1/health` → `status: "ok"` with
+   `services.database.status == "ok"`.
+6. Point the frontend at the deployed API.
+
+### Health contract
+
+```json
+{
+  "status": "ok | degraded | unavailable",
+  "version": "<git sha>",
+  "timestamp": "<ISO-8601 UTC>",
+  "uptime_seconds": 0,
+  "services": {
+    "database":  { "status": "ok|error|unavailable", "reason": "..." },
+    "redis":     { "status": "ok|error|unavailable", "reason": "..." },
+    "websocket": { "status": "ok|error|not_configured", "reason": "..." }
+  }
+}
+```
+
+- `ok` — database and Redis both reachable.
+- `degraded` — a dependency is absent but nothing errored (typically
+  `DATABASE_URL not configured`). HTTP **503**.
+- `unavailable` — a probe ran and failed. HTTP **503**.
+- HTTP is 200 only for `ok`, so a load balancer can use the status code alone.
+
+## GitHub setup for the integrator
+
+Uses the `gh` CLI; no personal access token is ever handled by hand.
+
+```bash
+gh repo clone <org>/<name> platform
+cd platform
+gh auth setup-git
+git remote -v
+```
+
+Automated bootstrap:
+
+```bash
+bash scripts/setup-dev.sh
+```
+
+This checks the toolchain, runs `gh auth login --web` if needed, points git at
+the gh credential helper, installs dependencies, and seeds `.env` (mode 600)
+from `.env.example`. It never writes a secret.
+
+### Repository secrets
+
+Set them with `gh secret set` so they never touch a shell history or a file:
+
+```bash
+gh secret set DATABASE_URL           --body "$DATABASE_URL"
+gh secret set REDIS_PASSWORD         --body "$REDIS_PASSWORD"
+gh secret set OPERATOR_TOKEN_SECRET  --body "$(openssl rand -hex 32)"
+gh secret set SUPERADMIN_TOKEN_SECRET --body "$(openssl rand -hex 32)"
+gh secret set SETTLEMENT_SIGNING_SECRET --body "$(openssl rand -hex 32)"
+gh secret set VERCEL_TOKEN           --body "$VERCEL_TOKEN"
+```
+
+PIN hashes are bcrypt, generated locally so the plaintext PIN never leaves the
+machine:
+
+```bash
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'YOUR-PIN', bcrypt.gensalt()).decode())"
+gh secret set OPERATOR_PIN_HASH  --body "<that hash>"
+```
+
+### Trigger and watch a deploy
+
+```bash
+gh workflow run deploy.yml
+gh run watch
+gh run list --limit 3
+```
