@@ -16,7 +16,7 @@ needed to try it, build it, or run its tests.
 | --- | --- |
 | **Game** | Teen Patti Pro — one game. Not traditional Teen Patti: no Blind, Chaal, Pack, Show or Sideshow. Three seats, three cards, highest approved hand takes the pot. |
 | **API** | REST over HTTP, plus a WebSocket feed on the same process and the same game state. |
-| **Admin** | Operator panel: dashboard, profit & risk, player overrides, token packages, game rules, enable/disable, audit log. |
+| **Admin** | Operator console at `/admin`, served by the same process: dashboard, profit & risk, player overrides, token packages, game rules, enable/disable, audit log, reports, settings, scheduling. |
 | **Frontend** | Canvas game client, lobby, and a rules page. WebView-ready — no build step, no bundler. |
 | **Demo** | `--demo` runs the whole thing in memory: no Postgres, no Redis, no keys. |
 | **Migrations** | Additive SQL, applied by you against your own database. |
@@ -196,14 +196,31 @@ debit atomically, write the bet record, emit the WebSocket event.
 
 Full contract: [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
-### Step 9 — Point the operator console at it
+### Step 9 — Open the operator console
 
 ```bash
 GAME_ADMIN_KEYS='<key>:admin'
 ```
 
-Then sign in to the panel with that key. Roles are `admin > operator > auditor`;
-there is no `superadmin`. Full runbook: [docs/ADMIN.md](docs/ADMIN.md).
+The console is served by the same process, so there is nothing else to run:
+
+```
+https://games.your-domain.com/admin
+```
+
+Sign in with an admin key. It is held in `sessionStorage` and sent as
+`X-Admin-Key`; it is never written to `localStorage`.
+
+Nine sections: Dashboard, Profit & Risk, Player Override, Token Packages, Game
+Rules, Enable/Disable, Audit Log, Reports, Settings, plus Scheduled. Roles are
+`admin > operator > auditor` — there is no `superadmin`, and a key with any
+other role is refused at boot.
+
+> **Reports** renders settlement health and says so in the UI. The SRS names a
+> Reports section but no reports endpoint, and this package does not invent
+> one.
+
+Full runbook: [docs/ADMIN.md](docs/ADMIN.md).
 
 ### Step 10 — Turn it on
 

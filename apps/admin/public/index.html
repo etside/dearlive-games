@@ -1,17 +1,16 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DearLive Operator Console</title>
-<link rel="stylesheet" href="/styles.css">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teen Patti Pro — Operator Console</title>
+<link rel="stylesheet" href="/admin/styles.css">
 </head>
 <body>
-<header class="shell-header"><a class="brand" href="/admin/dashboard">DearLive Operator</a><button id="logout" class="ghost" hidden>Sign out</button></header>
-<nav class="shell-nav" aria-label="Operator sections">
-<a href="/admin/dashboard">Dashboard</a><a href="/admin/economy/currency">Currency</a><a href="/admin/economy/coin-config">Coin config</a><a href="/admin/economy/packages">Packages</a><a href="/admin/economy/wallets">Wallets</a><a href="/admin/economy/players">Players</a><a href="/admin/economy/transactions">Transactions</a><a href="/admin/audit">Audit</a>
-</nav>
-<main id="app" class="shell-main"><div class="state loading">Loading…</div></main>
-<script src="/app.js"></script>
+<div id="app" class="app">
+  <noscript>The operator console needs JavaScript. The API itself does not —
+    call it directly with <code>curl</code> and an <code>X-Admin-Key</code>.</noscript>
+</div>
+<script src="/admin/app.js"></script>
 </body>
 </html>

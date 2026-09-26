@@ -809,6 +809,10 @@ class Handler(BaseHTTPRequestHandler):
     # referenced by URL from the client and from admin_store defaults, so the
     # default avatar an operator never configures still resolves to a real file.
     ASSETS_DIR = Path(__file__).parent.parent.parent / "assets"
+    # The operator panel. Served by the same process on purpose: an operator
+    # should not have to run a second web server, and the panel is useless
+    # without the API it talks to.
+    ADMIN_DIR = Path(__file__).parent.parent.parent / "apps" / "admin" / "public"
     ASSET_SUFFIXES = (".svg", ".png", ".webp", ".jpg", ".jpeg", ".json")
     ASSET_MIME = {".svg": "image/svg+xml", ".png": "image/png",
                   ".webp": "image/webp", ".jpg": "image/jpeg",
@@ -816,6 +820,44 @@ class Handler(BaseHTTPRequestHandler):
     MASTER_KINDS = {"lottie": ("application/json; charset=utf-8", ".json"),
                     "gif": ("image/gif", ".gif"),
                     "wav": ("audio/wav", ".wav")}
+
+    def serve_admin(self, rel: str):
+        """Serve a file from the operator panel directory.
+
+        Same containment rules as serve_repo_asset: rel comes off the URL, and
+        this one can read .js, so an unescaped ".." would be a source leak.
+        """
+        rel = (rel or "").lstrip("/")
+        if not rel:
+            rel = "index.html"
+        parts = rel.split("/")
+        if any(p in ("..", ".", "") for p in parts):
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        target = (self.ADMIN_DIR / rel).resolve()
+        try:
+            target.relative_to(self.ADMIN_DIR.resolve())
+        except ValueError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        allowed = (".html", ".js", ".css", ".svg", ".png", ".json", ".ico")
+        if target.suffix.lower() not in allowed or not target.is_file():
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        mime = {".html": "text/html; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8",
+                ".json": "application/json; charset=utf-8",
+                ".svg": "image/svg+xml", ".png": "image/png",
+                ".ico": "image/x-icon"}.get(target.suffix.lower(),
+                                            "application/octet-stream")
+        try:
+            body = target.read_bytes()
+        except OSError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        return self.wfile.write(body)
 
     def serve_repo_asset(self, rel: str):
         """Serve a file from the repo assets/ tree, read-only and contained.
@@ -950,6 +992,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "no-cache")
                 self.end_headers()
                 return self.wfile.write(body)
+            if path == "/admin" or path.startswith("/admin/"):
+                return self.serve_admin(path[len("/admin"):])
             m = re.fullmatch(r"/teen-patti-pro/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 return self.serve_client(m.group(1))

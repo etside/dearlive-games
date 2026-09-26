@@ -15,6 +15,30 @@ The single exception is player appearance (§7), which degrades to the default
 icon because it sits in the table-rendering path — a database outage must not
 blank out every player's avatar.
 
+## 1a. The operator console
+
+Served by the same process at **`/admin`**. No second web server, no build
+step. Sign in with an admin key; it is held in `sessionStorage` and sent as
+`X-Admin-Key`.
+
+| Section | What it does |
+| --- | --- |
+| Dashboard | KPIs from the database. Shows a warning when settlement health is unavailable, rather than presenting memory numbers as real ones. |
+| Profit & Risk | Read and version the risk config; run the seeded simulator. |
+| Player Override | List, create and revoke per-player overrides. Requires a reason, enforced in the UI and by the schema. |
+| Token Packages | Create and archive packages. |
+| Game Rules | Read and version the ruleset as JSON. |
+| Enable / Disable | Enable or disable the game. Disabling stops new sessions; rounds in flight still settle. |
+| Audit Log | Browse the audit trail, export CSV. |
+| Reports | Settlement health. See the caveat below. |
+| Settings | Platform key/values. |
+| Scheduled | Queue a config change for a date and time; apply due changes on demand. |
+
+**Reports has no endpoint behind it.** The SRS names a Reports section but no
+reports API, and this package does not invent one. The section renders
+settlement health and says so on screen. A dedicated reporting query is not
+implemented.
+
 ## 2. Provisioning an API key
 
 Auth is by API key, set by whoever administers the deployment. There is no
