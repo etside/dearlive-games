@@ -20,10 +20,6 @@ from games.teen_patti_pro import api as api_mod
 from games.teen_patti_pro.api import Handler
 from games.teen_patti_pro.config import TeenPattiConfig
 from games.teen_patti_pro.service import TeenPattiService
-from games.wheel_common.configs import baby_king_config
-from games.wheel_common.service import WheelService
-from integrations.dearlive_mock import (MockDearLiveSessions, MockDearLiveTokens,
-                                        MockDearLiveWallet)
 from tests.test_asset_lifecycle import CountedCase
 
 
@@ -57,11 +53,6 @@ class RBACTest(CountedCase):
                                    "t-bogus": "intern"})
         w = MemoryWallet()
         Handler.svc = TeenPattiService(config=TeenPattiConfig(confirmed=True), wallet=w)
-        cfg = baby_king_config()
-        cfg.confirmed = True
-        cls.lsvc = WheelService(config=cfg, wallet=MockDearLiveWallet(),
-                                tokens=MockDearLiveTokens(), sessions=MockDearLiveSessions())
-        Handler.wheels = {"baby-king": cls.lsvc}
         Handler.game_enabled = {}
         Handler.game_packages = {}
         Handler.game_labels = {}
@@ -83,18 +74,18 @@ class RBACTest(CountedCase):
         self.counted(st == 200, "auditor reads inventory")
         st, _ = call("GET", self.base + "/api/v1/admin/audit?limit=3", headers=RO)
         self.counted(st == 200, "auditor reads audit")
-        st, body = call("POST", self.base + "/api/v1/games/baby-king/rooms/r1/rounds/start",
+        st, body = call("POST", self.base + "/api/v1/games/teen-patti-pro/rooms/r1/rounds/start",
                         {}, RO)
         self.counted(st == 403, f"auditor denied rounds op: {body.get('code')}")
-        st, _ = call("PUT", self.base + "/api/v1/admin/games/baby-king/config",
+        st, _ = call("PUT", self.base + "/api/v1/admin/games/teen-patti-pro/config",
                      {"enabled": True}, RO)
         self.counted(st == 403, "auditor denied config write")
 
     def test_operator_operates_but_cannot_configure(self):
-        st, _ = call("POST", self.base + "/api/v1/games/baby-king/rooms/r2/rounds/start",
+        st, _ = call("POST", self.base + "/api/v1/games/teen-patti-pro/rooms/r2/rounds/start",
                      {}, OP)
         self.counted(st == 200, "operator starts rounds")
-        st, _ = call("PUT", self.base + "/api/v1/admin/games/baby-king/config",
+        st, _ = call("PUT", self.base + "/api/v1/admin/games/teen-patti-pro/config",
                      {"enabled": True}, OP)
         self.counted(st == 403, "operator denied config write")
 
@@ -105,10 +96,10 @@ class RBACTest(CountedCase):
         self.counted(st == 403, "missing key denied")
 
     def test_superadmin_config_write_audits_before_reason(self):
-        st, body = call("PUT", self.base + "/api/v1/admin/games/baby-king/config",
+        st, body = call("PUT", self.base + "/api/v1/admin/games/teen-patti-pro/config",
                         {"enabled": False, "reason": "maintenance window"}, SU)
         self.counted(st == 200, "superadmin writes config")
-        entries = self.lsvc.audit.list("game", 5)
+        entries = Handler.svc.audit.list("game", 5)
         updates = [e for e in entries if e["action"] == "config.update"]
         self.counted(len(updates) >= 1, "config.update audited")
         last = updates[-1]
@@ -117,7 +108,7 @@ class RBACTest(CountedCase):
         self.counted(last["after"].get("updated_by") == "superadmin", "updated_by recorded")
         self.counted("applied_at_ms" in last["after"], "applied_at recorded")
         self.counted("enabled" in (last.get("before") or {}), "before-image recorded")
-        st, _ = call("PUT", self.base + "/api/v1/admin/games/baby-king/config",
+        st, _ = call("PUT", self.base + "/api/v1/admin/games/teen-patti-pro/config",
                      {"enabled": True, "reason": "restore"}, SU)
         self.counted(st == 200, "config restored")
 

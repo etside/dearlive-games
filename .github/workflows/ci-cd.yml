@@ -75,7 +75,9 @@ jobs:
 
       - name: Verify static assets
         run: |
-          # Verify all required static assets exist
+          # Verify the assets the shipped game actually uses. The wheel-game
+          # assets and the traditional Teen Patti action buttons
+          # (blind/chaal/pack/show/sideshow) were deliberately removed.
           test -f games/teen_patti_pro/client/index.html
           test -f games/teen_patti_pro/client/lobby.html
           test -f games/teen_patti_pro/client/game.js
@@ -83,104 +85,17 @@ jobs:
           test -f games/teen_patti_pro/client/assets/generated/seat-p4.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p5.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p6.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-blind.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-chaal.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-pack.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-show.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-sideshow.svg
           test -f games/teen_patti_pro/client/assets/generated/dealer-button.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p4.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p5.svg
           test -f games/teen_patti_pro/client/assets/generated/seat-p6.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-blind.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-chaal.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-pack.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-show.svg
-          test -f games/teen_patti_pro/client/assets/generated/btn-sideshow.svg
           test -f games/teen_patti_pro/client/assets/generated/dealer-button.svg
           test -f games/teen_patti_pro/client/lobby.html
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-apple.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-banana.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-grapes.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-mango.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-coconut.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-pineapple.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-cherry.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-melon.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-lose.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-apple.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-banana.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-grapes.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-mango.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-coconut.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-pineapple.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-cherry.svg
-          test -f games/teen_patti_pro/client/assets/generated/greedy-monkey-melon.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
 
 
 
 
 
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-
-
-
-
-
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-
-
-
-
-
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-idle.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-win.svg
-          test -f games/teen_patti_pro/client/assets/generated/baby-king-lose.svg
-
-
-
-
-
-
-      - name: Verify wheel game assets
-        run: |
-          test -f assets/games/greedy-monkey/background-greedy-monkey.svg
-          test -f assets/games/greedy-monkey/center-badge-idle.svg
-          test -f assets/games/greedy-monkey/center-badge-spin.svg
-          test -f assets/games/greedy-monkey/center-badge-win.svg
-          test -f assets/games/greedy-monkey/center-badge-lose.svg
-          test -f assets/games/greedy-monkey/lobby-thumb-greedy-monkey.svg
-          test -f assets/games/greedy-monkey/option-banana.svg
-          test -f assets/games/greedy-monkey/option-apple.svg
-          test -f assets/games/greedy-monkey/option-grapes.svg
-          test -f assets/games/greedy-monkey/option-mango.svg
-          test -f assets/games/greedy-monkey/option-coconut.svg
-          test -f assets/games/greedy-monkey/option-pineapple.svg
-          test -f assets/games/baby-king/lobby-thumb-baby-king.svg
-          test -f assets/games/baby-king/option-toy_car.svg
-          test -f assets/games/baby-king/option-toy_rocket.svg
-          test -f assets/games/baby-king/option-teddy.svg
-          test -f assets/games/baby-king/option-gem.svg
-          test -f assets/games/baby-king/option-baby_crown.svg
-          test -f assets/games/wheel-common/wheel-track.svg
-          test -f assets/games/wheel-common/multiplier-badge.svg
-          test -f assets/games/greedy-monkey/lobby-thumb-greedy-monkey.svg
-          test -f assets/games/baby-king/lobby-thumb-baby-king.svg
 
   deploy-api:
     name: Deploy API to Vercel

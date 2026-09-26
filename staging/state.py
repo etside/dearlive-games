@@ -27,17 +27,11 @@ AUDIT_CAP = 500
 def _registry():
     from games.teen_patti_pro import config as tcfg
     from games.teen_patti_pro import engine as teng
-    from games.wheel_common import service as wsvc
     return {
         "games.teen_patti_pro.engine.Bet": teng.Bet,
         "games.teen_patti_pro.engine.Round": teng.Round,
         "games.teen_patti_pro.engine.Room": teng.Room,
         "games.teen_patti_pro.config.TeenPattiConfig": tcfg.TeenPattiConfig,
-        "games.wheel_common.service.WheelBet": wsvc.WheelBet,
-        "games.wheel_common.service.WheelRound": wsvc.WheelRound,
-        "games.wheel_common.service.WheelRoom": wsvc.WheelRoom,
-        "games.wheel_common.service.WheelConfig": wsvc.WheelConfig,
-        "games.wheel_common.service.WheelOption": wsvc.WheelOption,
     }
 
 
@@ -67,8 +61,6 @@ def build_services():
     from common.config import Settings
     from games.teen_patti_pro.config import TeenPattiConfig
     from games.teen_patti_pro.service import TeenPattiService
-    from games.wheel_common.configs import baby_king_config, greedy_config
-    from games.wheel_common.service import WheelService
     from integrations.redis_store import (RedisIdempotencyStore,
                                           RedisSessionStore, RedisTokenStore)
     from staging.redis_wallet import RedisWallet
@@ -84,15 +76,7 @@ def build_services():
     teen = TeenPattiService(config=cfg, wallet=wallet, tokens=tokens,
                             sessions=sessions, idempotency=idem,
                             webhook_secret="staging-secret")
-    wheels = {}
-    for mk in (greedy_config, baby_king_config):
-        wc = mk()
-        wc.confirmed = True
-        wheels[wc.game_id] = WheelService(
-            config=wc, wallet=RedisWallet(r),
-            tokens=RedisTokenStore(r), sessions=RedisSessionStore(r),
-            idempotency=RedisIdempotencyStore(r), webhook_secret="staging-secret")
-    return r, teen, wheels
+    return r, teen, {}
 
 
 def _load_cfg(r, game, default_cfg):
@@ -205,9 +189,14 @@ def spill_audit(r, svc, game):
     r.command("LTRIM", key, "0", str(AUDIT_CAP - 1))
 
 
-def lazy_sweep(r, teen, wheels, max_rooms=20):
-    """Close->result->settle due rooms (idempotent service sweeps)."""
-    for game, svc in [("teen-patti-pro", teen), *[(g, s) for g, s in wheels.items()]]:
+def lazy_sweep(r, teen, wheels=None, max_rooms=20):
+    """Close->result->settle due rooms (idempotent service sweeps).
+
+    ``wheels`` is accepted and ignored: the wheel games are retired, and the
+    single game is swept below. The parameter stays so existing callers do not
+    have to change.
+    """
+    for game, svc in [("teen-patti-pro", teen)]:
         try:
             members = r.command("SMEMBERS", ROOMS_SET.format(game=game)) or []
         except Exception:

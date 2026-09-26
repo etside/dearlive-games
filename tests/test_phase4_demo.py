@@ -99,8 +99,9 @@ class Phase4DemoTest(unittest.TestCase):
         landing = (root / "landing/index.html").read_text()
         lobby = (root / "games/teen_patti_pro/client/lobby.html").read_text()
         self.assertIn("Teen Patti Pro", landing)
-        self.assertIn("Greedy Monkey", landing)
-        self.assertIn("Baby King", landing)
+        # The wheel games are retired; the landing page must not still list them.
+        self.assertNotIn("Greedy Monkey", landing)
+        self.assertNotIn("Baby King", landing)
         self.assertIn("meta name=\"description\"", landing)
         self.assertIn("api/v1/demo/sessions", lobby)
         self.assertIn("PLAY DEMO", lobby)

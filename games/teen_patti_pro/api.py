@@ -82,24 +82,11 @@ def parse_body(handler, max_bytes=1 << 20):
 class Handler(BaseHTTPRequestHandler):
     server_version = "TeenPattiPro/1.0"
     svc: TeenPattiService = None
-    wheels: dict = {}  # canonical wheel game_id -> WheelService
     game_enabled: dict = {}  # game_id/alias -> bool (admin enable/disable)
 
     TEEN_IDS = {"teen-patti-pro", "teen_patti"}
     provider_ctx: object = None
     provider_tokens: object = None
-    WHEEL_ALIAS = {
-        "greedy-monkey": "greedy-monkey",
-        "greedy": "greedy-monkey",
-        "greedy_monkey": "greedy-monkey",
-        "monkey-wheel": "greedy-monkey",
-        "monkey_wheel": "greedy-monkey",
-        "baby-king": "baby-king",
-        "baby_king": "baby-king",
-        "animal-food-wheel": "baby-king",
-        "food-wheel": "baby-king",
-        "food_wheel": "baby-king",
-    }
 
     # Postgres-backed admin store, assigned in main(). Defaults to None so a
     # handler constructed directly (tests, tools) fails loudly through
@@ -124,19 +111,10 @@ class Handler(BaseHTTPRequestHandler):
         return store
 
     def game_kind(self, game_id: str):
-        if game_id in self.TEEN_IDS:
-            return "teen"
-        if game_id in self.WHEEL_ALIAS:
-            return self.WHEEL_ALIAS[game_id]
-        return None
+        return "teen" if game_id in self.TEEN_IDS else None
 
     def game_service(self, game_id: str):
-        kind = self.game_kind(game_id)
-        if kind == "teen":
-            return self.svc
-        if kind is not None:
-            return self.wheels.get(kind)
-        return None
+        return self.svc if self.game_kind(game_id) == "teen" else None
 
     def game_check(self, game_id: str):
         """Resolve service or send error. Returns service or None (sent)."""
@@ -270,11 +248,6 @@ class Handler(BaseHTTPRequestHandler):
         if sess:
             return {"player_id": sess.player_id, "game_id": sess.game_id,
                     "source": "session"}
-        for gid, wsf in (self.wheels or {}).items():
-            sess = wsf.sessions.get(sid)
-            if sess:
-                return {"player_id": sess.player_id, "game_id": sess.game_id,
-                        "source": "session"}
         record = self._provider_token_record(sid)
         if record:
             return {"player_id": record.get("player_id"),
@@ -283,7 +256,7 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def session_player_any(self):
-        """Player lookup across teen + wheel session stores (cross-game auth)."""
+        """Player lookup for cross-game auth within the single game."""
         identity = self.session_identity_any()
         return identity["player_id"] if identity else None
 
@@ -318,20 +291,14 @@ class Handler(BaseHTTPRequestHandler):
             return (403, E.err(f"{minimum} role or higher required", E.E_FORBIDDEN))
         scopes = self.admin_scopes()
         if scopes and game_id:
-            wanted = {str(game_id).lower()}
-            for alias in self.WHEEL_ALIAS:
-                if self.WHEEL_ALIAS[alias] == str(game_id).lower():
-                    wanted.add(alias.lower())
-            if not (wanted & scopes):
+            if str(game_id).lower() not in {s.lower() for s in scopes}:
                 return (403, E.err(
                     f"key is not scoped to game {game_id}", E.E_FORBIDDEN))
         return None
 
     # -- admin game-configuration views (all games) --
     def _all_game_ids(self):
-        ids = list(self.TEEN_IDS)
-        ids += sorted((self.wheels or {}).keys())
-        return ids
+        return list(self.TEEN_IDS)
 
     def game_config_view(self, game_id: str, svc) -> dict:
         from common.plugins import catalog as _catalog, import_builtin_games
@@ -351,21 +318,10 @@ class Handler(BaseHTTPRequestHandler):
                 "max_bet": getattr(cfg, "max_bet", 0),
                 "packages": getattr(self, "game_packages", {}).get(game_id, []),
                 "localization": getattr(self, "game_labels", {}).get(game_id, {})}
-        if hasattr(cfg, "guess_ms"):  # teen-patti-pro
-            view["seats"] = list(cfg.seats)
-            view["guess_ms"] = cfg.guess_ms
-            view["betting_duration_ms"] = cfg.guess_ms
-            view["rake_bps"] = cfg.rake_bps
-        else:  # wheel games
-            view["round_duration_ms"] = cfg.round_duration_ms
-            view["betting_duration_ms"] = cfg.betting_duration_ms
-            view["auto_allowed"] = cfg.auto_allowed
-            view["payout_rule"] = cfg.payout_rule
-            view["options"] = [{"option_id": o.option_id, "name": o.name,
-                                "weight": o.weight, "multiplier": o.multiplier,
-                                "icon": o.icon, "color_hex": o.color_hex,
-                                "hot": o.hot, "is_active": o.is_active}
-                               for o in cfg.options]
+        view["seats"] = list(cfg.seats)
+        view["guess_ms"] = cfg.guess_ms
+        view["betting_duration_ms"] = cfg.guess_ms
+        view["rake_bps"] = cfg.rake_bps
         return view
 
     def game_inventory(self, allowed=None) -> list:
@@ -400,68 +356,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def apply_game_config(self, game_id: str, svc, patch: dict,
                            actor: str) -> dict:
-        """Validated, audited admin config update. Teen config is frozen
-        (only enabled/packages/localization may change); wheel config fields
-        are mutable. Unknown fields -> VALIDATION_ERROR. Optional
-        "reason" key is change-reference only (never applied as config) and
-        is stored in the audit trail with before/after values."""
+        """Validated, audited admin config update.
+
+        Teen Patti's ruleset is frozen: only ``enabled``, ``packages`` and
+        ``localization`` may change. Free-form rule editing (min/max bet,
+        denoms, durations, options) belonged to the wheel games and went with
+        them. Changing a live game's payout maths now needs a code change and a
+        config version bump, which is the safer default for a system that moves
+        money.
+
+        Unknown fields are a VALIDATION_ERROR. An optional ``reason`` key is a
+        change-reference only -- never applied as configuration -- and is
+        recorded in the audit trail beside the before/after values.
+        """
         import time
         reason = patch.pop("reason", "")
         if reason is not None and not isinstance(reason, str):
             raise ServiceError(E.E_VALIDATION, "reason must be a string")
         before = self.game_config_view(game_id, svc)
         allowed_common = {"enabled", "packages", "localization"}
-        kind = self.game_kind(game_id)
-        if kind == "teen":
-            extra = set(patch) - allowed_common
-            if extra:
-                raise ServiceError(E.E_VALIDATION,
-                                   f"Teen Patti config frozen; mutable: {sorted(allowed_common)}")
-        else:
-            from games.wheel_common.service import WheelOption
-            allowed = allowed_common | {"denoms", "min_bet", "max_bet",
-                                        "round_duration_ms", "betting_duration_ms",
-                                        "auto_allowed", "options"}
-            extra = set(patch) - allowed
-            if extra:
-                raise ServiceError(E.E_VALIDATION, f"Unknown config fields: {sorted(extra)}")
-            cfg = svc.config
-            if "denoms" in patch:
-                d = [int(x) for x in patch["denoms"]]
-                if not d or any(x <= 0 for x in d):
-                    raise ServiceError(E.E_VALIDATION, "denoms must be positive ints")
-                cfg.denoms = tuple(d)
-            if "min_bet" in patch:
-                cfg.min_bet = int(patch["min_bet"])
-            if "max_bet" in patch:
-                cfg.max_bet = int(patch["max_bet"])
-            if cfg.min_bet > cfg.max_bet:
-                raise ServiceError(E.E_VALIDATION, "min_bet > max_bet")
-            if "round_duration_ms" in patch:
-                cfg.round_duration_ms = int(patch["round_duration_ms"])
-            if "betting_duration_ms" in patch:
-                cfg.betting_duration_ms = int(patch["betting_duration_ms"])
-            if "auto_allowed" in patch:
-                cfg.auto_allowed = bool(patch["auto_allowed"])
-            if "options" in patch:
-                opts, ids = [], set()
-                for o in patch["options"]:
-                    oid = str(o["option_id"])
-                    if oid in ids:
-                        raise ServiceError(E.E_VALIDATION, "duplicate option_id")
-                    ids.add(oid)
-                    if float(o.get("weight", 0)) <= 0 or float(o.get("multiplier", 0)) <= 0:
-                        raise ServiceError(E.E_VALIDATION, "weight/multiplier must be > 0")
-                    opts.append(WheelOption(oid, str(o.get("name", oid)),
-                                            weight=float(o["weight"]),
-                                            multiplier=float(o["multiplier"]),
-                                            icon=str(o.get("icon", "")),
-                                            color_hex=str(o.get("color_hex", "#ffffff")),
-                                            hot=bool(o.get("hot", False)),
-                                            is_active=bool(o.get("is_active", True))))
-                if not opts:
-                    raise ServiceError(E.E_VALIDATION, "options must not be empty")
-                cfg.options = tuple(opts)
         if "enabled" in patch:
             self.game_enabled[game_id] = bool(patch["enabled"])
             self.game_enabled[getattr(svc, "game_id", game_id)] = bool(patch["enabled"])
@@ -480,7 +393,6 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routing --
     CLIENT_DIR = Path(__file__).parent / "client"
-    WHEEL_DIR = Path(__file__).parent.parent / "wheel_common"
     MASTER_DIR = Path(__file__).parent.parent.parent / "assets" / "dearlive-master"
     MASTER_KINDS = {"lottie": ("application/json; charset=utf-8", ".json"),
                     "gif": ("image/gif", ".gif"),
@@ -495,18 +407,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         # Games are static + server-driven; no caching of the entry page.
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def serve_wheel(self):
-        try:
-            body = (self.WHEEL_DIR / "client.html").read_bytes()
-        except OSError:
-            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
@@ -550,12 +450,6 @@ class Handler(BaseHTTPRequestHandler):
                     return self.fail(exc)
             if self.serve_provider("GET", path, url.query):
                 return
-            if path in ("/greedy-monkey", "/greedy-monkey/"):
-                return self.serve_wheel()
-            if path in ("/monkey-wheel", "/monkey-wheel/"):
-                return self.serve_wheel()
-            if path in ("/baby-king", "/baby-king/"):
-                return self.serve_wheel()
             if path in ("/teen-patti-pro", "/teen-patti-pro/"):
                 return self.serve_client("index.html", "text/html; charset=utf-8")
             if path == "/teen-patti-pro/game.js":
@@ -1139,7 +1033,7 @@ class Handler(BaseHTTPRequestHandler):
                 if err:
                     return self.send(422, err)
                 token = body.get("launch_token", "")
-                for svc in [self.svc, *self.wheels.values()]:
+                for svc in [self.svc]:
                     if svc is None:
                         continue
                     try:
@@ -1389,21 +1283,6 @@ def main():
                               if settings.settlement_webhook_url else []),
         webhook_secret=settings.webhook_secret or settings.settlement_signing_secret or "dev-secret")
     Handler.svc.admin_keys_note = note
-    # Wheel games (G1 Greedy Monkey, G2 Baby King): same adapter selection,
-    # independent service state per game.
-    from games.wheel_common.configs import baby_king_config, greedy_config
-    from games.wheel_common.service import WheelService
-    Handler.wheels = {}
-    for _mkcfg in (greedy_config, baby_king_config):
-        _wc = _mkcfg()
-        if args.confirmed:
-            _wc.confirmed = True
-        _w, _t, _s, _i, _n = build_stores()
-        Handler.wheels[_wc.game_id] = WheelService(
-            config=_wc, wallet=_w, tokens=_t, sessions=_s, idempotency=_i,
-            webhook_destinations=([settings.settlement_webhook_url]
-                                  if settings.settlement_webhook_url else []),
-            webhook_secret=settings.webhook_secret or settings.settlement_signing_secret or "dev-secret")
     Handler.game_enabled = {}
     Handler.game_packages = {}
     Handler.game_labels = {}

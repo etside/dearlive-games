@@ -4,7 +4,8 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qs, urlparse
 
-GAME_SLUGS = {"teen-patti-pro", "greedy-monkey", "baby-king"}
+# Teen Patti Pro only; the wheel games are retired.
+GAME_SLUGS = {"teen-patti-pro"}
 CURRENCY_CODES = {"USD", "BDT", "INR"}
 TRANSACTION_TYPES = {
     "COIN_PURCHASE", "BET_DEBIT", "WIN_CREDIT", "BONUS", "ADMIN_CREDIT",

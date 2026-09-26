@@ -48,10 +48,13 @@ def _game_of(path, default="teen-patti-pro"):
 
 
 def _canonical(game):
-    from games.teen_patti_pro.api import Handler
     if game in ("teen-patti-pro", "teen_patti"):
         return "teen-patti-pro"
-    return Handler.WHEEL_ALIAS.get(game, game)
+    # Teen Patti Pro is the only shipped game, so anything else is left as-is
+    # and rejected by the caller's unknown-game guard. This used to consult
+    # Handler.WHEEL_ALIAS, which no longer exists; referencing it raised
+    # AttributeError and surfaced as a 500 for any non-teen path.
+    return game
 
 
 def _load_all(r, teen, wheels):
@@ -194,8 +197,7 @@ def _run_handler(method, path, query, headers, body):
         h.end_headers = end_headers
         # Route to the canonical service for aliased game ids.
         if game != "teen-patti-pro" and game not in wheels:
-            canon = {"monkey-wheel": "greedy-monkey",
-                     "monkey_wheel": "greedy-monkey"}.get(game)
+            canon = _canonical(game)
             if canon and canon in wheels:
                 # Rewrite path so Handler resolves the canonical service.
                 h.path = h.path.replace(f"/games/{game}/", f"/games/{canon}/", 1)
@@ -736,7 +738,7 @@ def _staging_login(r, teen, wheels, body):
     player = str(data.get("player", "qa-player"))[:64] or "qa-player"
     game = str(data.get("game", "teen-patti-pro"))[:64]
     room = str(data.get("room", "staging-room"))[:64] or "staging-room"
-    canon = {"monkey-wheel": "greedy-monkey", "monkey_wheel": "greedy-monkey"}.get(game, game)
+    canon = _canonical(game)
     svc = teen if canon == "teen-patti-pro" else wheels.get(canon)
     if svc is None:
         return 404, {"Content-Type": "application/json"}, json.dumps(
@@ -780,7 +782,7 @@ def _staging_grant(r, wheels, teen, body):
     except (TypeError, ValueError):
         return 422, {"Content-Type": "application/json"}, json.dumps(
             E.err("amount must be integer", E.E_VALIDATION)).encode()
-    canon = {"monkey-wheel": "greedy-monkey", "monkey_wheel": "greedy-monkey"}.get(game, game)
+    canon = _canonical(game)
     svc = teen if canon == "teen-patti-pro" else wheels.get(canon)
     if svc is None:
         return 404, {"Content-Type": "application/json"}, json.dumps(

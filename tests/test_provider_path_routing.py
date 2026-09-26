@@ -91,10 +91,23 @@ class ProviderPathCoverageTest(unittest.TestCase):
         self.assertTrue(is_provider_path(PROVIDER_PREFIX + "/launch/abc"))
 
     def test_table_routes_are_recognised_for_every_slug(self):
-        for slug in ("teen-patti", "teen-patti-pro", "greedy-monkey", "baby-king"):
-            self.assertTrue(is_provider_path(f"/api/v1/{slug}/tables"))
-            self.assertTrue(is_provider_path(f"/api/v1/{slug}/tables/t1"))
-            self.assertTrue(is_provider_path(f"/api/v1/{slug}/tables/t1/state"))
+        # Teen Patti only.
+        for slug in ("teen-patti", "teen-patti-pro"):
+            for suffix in ("/tables", "/tables/t1", "/tables/t1/state",
+                           "/tables/t1/action"):
+                self.assertTrue(is_provider_path(f"/api/v1/{slug}{suffix}"),
+                                f"{slug}{suffix}")
+
+    def test_retired_game_slugs_are_not_provider_routes(self):
+        # A retired slug must not match a provider route. It used to, and the
+        # request then failed deep inside a handler for an engine that no
+        # longer exists, surfacing as a 500 instead of a clean rejection.
+        for slug in ("greedy-monkey", "baby-king", "monkey-wheel", "greedy_lion"):
+            for suffix in ("/tables", "/tables/t1", "/tables/t1/state",
+                           "/tables/t1/action"):
+                self.assertFalse(
+                    is_provider_path(f"/api/v1/{slug}{suffix}"),
+                    f"{slug}{suffix}")
 
     def test_players_balance_is_recognised_only_with_an_id(self):
         self.assertTrue(is_provider_path("/api/v1/players/p1/balance"))

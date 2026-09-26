@@ -61,9 +61,8 @@ class AdminConsoleTest(CountedCase):
                                  headers=SUPERADMIN)
         self.counted(status == 200, f"whoami ok: {body}")
         self.counted(body["data"]["role"] == "superadmin", "role reported")
-        self.counted(set(body["data"]["games"]) ==
-                      {"teen_patti_pro", "monkey_wheel", "baby_king"},
-                      "unrestricted key sees all V1 games")
+        self.counted(set(body["data"]["games"]) == {"teen_patti_pro"},
+                      "unrestricted key sees the one shipped game")
         self.counted("dev-super-key" not in json.dumps(body),
                       "secret is not echoed")
 
@@ -81,12 +80,14 @@ class AdminConsoleTest(CountedCase):
         self.counted(any(row.get("action") == "round.start" and
                          row.get("entity_id", "").startswith(f"{room}-r")
                          for row in rows), f"round start persisted: {rows}")
+        # A retired game code is rejected outright rather than being treated as
+        # an unscoped filter, so it cannot surface another game's rows.
         status, body = wsgi_call(
             "GET", "/api/v1/admin/audit", headers=OPERATOR,
-            query="game=greedy_monkey&entity=round&limit=20")
-        self.counted(status == 200, f"cross-game audit readable: {body}")
-        self.counted(all("greedy" not in json.dumps(body).lower() or True for _ in [0]),
-                      "audit scope exercised")
+            query="game=monkey_wheel&entity=round&limit=20")
+        self.counted(status == 404, f"retired game filter refused: {body}")
+        self.counted("entries" not in (body.get("data") or {}),
+                     "no rows leak for an unknown game")
 
     def test_webhook_configuration_is_validated_and_redacted(self):
         good = {"enabled": True,
@@ -113,31 +114,34 @@ class AdminConsoleTest(CountedCase):
                                  headers=OPERATOR)
         self.counted(status == 403, f"webhook changes need superadmin: {body}")
 
-    def test_cross_game_wallet_requires_matching_credential(self):
+    def test_wallet_requires_a_matching_session(self):
         player = "console-wallet-player"
         status, body = wsgi_call(
             "POST", "/api/v1/staging/test-login",
             {"player": player, "room": "console-wallet-room",
-             "game": "monkey_wheel"})
-        self.counted(status == 200, f"wheel login ok: {body}")
+             "game": "teen-patti-pro"})
+        self.counted(status == 200, f"login ok: {body}")
         status, body = wsgi_call(
-            "POST", "/api/v1/games/monkey_wheel/sessions",
+            "POST", "/api/v1/sessions",
             {"launch_token": body["data"]["launch_token"]})
-        self.counted(status == 200, f"wheel session ok: {body}")
+        self.counted(status == 200, f"session ok: {body}")
         sid = body["data"]["session_id"]
-        status, body = wsgi_call(
-            "GET", "/api/v1/games/monkey_wheel/rooms/console-wallet-room/wallet",
-            headers={"Authorization": f"Bearer {sid}"})
-        self.counted(status == 200, f"wheel balance readable: {body}")
-        self.counted(body["data"]["available"] == 20000, "welcome funds visible")
         status, body = wsgi_call(
             "GET", "/api/v1/games/teen-patti-pro/rooms/console-wallet-room/wallet",
             headers={"Authorization": f"Bearer {sid}"})
-        self.counted(status in (401, 403), "wheel session cannot read another game")
+        self.counted(status == 200, f"balance readable: {body}")
+        self.counted(body["data"]["available"] == 20000, "welcome funds visible")
+        # An unauthenticated read of the same wallet is refused.
         status, body = wsgi_call(
-            "GET", "/api/v1/games/monkey_wheel/rooms/console-wallet-room/wallet",
-            headers=AUDITOR, query=f"player={player}")
-        self.counted(status == 200, f"scoped admin wallet read ok: {body}")
+            "GET", "/api/v1/games/teen-patti-pro/rooms/console-wallet-room/wallet")
+        self.counted(status in (401, 403), f"unauthenticated read refused: {body}")
+
+    def test_retired_game_wallet_route_is_refused(self):
+        status, body = wsgi_call(
+            "GET", "/api/v1/games/monkey_wheel/rooms/r/wallet",
+            headers=AUDITOR, query="player=p")
+        self.counted(status in (401, 403, 404), f"retired game refused: {body}")
+
 
 
 if __name__ == "__main__":

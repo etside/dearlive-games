@@ -16,9 +16,7 @@
   "use strict";
 
   var GAMES = {
-    "teen-patti-pro": { label: "Teen Patti Pro", route: "/teen-patti-pro/", wallet: true },
-    "greedy-monkey": { label: "Greedy Monkey", route: "/greedy-monkey/", wallet: false },
-    "baby-king": { label: "Baby King", route: "/baby-king/", wallet: false }
+    "teen-patti-pro": { label: "Teen Patti Pro", route: "/teen-patti-pro/", wallet: true }
   };
 
   // In-memory session; persisted only to sessionStorage so a same-tab trip to

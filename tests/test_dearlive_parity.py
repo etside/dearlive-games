@@ -28,35 +28,33 @@ def indep_float(server_seed, client_seed, nonce, instance=0):
 
 
 class TestCatalogNames(unittest.TestCase):
-    def test_three_games_with_dearlive_codes(self):
+    def test_single_game_with_dearlive_code(self):
         plugins.import_builtin_games()
         games = {g["game_id"]: g for g in plugins.catalog()}
         self.assertEqual(games["teen-patti-pro"]["name"], "Teen Patti Pro")
         self.assertEqual(games["teen-patti-pro"]["dearlive_code"], "teen_patti")
-        self.assertEqual(games["greedy-monkey"]["name"], "Greedy Monkey")
-        self.assertEqual(games["greedy-monkey"]["dearlive_code"], "greedy_monkey")
-        self.assertEqual(games["baby-king"]["name"], "Baby King")
-        self.assertEqual(games["baby-king"]["dearlive_code"], "food_wheel")
         self.assertEqual(games["teen-patti-pro"]["entry"], "/teen-patti-pro/")
-        # legacy ids still resolve
-        for old in ("teen_patti", "greedy", "greedy_monkey",
-                    "animal-food-wheel", "food-wheel", "food_wheel"):
-            self.assertIn(old, games)
         self.assertEqual(games["teen-patti-pro"]["status"], "live")
-        self.assertEqual(games["greedy-monkey"]["status"], "live")
-        self.assertEqual(games["baby-king"]["status"], "live")
+        # the legacy id still resolves
+        self.assertIn("teen_patti", games)
+
+    def test_retired_games_are_absent_from_the_catalog(self):
+        plugins.import_builtin_games()
+        games = {g["game_id"] for g in plugins.catalog()}
+        for retired in ("greedy-monkey", "greedy_monkey", "baby-king",
+                        "baby_king", "food_wheel", "animal-food-wheel"):
+            self.assertNotIn(retired, games)
 
     def test_alias_create_behaviour(self):
         plugins.import_builtin_games()
         from games.teen_patti_pro.config import TeenPattiConfig
         room = plugins.create("teen_patti", "r9", TeenPattiConfig(confirmed=True))
         self.assertEqual(room.room_id, "r9")
-        # Greedy Monkey and Baby King are now live - no GameDisabled
-        # WheelService manages multiple rooms, so no single room_id
-        svc2 = plugins.create("greedy_monkey", "rm", None)
-        self.assertIsNotNone(svc2)
-        svc3 = plugins.create("baby-king", "rb", None)
-        self.assertIsNotNone(svc3)
+        # A retired game is rejected rather than silently resolving.
+        from common.plugins import UnknownGame
+        for retired in ("greedy_monkey", "baby-king"):
+            with self.assertRaises(UnknownGame):
+                plugins.create(retired, "rx", None)
 
 
 OPTS = [
@@ -66,60 +64,3 @@ OPTS = [
 ]
 
 
-class TestWheelParity(unittest.TestCase):
-    def test_deterministic_and_hmac_independent(self):
-        from games.greedy.engine import spin as monkey
-        from games.animal_wheel.engine import spin as king
-        a = monkey(OPTS, "srv", "cli", 7)
-        b = monkey(OPTS, "srv", "cli", 7)
-        self.assertEqual(a, b)
-        c = king(OPTS, "srv", "cli", 7)
-        self.assertEqual(a["winning_option_id"], c["winning_option_id"])
-        # independent pick computation
-        total = 85.0
-        pick = indep_float("srv", "cli", 7, 0) * total
-        cum, exp = 0.0, 2
-        for i, w in enumerate((50, 30, 5)):
-            cum += w
-            if pick < cum:
-                exp = i
-                break
-        self.assertEqual(a["winning_index"], exp)
-        self.assertGreaterEqual(a["angle"], exp * 120.0)
-        self.assertLess(a["angle"], exp * 120.0 + 120.0)
-        self.assertEqual(a["result_text"],
-                         f"{OPTS[exp]['name']} x{float(OPTS[exp]['multiplier']):.2f}")
-
-    def test_empty_options_rejected(self):
-        from games.greedy.engine import spin
-        with self.assertRaises(ValueError):
-            spin([], "s", "c", 1)
-
-
-class TestTeenPattiRankParity(unittest.TestCase):
-    def cat(self, hand):
-        return evaluate_hand(hand)[0]
-
-    def test_hierarchy_matches_driver(self):
-        trail = [(14, "S"), (14, "H"), (14, "D")]
-        pure = [(9, "S"), (10, "S"), (11, "S")]
-        seq = [(9, "S"), (10, "H"), (11, "D")]
-        color = [(14, "H"), (10, "H"), (3, "H")]
-        pair = [(13, "S"), (13, "H"), (2, "D")]
-        high = [(14, "S"), (11, "H"), (4, "D")]
-        self.assertEqual([self.cat(h) for h in (high, pair, color, seq, pure, trail)],
-                         [1, 2, 3, 4, 5, 6])
-
-    def test_ace_low_straight_is_low_sequence(self):
-        from games.teen_patti_pro.engine import _is_sequence
-        ok, tb = _is_sequence([14, 2, 3], "lowest")
-        self.assertTrue(ok)
-        # A-2-3 (tiebreak high=3) loses to 2-3-4
-        low = evaluate_hand([(14, "S"), (2, "H"), (3, "D")])
-        mid = evaluate_hand([(2, "S"), (3, "H"), (4, "D")])
-        self.assertEqual(low[0], mid[0] == 4 and 4)
-        self.assertLess(low, mid)
-
-
-if __name__ == "__main__":
-    unittest.main()

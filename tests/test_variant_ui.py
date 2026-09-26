@@ -86,13 +86,20 @@ class LandingSlugTest(unittest.TestCase):
     links at the wrong game.
     """
 
-    LIVE = ("teen-patti-pro", "greedy-monkey", "baby-king")
+    # Teen Patti Pro is the only shipped game; the wheel games were retired
+    # with their engines, so the landing page must link exactly one.
+    LIVE = ("teen-patti-pro",)
 
-    def test_landing_links_exactly_the_three_live_games(self):
+    def test_landing_links_exactly_the_live_games(self):
         src = _read(os.path.join(ROOT, "index.html"))
         linked = re.findall(r'data-game="([^"]+)"', src)
         self.assertEqual(sorted(linked), sorted(self.LIVE),
-                         "landing page must link exactly the 3 live games")
+                         "landing page must link exactly the live games")
+
+    def test_landing_has_no_retired_wheel_links(self):
+        src = _read(os.path.join(ROOT, "index.html"))
+        for retired in ("greedy-monkey", "baby-king", "monkey-wheel"):
+            self.assertNotIn(f'data-game="{retired}"', src, retired)
 
     def test_landing_has_no_archived_lion(self):
         src = _read(os.path.join(ROOT, "index.html")).lower()

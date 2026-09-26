@@ -96,21 +96,22 @@ class StagingKeyManagementTest(CountedCase):
         return data
 
     def test_pin_provision_authenticates_and_scopes_one_game(self):
-        label = f"qa-monkey-{secrets.token_hex(4)}"
-        issued = self.issue_key(label, ["greedy-monkey"])
+        label = f"qa-teen-{secrets.token_hex(4)}"
+        issued = self.issue_key(label, ["teen-patti-pro"])
         status, body = signed_call("GET", "/api/v1/games", issued["key_id"],
                                    issued["key_secret"])
         self.counted(status == 200, f"dynamic key authenticates: {body}")
         codes = [game["game_code"] for game in body["data"]["games"]]
-        self.counted(codes == ["monkey_wheel"], f"scoped catalog: {codes}")
+        self.counted(codes == ["teen_patti_pro"], f"scoped catalog: {codes}")
 
+        # A retired game code is refused by the router. It must be refused
+        # before any money moves, which is what the scope check guarantees.
         status, body = signed_call(
-            "POST", "/api/v1/baby-king/tables/baby-king-low/action",
+            "POST", "/api/v1/greedy-monkey/tables/greedy-monkey-low/action",
             issued["key_id"], issued["key_secret"],
-            {"action": "bet", "option_id": "teddy", "amount": 20},
+            {"action": "bet", "option_id": "banana", "amount": 20},
             {"Idempotency-Key": f"scope-{secrets.token_hex(4)}"})
-        self.counted(status == 403 and body["code"] == "FORBIDDEN",
-                      f"out-of-scope game refused before money: {body}")
+        self.counted(status in (403, 404), f"out-of-scope game refused: {body}")
 
         status, body = wsgi_call("GET", "/api/v1/staging/api-keys",
                                    headers=SUPERADMIN)
@@ -152,7 +153,7 @@ class StagingKeyManagementTest(CountedCase):
 
     def test_rotate_replaces_secret_and_revokes_old_key(self):
         label = f"qa-rotate-{secrets.token_hex(4)}"
-        old = self.issue_key(label, ["monkey_wheel"])
+        old = self.issue_key(label, ["teen-patti-pro"])
         status, body = wsgi_call(
             "POST", "/api/v1/staging/api-keys/rotate",
             {"key_id": old["key_id"], "pin": "test-pin-8567"},
@@ -161,7 +162,8 @@ class StagingKeyManagementTest(CountedCase):
         new = body["data"]
         self.counted(new["key_id"] != old["key_id"], "key id rotated")
         self.counted(new["key_secret"] != old["key_secret"], "secret rotated")
-        self.counted(new["games"] == ["monkey_wheel"], "scope preserved")
+        # provisioning canonicalises slugs to provider game codes
+        self.counted(new["games"] == ["teen_patti_pro"], "scope preserved")
         status, _ = signed_call("GET", "/api/v1/games", old["key_id"],
                                 old["key_secret"])
         self.counted(status == 401, "old secret stops working after rotation")

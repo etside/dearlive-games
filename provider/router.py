@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from common import envelope as E
 from provider import auth as PA
-from provider.games import (BINDINGS, MONKEY_CODE, TEEN_CODE,
+from provider.games import (BINDINGS, TEEN_CODE,
                              binding_for_code, binding_for_slug, canonical_code)
 from provider.ledger import WalletError_
 from provider.sessions import SessionTokenError, resolve as resolve_token
@@ -60,32 +60,22 @@ class ProviderContext:
     client_path: str = DEFAULT_CLIENT_URL
     redis: bool = False
     catalogs: Dict[str, TableCatalog] = field(default_factory=dict)
-    wheels: Dict[str, object] = field(default_factory=dict)
     key_scopes: Dict[str, dict] = field(default_factory=dict)
 
-    def attach_games(self, teen_service, wheels: Dict[str, object]):
-        """Bind the wheel engines so one API can serve every game."""
+    def attach_games(self, teen_service):
+        """Bind the game engine this API serves."""
         self.service = teen_service
-        self.wheels = dict(wheels or {})
         return self
 
     def teen_service(self):
         return self.service
 
-    def wheel_services(self):
-        return self.wheels
-
     def session_stores(self):
-        """Every session store this deployment serves.
-
-        Each engine owns its own store, so a session id issued by a wheel must
-        resolve there rather than in the Teen Patti store.
-        """
+        """Every session store this deployment serves."""
         stores = []
-        for service in [self.service] + list(self.wheels.values()):
-            store = getattr(service, "sessions", None)
-            if store is not None:
-                stores.append(store)
+        store = getattr(self.service, "sessions", None)
+        if store is not None:
+            stores.append(store)
         return stores
 
     def find_session(self, session_id: str):
@@ -727,7 +717,11 @@ def h_launch(ctx: ProviderContext, req: Request, token: str) -> Tuple[int, dict]
     return 302, {"__redirect__": location}
 
 
-GAME_SLUG = r"(teen-patti|teen-patti-pro|greedy-monkey|baby-king)"
+# URL slugs this API exposes. Teen Patti Pro only: the wheel games are retired,
+# so their slugs must not match a route pattern at all. Leaving them here made
+# a request to /api/v1/greedy-monkey/tables/... match a route and then fail
+# deeper in the handler instead of being rejected as an unknown game.
+GAME_SLUG = r"(teen-patti|teen-patti-pro)"
 
 # ------------------------------------------------------------------ routes
 AUTH_HMAC = "hmac"

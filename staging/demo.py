@@ -6,7 +6,8 @@ import time
 import uuid
 from urllib.parse import urlparse
 
-GAMES = {"teen-patti-pro", "greedy-monkey", "baby-king"}
+# Teen Patti Pro only; the wheel games are retired.
+GAMES = {"teen-patti-pro"}
 CURRENCIES = {"USD", "BDT", "INR"}
 
 

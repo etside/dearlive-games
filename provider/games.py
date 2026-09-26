@@ -12,25 +12,21 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
 TEEN_CODE = "teen_patti_pro"
-MONKEY_CODE = "monkey_wheel"
-BABY_KING_CODE = "baby_king"
-# LION_CODE removed: greedy-lion archived per 3-game scope lock
-# (teen-patti-pro, greedy-monkey, baby-king). Keep the alias mapping so
-# stale lion references resolve to a clear 404/410 instead of 500.
+
+# Greedy Monkey (monkey_wheel) and Baby King (baby_king) were retired: this is a
+# single-game product. Their engines, configs and assets are gone, and they are
+# deliberately absent from ALIASES/SLUGS/BINDINGS so a retired code resolves to
+# None and the router answers a clear "unknown game" instead of reaching for a
+# service that no longer exists. Reinstating a game means restoring its engine
+# and adding its binding back here.
 
 # URL segment per game, plus the aliases the existing clients use.
-SLUGS = {TEEN_CODE: "teen-patti-pro", MONKEY_CODE: "greedy-monkey",
-         BABY_KING_CODE: "baby-king"}
+SLUGS = {TEEN_CODE: "teen-patti-pro"}
 ALIASES = {
     TEEN_CODE: {TEEN_CODE, "teen-patti-pro", "teen-patti", "teenpatti", "teen_patti"},
-    MONKEY_CODE: {MONKEY_CODE, "monkey-wheel", "monkey_wheel", "greedy-monkey",
-                  "greedy_monkey", "greedy"},
-    BABY_KING_CODE: {BABY_KING_CODE, "baby-king", "baby_king", "babyking",
-                     "animal-wheel", "animal_wheel"},
 }
-# canonical internal game_id used by the engines
-ENGINE_IDS = {TEEN_CODE: "teen-patti-pro", MONKEY_CODE: "greedy-monkey",
-              BABY_KING_CODE: "baby-king"}
+# canonical internal game_id used by the engine
+ENGINE_IDS = {TEEN_CODE: "teen-patti-pro"}
 
 
 def canonical_code(raw: str) -> Optional[str]:
@@ -184,11 +180,6 @@ def _teen_service(ctx):
     return ctx.teen_service() if hasattr(ctx, "teen_service") else ctx.service
 
 
-def _wheel_service(ctx, engine_id: str):
-    wheels = ctx.wheel_services() if hasattr(ctx, "wheel_services") else {}
-    return wheels.get(engine_id)
-
-
 def _teen_tables():
     return ()
 
@@ -204,18 +195,6 @@ BINDINGS: Dict[str, GameBinding] = {
         game_type="three-seat-card-comparison",
         variant=(("type", "seat-betting-highest-hand"), ("seats", 3),
                  ("positions", ("A", "B", "C")), ("cardsPerSeat", 3))),
-    MONKEY_CODE: GameBinding(
-        game_code=MONKEY_CODE, label="Greedy Monkey", kind="wheel",
-        action_field="option_id", choice_field="option_id",
-        service=lambda ctx: _wheel_service(ctx, "greedy-monkey"),
-        game_type="wheel-betting",
-        variant=(("type", "wheel-option-betting"),)),
-    BABY_KING_CODE: GameBinding(
-        game_code=BABY_KING_CODE, label="Baby King", kind="wheel",
-        action_field="option_id", choice_field="option_id",
-        service=lambda ctx: _wheel_service(ctx, "baby-king"),
-        game_type="wheel-betting",
-        variant=(("type", "wheel-option-betting"),)),
 }
 
 
@@ -227,7 +206,6 @@ def binding_for_slug(slug: str) -> Optional[GameBinding]:
     for binding in BINDINGS.values():
         if slug == binding.slug:
             return binding
-    # Legacy slugs (monkey-wheel) still route via canonical code aliases.
     return BINDINGS.get(canonical_code(slug) or "")
 
 

@@ -108,7 +108,11 @@ def catalog() -> List[dict]:
 
 
 def import_builtin_games():
-    """Import all bundled game modules so their decorators run. Safe to call twice."""
+    """Import all bundled game modules so their decorators run. Safe to call twice.
+
+    Teen Patti Pro is the only bundled game. The wheel games (Greedy Monkey,
+    Baby King) were retired with their engines; leaving their imports here
+    would raise ModuleNotFoundError on every admin inventory read, because
+    game_inventory() calls this to populate the catalogue.
+    """
     import games.teen_patti_pro.plugin  # noqa: F401
-    import games.greedy.plugin  # noqa: F401
-    import games.animal_wheel.plugin  # noqa: F401
