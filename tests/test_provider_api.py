@@ -575,7 +575,7 @@ class ProviderContractTest(unittest.TestCase):
     def test_generated_artifacts_match_spec(self):
         from provider.spec import SPEC
         from provider.yamlgen import to_yaml
-        yaml_path = Path(__file__).resolve().parents[1] / "docs" / "openapi.yaml"
+        yaml_path = Path(__file__).resolve().parents[1] / "api" / "openapi.yaml"
         postman_path = Path(__file__).resolve().parents[1] / "docs" / "postman_collection.json"
         self.assertIn('"openapi": "3.1.0"', to_yaml(SPEC))
         self.assertIn('"openapi": "3.1.0"', yaml_path.read_text(encoding="utf-8"))

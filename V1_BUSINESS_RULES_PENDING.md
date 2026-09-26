@@ -16,7 +16,7 @@ Wheel (`baby-king` stays `planned` and excluded).
 
 ## 1. Teen Patti Pro — sign-off checklist
 
-Source: `GAME_RULES.md` §7. Current values are code defaults, offered as the
+Source: `docs/GAME_RULES.md` §7. Current values are code defaults, offered as the
 starting proposal only.
 
 | ID | Decision | Current default (proposal) | Approved value |

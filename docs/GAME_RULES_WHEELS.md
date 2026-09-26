@@ -25,8 +25,8 @@ There is no `games/wheel_common/engine.py` in the inspected tree. The actual
 result implementation is `common/wheel.py:18-58`, imported by
 `games/wheel_common/service.py:38`.
 
-The existing `GAME_RULES.md` is specifically a Teen Patti Pro specification
-(`GAME_RULES.md:1,15-16`); its Teen Patti values are not treated as wheel rules
+The existing `docs/GAME_RULES.md` is specifically a Teen Patti Pro specification
+(`docs/GAME_RULES.md:1,15-16`); its Teen Patti values are not treated as wheel rules
 here. Its `confirmed: false` real-money block is the relevant cross-reference,
 but the wheel implementation's exact gate is described below.
 

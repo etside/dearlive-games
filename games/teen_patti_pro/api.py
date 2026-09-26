@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from common import envelope as E
+from common.admin_store import AdminStoreUnavailable
 from common.session import TokenError
 from .config import TeenPattiConfig, DEFAULT_CONFIG
 from .service import TeenPattiService, ServiceError
@@ -100,7 +101,28 @@ class Handler(BaseHTTPRequestHandler):
         "food_wheel": "baby-king",
     }
 
+    # Postgres-backed admin store, assigned in main(). Defaults to None so a
+    # handler constructed directly (tests, tools) fails loudly through
+    # admin_db_or_503() rather than raising AttributeError mid-route.
+    admin_store = None
+
     # -- helpers --
+
+    def admin_db_or_503(self):
+        """Return the admin store, or send 503 and return None.
+
+        Admin reads must come from the database. When none is configured the
+        route answers 503 with the reason instead of returning zeros, because
+        a dashboard of fabricated zeros is indistinguishable from a real
+        trading day and would be acted on.
+        """
+        store = getattr(self, "admin_store", None)
+        if store is None:
+            from integrations.admin_db import build_admin_store
+            store = build_admin_store()
+            type(self).admin_store = store
+        return store
+
     def game_kind(self, game_id: str):
         if game_id in self.TEEN_IDS:
             return "teen"
@@ -493,6 +515,39 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         path, qs = url.path, urllib.parse.parse_qs(url.query)
         try:
+            # ---- Zero-dependency demo bootstrap (never in production) ----
+            # Gives a newcomer a playable table with no Redis, no provider keys
+            # and no funded wallet. Everything runs against the in-process mock
+            # stores. It mints a *real* launch token and opens a *real* session
+            # on purpose: a fabricated session id would 401 on every downstream
+            # route, and a hardcoded balance would still fail the engine's own
+            # debit check. Nothing here is reachable when APP_ENV=production.
+            if path == "/demo/session":
+                if os.environ.get("APP_ENV", "sandbox").strip().lower() == "production":
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+                room = qs.get("room", ["c-room"])[0]
+                player = qs.get("player", ["demo-player"])[0]
+                try:
+                    fund = getattr(self.svc.wallet, "fund", None)
+                    if fund is not None:
+                        fund(player, 20000)
+                    token = self.svc.tokens.mint(player, room, "teen-patti-pro")
+                    sess = self.svc.open_session(token.token)
+                    self.svc.ensure_round(room)
+                    balance = self.svc.wallet.get_balance(player)
+                    return self.ok({
+                        "mode": "demo",
+                        "session_id": sess["session_id"],
+                        "player_id": player,
+                        "room_id": room,
+                        "balance": balance.available,
+                        "currency": balance.currency,
+                        "state": self.svc.state(room, player),
+                        "note": "in-memory only: no Redis, no provider keys, "
+                                "no settlement ledger rows",
+                    })
+                except ServiceError as exc:
+                    return self.fail(exc)
             if self.serve_provider("GET", path, url.query):
                 return
             if path in ("/greedy-monkey", "/greedy-monkey/"):
@@ -595,6 +650,12 @@ class Handler(BaseHTTPRequestHandler):
                 pid = self.session_player()
                 if not pid:
                     return self.send(401, E.err("Bearer session required", E.E_AUTH))
+                # Deliberately NOT calling _ensure_round() here. Bootstrapping a
+                # round from a read made the table's own rounds/start fail
+                # afterwards, because start_round() rejects a room that already
+                # has a live round -- which broke the operator/platform ticker
+                # that owns round creation. Round starts stay with the operator;
+                # the bet path below is the only player-reachable safety net.
                 return self.ok(self.svc.state(room, pid))
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rounds/(\S+)/result", path)
             if m:
@@ -785,6 +846,22 @@ class Handler(BaseHTTPRequestHandler):
                                  "tbc": list(c.tbc), "seats": list(c.seats),
                                  "denoms": list(c.denoms), "guess_ms": c.guess_ms,
                                  "rake_bps": c.rake_bps})
+            if path == "/api/v1/admin/dashboard":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                store = self.admin_db_or_503()
+                if store is None:
+                    return self.send(503, E.err("admin store unavailable",
+                                                E.E_INTERNAL))
+                try:
+                    return self.ok(store.dashboard_kpis())
+                except AdminStoreUnavailable as exc:
+                    return self.send(503, E.err(str(exc), E.E_INTERNAL))
+                except Exception as exc:
+                    return self.send(502, E.err(
+                        f"admin dashboard query failed: {type(exc).__name__}",
+                        E.E_INTERNAL))
             if path == "/api/v1/admin/audit":
                 denied = self.require_role("auditor")
                 if denied:
@@ -858,6 +935,7 @@ class Handler(BaseHTTPRequestHandler):
                     "total_revenue": 0,
                     "pending_withdrawals": 0
                 })
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         except ServiceError as exc:
             return self.fail(exc)
 
@@ -885,24 +963,28 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(401, E.err("Invalid PIN", E.E_AUTH))
                 except Exception:
                     return self.send(500, E.err("PIN verification failed", E.E_INTERNAL))
-                # Generate operator JWT token
-                import jwt
+                # Generate the operator bearer token. HS256 via common.jwtx, so
+                # the server keeps its standard-library-only dependency set
+                # (PyJWT was never declared and the route 500'd on import).
                 import time
+                from common import jwtx as jwt
                 token_secret = os.environ.get("OPERATOR_TOKEN_SECRET", "")
                 if not token_secret:
                     return self.send(500, E.err("Operator token secret not configured", E.E_INTERNAL))
+                now = int(time.time())
+                expires_at = now + 24 * 3600          # 24h TTL
                 payload = {
                     "scope": "operator",
-                    "iat": int(time.time()),
-                    "exp": int(time.time()) + 24 * 3600,  # 24h TTL
+                    "iat": now,
+                    "exp": expires_at,
                     "iss": "dearlive-games",
-                    "sub": "operator"
+                    "sub": "operator",
                 }
-                import jwt
-                operator_token = jwt.encode({"scope": "operator", "iat": int(time.time()), "exp": int(time.time()) + 86400}, token_secret, algorithm="HS256")
+                operator_token = jwt.encode(payload, token_secret,
+                                            algorithm="HS256")
                 return self.ok({
                     "operator_token": operator_token,
-                    "expires_at": int(time.time()) + 86400,
+                    "expires_at": expires_at,
                     "scope": "operator"
                 }, "Operator authenticated")
             
@@ -913,8 +995,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not auth.startswith("Bearer "):
                     return self.send(401, E.err("Operator token required", E.E_AUTH))
                 token = auth.split(" ")[1]
-                import jwt
+                from common import jwtx as jwt
                 token_secret = os.environ.get("OPERATOR_TOKEN_SECRET", "")
+                if not token_secret:
+                    return self.send(500, E.err("Operator token secret not configured", E.E_INTERNAL))
                 try:
                     payload = jwt.decode(token, token_secret, algorithms=["HS256"])
                     if payload.get("scope") != "operator":
@@ -1407,6 +1491,11 @@ def main():
     Handler.game_enabled = {}
     Handler.game_packages = {}
     Handler.game_labels = {}
+    # Admin reads come from Postgres. Without DATABASE_URL this is an
+    # UnavailableAdminStore whose every method raises, so /api/v1/admin/*
+    # answers 503 with a reason instead of serving invented zeros.
+    from integrations.admin_db import build_admin_store
+    Handler.admin_store = build_admin_store()
     from provider.context import build_context
     _ctx = build_context(Handler.svc, wallet,
                          base_url=os.environ.get("PROVIDER_PUBLIC_BASE_URL",

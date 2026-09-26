@@ -1,23 +1,58 @@
 __pycache__/
 *.pyc
+*.pyo
+
+# --- secrets: never track real values, keep the template ---
+.env
 .env.local
 .env.staging
-.env
-# Build artifacts (never track)
+.env.production
+.env.*
+!.env.example
+
+# --- dependencies (must cover nested installs, not just the root) ---
+node_modules/
+packages/*/node_modules/
+apps/*/node_modules/
+tools/*/node_modules/
+landing/*/node_modules/
+# Python
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- build / deploy output ---
 dist/
 packages/*/dist/
 apps/*/dist/
 apps/*/.vercel/
 .vercel/
+build/
+.next/
+coverage/
+*.tsbuildinfo
 
-node_modules/
+# --- TLS material: never commit private keys or certs ---
+certs/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- logs & runtime artifacts ---
+*.log
 tools/browser-qa/evidence/*.log
 tools/browser-qa/evidence/*.pid
-uv.lock
-
-# Opencode skills (local development)
-.opencode/skills/
-
-# Redis dump
 dump.rdb
+appendonlydir/
 working/
+reference/
+
+# --- local tooling ---
+.opencode/skills/
+uv.lock
+.DS_Store
+*.swp

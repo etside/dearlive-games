@@ -23,7 +23,7 @@ WebView client + a Python game server that plugs into DearLive's existing
 | Playable WebView client (no build step) | `games/teen_patti_pro/client/` (`index.html`, `game.js`, `theme.json`, `assets.json`, `assets/*.svg`, `demo.html` offline replay) |
 | Game server (stdlib Python only) | `games/teen_patti_pro/api.py` (REST `:5002`), `ws.py` (`:5003`), `service.py`, `engine.py` |
 | Catalog/config for tiles | `GET /api/v1/games`, `GET /api/v1/games/teen-patti-pro` |
-| Protocol specs | `docs/integration-contract.md`, `docs/openapi.yaml`, `docs/postman_collection.json`, `docs/realtime.md`, `docs/webhooks.md`, `docs/errors-idempotency.md`, `docs/wallet-integration.md`, `docs/launch-integration.md` |
+| Protocol specs | `docs/INTEGRATION.md`, `api/openapi.yaml`, `docs/postman_collection.json`, `docs/realtime.md`, `docs/webhooks.md`, `docs/IDEMPOTENCY.md`, `docs/wallet-integration.md`, `docs/launch-integration.md` |
 | SDKs + example | `sdk/javascript-client.js`, `sdk/python_client.py`, `tools/integration_example.py` |
 | Brand tokens | `client/theme.json` (`palette` incl. DearLive gold/rose, `theme`, live `canvas` skin) |
 
@@ -92,6 +92,6 @@ connection, history). Results:
    result-generation sign-off (`confirmed` flag).
 2. Fill `.env.example` → staging secrets; `APP_ENV=production` refuses to
    boot when anything is missing.
-3. Run UAT from `docs/uat.md` (BRD §13 matrix) with a funded test wallet +
+3. Run UAT from `docs/UAT.md` (BRD §13 matrix) with a funded test wallet +
    launch token (`tests/test_api.py` shows the pattern); E2E conservation
    proof: `tests/test_e2e_dearlive_flow.py` (76 tests green).

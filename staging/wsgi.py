@@ -927,3 +927,41 @@ def app(environ, start_response):
     start_response(f"{status} {phrases.get(status, 'OK')}",
                    [(k, v) for k, v in resp_headers.items()])
     return [payload]
+
+
+if __name__ == "__main__":
+    # Local development runner only. This module is the staging/UAT adapter and
+    # compiles out under APP_ENV=production (see _is_production). Production runs
+    # the provider API instead: python -m games.teen_patti_pro.api --confirmed
+    # See docs/DEPLOYMENT.md.
+    import os as _os
+    from socketserver import ThreadingMixIn
+    from wsgiref.simple_server import WSGIServer, WSGIRequestHandler, make_server
+
+    if _os.environ.get("APP_ENV", "sandbox").strip().lower() == "production":
+        raise SystemExit(
+            "refusing to serve: staging/wsgi.py is the staging adapter and is "
+            "disabled under APP_ENV=production.\n"
+            "For production run:  python -m games.teen_patti_pro.api --confirmed")
+
+    _host = _os.environ.get("HOST", "0.0.0.0")
+    _port = int(_os.environ.get("PORT")
+                or _os.environ.get("GAME_API_PORT") or 8000)
+
+    class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+        # The browser polls REST while a WebSocket stays open; the default
+        # single-threaded wsgiref server would serialise those and stall.
+        daemon_threads = True
+
+    class _QuietHandler(WSGIRequestHandler):
+        def log_message(self, *a):
+            pass
+
+    print(f"staging server   http://{_host}:{_port}")
+    print(f"  APP_ENV        {_os.environ.get('APP_ENV', 'sandbox')}")
+    print(f"  redis          {_os.environ.get('REDIS_HOST', '127.0.0.1')}"
+          f":{_os.environ.get('REDIS_PORT', '6379')}   (required)")
+    print("  dev server     wsgiref -- single process, not for production\n")
+    make_server(_host, _port, app,
+                server_class=_ThreadingWSGIServer,
+                handler_class=_QuietHandler).serve_forever()

@@ -148,7 +148,7 @@ receivers verify signature first and de-duplicate on `event_id`.
 
 ## 10. Idempotency / errors / ledger consistency
 
-- Rules: `docs/errors-idempotency.md`. Every money write carries
+- Rules: `docs/IDEMPOTENCY.md`. Every money write carries
   `Idempotency-Key`; Redis `SET NX EX` in prod (memory in sandbox).
   In-flight key replay returns conflict-safe retry; completed key replays the
   stored result.

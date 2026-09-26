@@ -1070,8 +1070,8 @@
         "type": "string"
         "enum":
           - "teen-patti"
-          - "greedy-lion"
-          - "monkey-wheel"
+          - "greedy-monkey"
+          - "baby-king"
     "PlayerId":
       "name": "playerId"
       "in": "path"
@@ -1231,7 +1231,7 @@
           "default": "teen_patti_pro"
           "enum":
             - "teen_patti_pro"
-            - "greedy_lion"
+            - "baby_king"
             - "monkey_wheel"
         "currency":
           "type": "string"
@@ -1583,7 +1583,7 @@
             "type": "string"
             "enum":
               - "teen_patti_pro"
-              - "greedy_lion"
+              - "baby_king"
               - "monkey_wheel"
         "ttl_seconds":
           "type": "integer"

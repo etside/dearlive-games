@@ -1,71 +1,127 @@
-# DearLive Games — Teen Patti Pro (B2B Game Provider API)
+# Teen Patti Pro
 
-Server-authoritative Teen Patti Pro exposed as a provider API: one API
-connection and one API key per operator, signed requests, idempotent wallet
-operations, and an operator-owned balance (DearLive). Full guide:
-**[`docs/provider-integration.md`](docs/provider-integration.md)**.
+Production-ready 3-seat highest-hand card game with a server-authoritative
+engine, a REST API, and a real-time WebSocket.
 
-## Quick start (local, Termux-friendly)
+## What's included
+
+- **Game engine** — server-authoritative; the client never decides an outcome
+- **REST API** — sessions, rounds, bets, results, settlement
+- **WebSocket** — hand-rolled RFC6455 push channel on port 5003
+- **B2B provider API** — HMAC-signed, replay-protected, per-game scoped
+- **Wallet + ledger** — idempotent debit/credit/rollback
+- **Dynamic configuration** — every rule is admin-configurable
+- **Test suite** — 265 passing, hermetic (no Redis/DB/network required)
+
+## Quick start (5 minutes, zero dependencies)
+
+Requires Python 3.12+. **No Redis, no database, no `.env`, no `npm install`.**
+
 ```bash
-cp .env.example .env.local          # set PROVIDER_API_KEYS + PROVIDER_API_SECRET
-export PROVIDER_API_KEYS=tp_demo:s3cr3t
-export PROVIDER_PUBLIC_BASE_URL=http://127.0.0.1:5002
-python3 -m games.teen_patti_pro.api --port 5002 --ws-port 5003 --confirmed
-# API + WebSocket run in ONE process so they share game state.
-# Docs: http://127.0.0.1:5002/docs  ·  Spec: /openapi.json  ·  Health: /api/v1/provider/health
+git clone <repo-url>
+cd dearlive-games
+python -m games.teen_patti_pro.api --confirmed
 ```
-`--confirmed` is the TBC business sign-off; a production boot refuses to start
-without it. Omit `--no-ws` to also serve the WebSocket gateway in-process.
 
-Docker:
+```
+TeenPattiPro API: http://0.0.0.0:5002 (config tpp-1.0.0-tbc, confirmed=True, provider=no-keys)
+```
+
+That single process serves **HTTP on 5002** and the **WebSocket on 5003** —
+deliberately one process, because a second socket process would hold a second
+copy of the game state.
+
+### Get a playable table
+
 ```bash
-docker build -t teen-patti-provider .
-docker run --rm -p 5002:5002 -p 5003:5003 --env-file .env.local teen-patti-provider
+# 1. bootstrap a funded session (in-memory demo; disabled in production)
+curl -s "http://127.0.0.1:5002/demo/session?room=c-room&player=stranger"
 ```
 
-Signed request from curl (no dependencies):
+```json
+{ "success": true, "code": "OK", "data": {
+  "mode": "demo", "session_id": "dl-sess-1-...", "balance": 20000,
+  "state": { "round_id": "c-room-r1", "status": "BETTING_OPEN", ... } } }
+```
+
 ```bash
-python3 tools/provider_sign.py GET /api/v1/games
-python3 tools/provider_sign.py POST /api/v1/sessions \
-  --body '{"player_id":"player_10025","game_code":"teen_patti_pro","currency":"COIN"}'
-```
-Python reference client: `sdk/provider_client.py`. Postman (self-signing
-pre-request script): `docs/postman_collection.json`.
+# 2. place a bet  (Idempotency-Key is mandatory)
+SESSION=dl-sess-1-...
+curl -s -X POST http://127.0.0.1:5002/api/v1/games/teen-patti-pro/rooms/c-room/bets \
+  -H "Authorization: Bearer $SESSION" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: demo-bet-1" \
+  -d '{"position":"A","amount":100}'
 
-V1 scope: the existing engine is wrapped unchanged, so the betting phase is
-`action: "bet"` only. There are no player turns and no fold/show actions, and
-those events are documented as absent rather than simulated.
+# 3. read the table
+curl -s "http://127.0.0.1:5002/api/v1/games/teen-patti-pro/rounds/current?room=c-room" \
+  -H "Authorization: Bearer $SESSION"
+# -> "my_bet": 100, "status": "BETTING_OPEN"
+
+# 4. balance moved
+curl -s http://127.0.0.1:5002/api/v1/wallet/balance -H "Authorization: Bearer $SESSION"
+# -> "available": 19900
+```
+
+### Explore
+
+| URL | What |
+|---|---|
+| <http://127.0.0.1:5002/docs> | browsable API reference |
+| <http://127.0.0.1:5002/openapi.json> | OpenAPI 3.1 spec (generated) |
+| <http://127.0.0.1:5002/teen-patti-pro/> | game client |
+| <http://127.0.0.1:5002/greedy-monkey/> | Greedy Monkey wheel |
+| <http://127.0.0.1:5002/baby-king/> | Baby King wheel |
+| <http://127.0.0.1:5002/health> | liveness |
+
+Install the only Python dependencies if you need the Postgres-backed paths:
+
+```bash
+pip install -r requirements.txt     # bcrypt, psycopg[binary]
+```
 
 ## Tests
+
 ```bash
-python3 -m unittest discover -s tests      # full suite
-python3 -m unittest tests.test_provider_api
+python -m pytest -q                 # 265 passed, 1 skipped
 ```
 
-## Layout
-`provider/` B2B surface (auth, sessions, tables, wallet ledger, OpenAPI) ·
-`common/` engine iface, lifecycle, envelope, idempotency, wallet/session iface,
-audit, HMAC webhooks · `games/teen_patti_pro/` config, engine, service, api, ws,
-client · `games/wheel_common/` wheel engines · `staging/` serverless adapter ·
-`admin/` RBAC · `tools/` JEV reviews, artifact generator, signing CLI ·
-`sdk/` clients · `tests/` · `docs/`.
+## Documentation
 
-## JEV role
-Advisory review layer (`http://127.0.0.1:8080` Zen): requirements, design, code,
-tests. Stored in `tools/jev_reviews/*.result.json`. Real finds fixed so far:
-close-vs-bet race (mutex+invariant), tie unfairness (dead-heat split), unlocked
-idempotency claim, uncompensated post-debit failure, unlocked settle credits,
-missing timer sweep (implemented). JEV never touches RNG/state/money.
+| Doc | Contents |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | components and topology |
+| [API.md](docs/API.md) | REST surface, envelopes, errors |
+| [WEBSOCKET.md](docs/WEBSOCKET.md) | push protocol, frames |
+| [GAME_RULES.md](docs/GAME_RULES.md) | the Teen Patti Pro ruleset |
+| [STATE-MACHINE.md](docs/STATE-MACHINE.md) | round lifecycle |
+| [INTEGRATION.md](docs/INTEGRATION.md) | platform ↔ games contract |
+| [PROVIDER-INTEGRATION.md](docs/PROVIDER-INTEGRATION.md) | B2B HMAC API guide |
+| [IDEMPOTENCY.md](docs/IDEMPOTENCY.md) | keys, retries, error codes |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | local, Docker, Vercel, production |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | layout, tests, spec generation |
+| [SECURITY.md](docs/SECURITY.md) | threat model, signing, known gaps |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | common failures |
+| [UAT.md](docs/UAT.md) | acceptance matrix |
+| [api/openapi.yaml](api/openapi.yaml) | generated spec |
 
-## Integrate into DearLive
-Provider integration: `docs/provider-integration.md`. Earlier host-app
-integration notes: `docs/integration-contract.md`. Specs: `docs/openapi.yaml`
-(OpenAPI 3.1, generated from `provider/spec.py`), `docs/postman_collection.json`,
-`docs/webhooks.md`, `docs/realtime.md`, `docs/errors-idempotency.md`.
-Env: copy `.env.example` → `.env.local` (sandbox) / secrets manager
-(staging/prod); `APP_ENV=production` refuses to boot when values are missing.
-Adapters: `integrations/dearlive.py` (HTTP wallet DearLive owns balances) +
-`integrations/redis_store.py` (shared-Redis tokens/idempotency) selected by
-`integrations/build_stores()`; mocks stay for sandbox only. Game-side records
-schema: `db/schema.sql` (no balances). Legacy host-app SDKs:
-`sdk/javascript-client.js`, `sdk/python_client.py`.
+## Two entrypoints
+
+| | Command | Ports | Redis |
+|---|---|---|---|
+| **Demo** | `python -m games.teen_patti_pro.api --confirmed` | 5002, 5003 | no |
+| **Staging** | `python -m staging.wsgi` | 8000 | **yes** |
+
+Port 8000 is the *staging adapter*, a different application from the production
+API on 5002. See [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Status
+
+Rules are **TBC pending business sign-off**. `--confirmed` is that sign-off
+flag for local/demo use; real money additionally requires a production
+`APP_ENV` with wallet and settlement credentials configured. See
+[V1_BUSINESS_RULES_PENDING.md](V1_BUSINESS_RULES_PENDING.md).
+
+## Licence
+
+Proprietary — all rights reserved. See [LICENSE](LICENSE).

@@ -1,4 +1,4 @@
-"""Generate docs/openapi.yaml and docs/postman_collection.json from the spec."""
+"""Generate api/openapi.yaml and docs/postman_collection.json from the spec."""
 import json
 import os
 import sys
@@ -9,7 +9,7 @@ from provider.spec import SPEC
 from provider.yamlgen import to_yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OPENAPI_PATH = os.path.join(ROOT, "docs", "openapi.yaml")
+OPENAPI_PATH = os.path.join(ROOT, "api", "openapi.yaml")
 POSTMAN_PATH = os.path.join(ROOT, "docs", "postman_collection.json")
 
 SECURITY_HEADERS = [

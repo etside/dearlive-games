@@ -174,6 +174,6 @@ See `.env.example` for every variable. The provider-specific ones:
 
 ## 9. Reference
 
-* OpenAPI 3.1: `docs/openapi.yaml` (generated from `provider/spec.py`)
+* OpenAPI 3.1: `api/openapi.yaml` (generated from `provider/spec.py`)
 * Runtime: `GET /openapi.json` and `GET /docs` on any deployment
 * Tests: `python3 -m unittest tests.test_provider_api`

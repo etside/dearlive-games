@@ -1,6 +1,6 @@
 """OpenAPI 3.1 contract — the single source of truth for the provider API.
 
-docs/openapi.yaml and docs/postman_collection.json are generated from this
+api/openapi.yaml and docs/postman_collection.json are generated from this
 module (tools/gen_provider_artifacts.py), and /openapi.json + /docs serve it at
 runtime, so the published contract can never drift from the implementation.
 """

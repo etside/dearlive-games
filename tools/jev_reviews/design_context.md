@@ -1,4 +1,4 @@
-DESIGN UNDER REVIEW: Teen Patti Pro state machine + API (docs/state-machine.md + common/envelope.py, lifecycle.py, idempotency.py, wallet.py, session.py). Game 1 only.
+DESIGN UNDER REVIEW: Teen Patti Pro state machine + API (docs/STATE-MACHINE.md + common/envelope.py, lifecycle.py, idempotency.py, wallet.py, session.py). Game 1 only.
 
 PROPOSED:
 1. Lifecycle UPCOMING→BETTING_OPEN→BETTING_CLOSED→RESULT→SETTLED→CLOSED, CLOSED terminal, cancel→CLOSED with void-debit compensation. Illegal transition raises, never silent.

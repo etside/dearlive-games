@@ -73,5 +73,5 @@ No Super Admin credentials.
 
 ## K. When you deliver → our order
 Launch Token → Redis validation → Player/Room → Wallet debit → Bet flow →
-Result → Wallet credit → Settlement webhook → full `docs/uat.md` matrix.
+Result → Wallet credit → Settlement webhook → full `docs/UAT.md` matrix.
 Staging UAT must pass before any production credential is discussed.

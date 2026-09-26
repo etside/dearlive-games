@@ -69,7 +69,7 @@ defaults only.
 | G3-FR-06 | Server-side betting closure | lock + sweep | close/sweep | status | timer expiry | gate 12 | closing UAT | PASS |
 | G3-FR-07 | Card dealing/display + hand evaluation + winner | server deal, `evaluate_hand`, dead-heat split (TBC G3-BR-01..03) | result | `card_hand`, `game_result` | cards + banner | gate 13–15 | result UAT | PASS |
 | G3-FR-08 | Wallet settlement + history | debit/credit exactly-once + history | settle/history | `settlements`, `game_history` | balance | gate 16–20 | settlement UAT | PASS |
-| G3-API | tables bets/state, round result, history (spec shapes) | `tables/{id}/bets` (roundId/position/amount/idempotencyKey), `tables/{id}/state` (+players), generic result/history | see `docs/openapi.yaml` | — | client uses them | cross-game tables | API UAT | PASS |
+| G3-API | tables bets/state, round result, history (spec shapes) | `tables/{id}/bets` (roundId/position/amount/idempotencyKey), `tables/{id}/state` (+players), generic result/history | see `api/openapi.yaml` | — | client uses them | cross-game tables | API UAT | PASS |
 
 TBC G3 rules (variant/ranking, dealing, pot contribution, payout, tie, seats,
 timer): flagged in `TeenPattiConfig.tbc`, settlements stamp version; only
@@ -79,9 +79,9 @@ mandatory rule (server-side auditable shuffle) is implemented.
 
 | ID | Requirement | Where | St |
 |---|---|---|---|
-| X-01..13 | identity, current round, serverTime, betting_end_at, status, options, totals, validation, idempotency, result, debit/credit, histories, config, auto config, admin config, monitoring, reports, audit | `docs/integration-contract.md`, generic router, envelope on all responses | PASS |
+| X-01..13 | identity, current round, serverTime, betting_end_at, status, options, totals, validation, idempotency, result, debit/credit, histories, config, auto config, admin config, monitoring, reports, audit | `docs/INTEGRATION.md`, generic router, envelope on all responses | PASS |
 | DB-01 | 12 entities, unique round/bet/settlement-per-bet, immutable txns, compensating corrections, versioned config | `db/schema.sql` (+ immutability trigger) | PASS |
-| NFR | responsive UI, concurrency (race-fixed + `test_concurrency`), server time, authN/Z, TLS-ready (proxy arch), sticky-room scaling, audit logs, `/health`, sweep-failure monitoring, recovery (replay/compensate), auditability, localization-ready labels, WebView compat | code + `docs/deployment.md` | PASS* |
+| NFR | responsive UI, concurrency (race-fixed + `test_concurrency`), server time, authN/Z, TLS-ready (proxy arch), sticky-room scaling, audit logs, `/health`, sweep-failure monitoring, recovery (replay/compensate), auditability, localization-ready labels, WebView compat | code + `docs/DEPLOYMENT.md` | PASS* |
 
 \* TLS terminates at the DearLive reverse proxy (prod); WebView viewport spec
 is business-TBC #12.

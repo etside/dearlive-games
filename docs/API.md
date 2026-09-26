@@ -5,8 +5,8 @@ Auth: player `Authorization: Bearer <session_id>` (any game's session accepted
 cross-game); admin `X-Admin-Key` (+ RBAC matrix; config PUT = superadmin only).
 Bets: `Idempotency-Key` header (or `idempotencyKey` body field for tables clients).
 Lifecycle: `UPCOMING → BETTING_OPEN → BETTING_CLOSED → RESULT_PROCESSING →
-RESULT → SETTLED → CLOSED`. Full contract: `docs/integration-contract.md`,
-machine spec: `docs/openapi.yaml`, traceability: `docs/traceability.md`.
+RESULT → SETTLED → CLOSED`. Full contract: `docs/INTEGRATION.md`,
+machine spec: `api/openapi.yaml`, traceability: `docs/traceability.md`.
 
 ## Cross-game routes (every game; `{gameId}` incl. aliases like `teen_patti`)
 
@@ -28,7 +28,7 @@ machine spec: `docs/openapi.yaml`, traceability: `docs/traceability.md`.
 
 ## Provider API (B2B, HMAC-signed)
 
-Canonical contract: `docs/openapi.yaml` (OpenAPI 3.1) and `docs/provider-integration.md`.
+Canonical contract: `api/openapi.yaml` (OpenAPI 3.1) and `docs/PROVIDER-INTEGRATION.md`.
 Runtime reference: `/openapi.json` and `/docs`. Served when a provider context is
 configured; shared legacy paths keep their previous behaviour otherwise.
 
