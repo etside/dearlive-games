@@ -1016,7 +1016,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.serve_client(m.group(1))
             if path.startswith("/assets/"):
                 return self.serve_repo_asset(path[len("/assets/"):])
-            m = re.fullmatch(r"/teen-patti-pro/assets/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
+            # One or more path segments: the client loads
+            # assets/generated/seat-p4.svg, which the previous single-segment
+            # pattern could not match -- so all three chairs 404'd and the
+            # seats rendered bare. Containment is enforced by serve_client,
+            # which rejects ".." and any non-allowlisted extension.
+            m = re.fullmatch(r"/teen-patti-pro/assets/((?:[A-Za-z0-9][A-Za-z0-9._-]*/)*"
+                             r"[A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 name = m.group(1)
                 if not name.endswith(".svg"):

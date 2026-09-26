@@ -149,6 +149,55 @@ class ClientFileRouteTest(_ServerCase):
         st, _, _ = self.get("/teen-patti-pro/does-not-exist.html")
         self.assertEqual(st, 404)
 
+    def test_client_assets_in_subdirectories_are_served(self):
+        # The route used to match a single path segment, so
+        # assets/generated/seat-p4.svg 404'd and all three chairs silently
+        # failed to render.
+        for name in ("seat-p4.svg", "seat-p5.svg", "seat-p6.svg"):
+            st, ctype, body = self.get(f"/teen-patti-pro/assets/generated/{name}")
+            self.assertEqual(st, 200, name)
+            self.assertIn("image/svg+xml", ctype, name)
+            self.assertIn(b"<svg", body, name)
+
+    def test_every_asset_the_client_loads_actually_resolves(self):
+        """The real check: nothing game.js references may 404."""
+        import re
+        from pathlib import Path
+        import json as _json
+        client = Path(__file__).resolve().parents[1] / "games/teen_patti_pro/client"
+        js = (client / "game.js").read_text()
+        # Assets come from two places: literals in game.js, and the manifest.
+        wanted = set(re.findall(r"['\"](assets/[^'\"]+\.svg)['\"]", js))
+        manifest = _json.loads((client / "assets.json").read_text())
+
+        def _walk(node):
+            if isinstance(node, dict):
+                for v in node.values():
+                    _walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    _walk(v)
+            elif isinstance(node, str) and node.endswith(".svg"):
+                wanted.add(node)
+        _walk(manifest)
+        wanted = sorted(wanted)
+        self.assertGreaterEqual(len(wanted), 10,
+                                f"expected the client to load many assets, saw {wanted}")
+        broken = []
+        for rel in wanted:
+            st, _, _ = self.get("/teen-patti-pro/" + rel)
+            if st != 200:
+                broken.append((rel, st))
+        self.assertEqual(broken, [], f"client assets that do not resolve: {broken}")
+
+    def test_asset_subdirectory_traversal_is_still_refused(self):
+        for evil in ("/teen-patti-pro/assets/../../api.py",
+                     "/teen-patti-pro/assets/generated/../../../.env",
+                     "/teen-patti-pro/assets/%2e%2e/%2e%2e/api.py"):
+            st, _, body = self.get(evil)
+            self.assertEqual(st, 404, evil)
+            self.assertNotIn(b"ADMIN_KEYS", body, evil)
+
 
 if __name__ == "__main__":
     unittest.main()
