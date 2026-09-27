@@ -266,7 +266,8 @@ class NoRouteLeaksAStackTraceTest(unittest.TestCase):
         src = (Path(__file__).resolve().parents[1]
                / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
         i = src.index("def _json_guard(self")
-        block = src[i:src.index("def do_GET", i)]
+        nxt = src.index(chr(10) + "    def ", i)
+        block = src[i:nxt]
         self.assertIn("E_WALLET_NOT_CONFIGURED", block)
         self.assertIn("E_WALLET_UNAVAILABLE", block)
         self.assertIn("E_INTERNAL", block)
