@@ -889,22 +889,33 @@
   // ---- layout (normalized 0..1, portrait-first, adapts to landscape) ----
   function layout() {
     const land = W > H;
-    const cx = W / 2, top = H * (land ? 0.30 : 0.24) + SAFE.t;
-    // Seat centres must leave room for the chair art on both sides.
-    // cx +/- W*0.36 puts them at 55/335 on a 390 viewport, and a ~120px
-    // chair centred there overhangs both edges.
-    const seatInset = Math.min(78, W * 0.20);
-    const rx = Math.max(0, W / 2 - seatInset);
+    const cx = W / 2;
+
+    // ONE vertical grid. Every band is a fraction of the space the canvas
+    // owns, and no element is anchored to H independently -- the previous code
+    // gave the felt, the seat row and the action bar three separate
+    // H-relative anchors, so they drifted apart and left a large blank band
+    // under the felt while the action bar sat near the bottom edge.
+    const top = SAFE.t + (land ? 8 : 6);
+    const usable = Math.max(1, H - top - SAFE.b);
+    const band = { header: 0.06, seats: 0.30, cards: 0.20,
+                   centre: 0.16, pot: 0.12, action: 0.16 };
+    const y = {};
+    let acc = top;
+    for (const k of Object.keys(band)) { y[k] = acc; acc += usable * band[k]; }
+    y.bottom = acc;
+
+    // Seats: ONE row of three equal columns, inset so the chair art cannot
+    // overhang the viewport. They used to sit at three unrelated heights
+    // (A and C low, B high) because each was anchored separately.
+    const colW = (W - SAFE.l - SAFE.r) / 3;
     const seats = {};
-    // SRS section 1 and the DearLive reference agree: A left, B centre,
-    // C right. This was previously A left, B right, C top-centre, which put
-    // the seat order and the seat colours both out of spec.
-    const pp = land
-      ? [{ x: cx - rx, y: top }, { x: cx, y: top - H * 0.16 }, { x: cx + rx, y: top }]
-      : [{ x: cx - rx, y: top + H * 0.10 }, { x: cx, y: top - H * 0.13 }, { x: cx + rx, y: top + H * 0.10 }];
-    POS.forEach((p, i) => { seats[p] = { x: pp[i].x, y: pp[i].y }; });
-    const cw = Math.min(W * 0.13, 64), ch = cw * 1.42;
-    return { cx, top, seats, cw, ch, land };
+    POS.forEach((p, i) => {
+      seats[p] = { x: SAFE.l + colW * (i + 0.5),
+                   y: y.seats + usable * band.seats * 0.5 };
+    });
+    const cw = Math.min(colW * 0.42, 62), ch = cw * 1.42;
+    return { cx, top, seats, cw, ch, land, y, band, usable, colW };
   }
 
   function rr(x, y, w, h, r) {
@@ -972,40 +983,33 @@
     ctx.fillStyle = 'rgba(15,17,8,.42)';
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * .22, 0); ctx.lineTo(W * .12, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * .78, 0); ctx.lineTo(W * .88, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-    const table = ctx.createRadialGradient(W / 2, H * .43, 20, W / 2, H * .43, Math.max(W, H) * .65);
+    const table = ctx.createRadialGradient(W / 2, H * .40, 20, W / 2, H * .40, Math.max(W, H) * .65);
     table.addColorStop(0, '#5A6E2C'); table.addColorStop(.68, '#3A4A1B'); table.addColorStop(1, '#1C2410');
     // Bound the felt to the *table* band, not the viewport aspect. At
     // 390x844 the old H*.34 radius made the ellipse 344x574, spanning
     // y=76..650 and leaving a large empty region under it.
-    const tblRx = W * 0.44;
-    const tblRy = Math.min(H * 0.20, W * 0.44 * 0.62);
-    ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, H * .43, tblRx, tblRy, 0, 0, 7); ctx.fill();
+    // Felt centred on the seats+cards bands of the grid, not a fixed H*.43.
+    const GL = layout();
+    const tblCy = GL.y.seats + GL.usable * (GL.band.seats + GL.band.cards) * 0.5;
+    const tblRx = W * 0.46;
+    const tblRy = Math.max(40, GL.usable * (GL.band.seats + GL.band.cards) * 0.62);
+    ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, tblCy, tblRx, tblRy, 0, 0, 7); ctx.fill();
     ctx.strokeStyle = THEME.gold; ctx.lineWidth = Math.max(2, W * .008); ctx.stroke();
     // Dark vignette at the edges, per spec.
     const vg = ctx.createRadialGradient(W / 2, H * .45, Math.min(W, H) * .35, W / 2, H * .45, Math.max(W, H) * .78);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-    const L = layout(), s = S.snap, u = U();
+    const L = GL, s = S.snap, u = U();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-    // header: room + connection + server-driven countdown
-    ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
-    ctx.fillText('TEEN PATTI PRO · ' + ROOM, W / 2, 22 + SAFE.t * 0.4);
-    ctx.fillStyle = S.connected ? '#7CFC98' : '#ff9b9b'; ctx.font = u.f(13);
-    ctx.fillText(S.connected ? (S.polling ? '● POLLING' : '● LIVE') : '○ OFFLINE', W / 2, 42 + SAFE.t * 0.4);
-    // Round-status icon from the pack; the coloured dot above stays visible
-    // either way, so this is additive rather than a replacement.
-    const statusImg = roundStatusArt(s && s.status);
-    if (imageReady(statusImg, 1, 1)) {
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(statusImg, W / 2 - 10, 20 + SAFE.t * 0.4, 20, 20);
-      ctx.restore();
-    }
-    // round number (server-authoritative)
-    ctx.fillStyle = '#ffe9a8'; ctx.font = u.f(12);
-    const rnd = s ? (s.round_no ? ('ROUND ' + s.round_no) : (s.round_id || '')) : '—';
-    ctx.fillText(rnd, W / 2, 58 + SAFE.t * 0.4);
+      // The toolbar is rendered by index.html as real DOM (hBack, connPill,
+      // hSound, hHelp, hMenu). This function used to draw a *second* header
+      // -- title, LIVE/POLLING/OFFLINE text, a status icon and the round number
+      // -- into the same band, so the two layers overlapped: the title collided
+      // with the round pill and the Live indicator sat on top of both. There is
+      // now exactly one header, and it is the DOM one. The canvas starts below
+      // it; the room/round/connection text is rendered by setConnection() and
+      // setRoundPill() into those same DOM elements.
     // top-left controls: Back | Help | Sound | Menu ; top-right: History
     S._ctl = [];
     const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];

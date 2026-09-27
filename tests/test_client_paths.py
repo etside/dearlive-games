@@ -91,3 +91,53 @@ class ClientPathTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SingleToolbarTest(unittest.TestCase):
+    """Exactly one header: the DOM toolbar, or the canvas. Never both.
+
+    `index.html` renders the toolbar as real elements -- hBack, connPill,
+    hSound, hHelp, hMenu. `draw()` *also* painted a title, a LIVE/POLLING/
+    OFFLINE line, a status icon and a round number into the same band. A
+    Playwright capture of production showed the canvas title colliding with the
+    round pill and the Live indicator drawn on top of both, with the top-right
+    controls clipped.
+
+    Two layers drawing the same chrome cannot be fixed by nudging pixels: the
+    canvas header has to go. This test fails if any of those strings returns to
+    the canvas.
+    """
+
+    def _draw_source(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        i = js.index("function draw(")
+        body = js[i:]
+        # Comments describe the removed header by name; strip them so this
+        # checks what is painted, not what is documented.
+        body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+        body = re.sub(r"(?m)^\s*//.*$", "", body)
+        return body
+
+    def test_canvas_does_not_paint_a_second_header(self):
+        body = self._draw_source()
+        for banned in ("TEEN PATTI PRO", "POLLING", "OFFLINE"):
+            self.assertNotIn(
+                banned, body,
+                f"draw() paints {banned!r}; the DOM toolbar already owns the "
+                "header, and the two layers overlap")
+
+    def test_dom_toolbar_still_present(self):
+        html = (CLIENT / "index.html").read_text(encoding="utf-8")
+        for el in ("hBack", "connPill", "connText", "hSound", "hHelp", "hMenu"):
+            self.assertIn(f'id="{el}"', html, f"DOM toolbar element {el} missing")
+
+    def test_layout_uses_a_single_grid_not_independent_h_anchors(self):
+        """Felt, seats and action bar must share one band grid."""
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        i = js.index("function layout()")
+        fn = js[i:js.index("\n  function rr(", i)]
+        for band in ("header", "seats", "cards", "centre", "pot", "action"):
+            self.assertIn(f"{band}:", fn, f"layout() is missing the {band} band")
+        self.assertIn("const band = {", fn)
+        self.assertNotIn("H * 0.4", fn,
+                         "layout() must not anchor bands to viewport height")

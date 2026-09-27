@@ -118,23 +118,29 @@ class UiRequirementTest(unittest.TestCase):
             self.assertIn(f"{token}:{colour}", HTML, token)
 
     def test_ui04_seat_order_is_left_centre_right(self):
-        # SRS section 1: A (left), B (center), C (right). The layout previously
-        # put B right and C top-centre, contradicting both the SRS and the
-        # reference. Assert the geometry, not just that positions exist.
+        # SRS section 1: A (left), B (centre), C (right), in ONE row.
+        #
+        # The layout used to place them at three unrelated heights (A and C low,
+        # B high) because each was anchored separately against H, and the
+        # positions were expressed as literal `pp` arrays. It is now three equal
+        # columns of one row, so assert that structure: POS order, one shared y
+        # for all three, and column centres that increase left to right.
         import re as _re
-        m = _re.search(r"const pp = land\s*\?\s*(\[.*?\])\s*:\s*(\[.*?\]);",
-                       JS, _re.S)
-        self.assertIsNotNone(m, "could not find the seat layout arrays")
-        land = m.group(1)
-        centre_idx = land.index("x: cx,")
-        self.assertIn("cx - rx", land[:centre_idx], "leftmost seat must be cx - rx")
-        self.assertIn("cx + rx", land[centre_idx:], "rightmost seat must be cx + rx")
-        # POS is ['A','B','C'] and pp is indexed in that order, so index 1 is
-        # the centre seat and must be the one drawn at cx.
-        self.assertLess(land.index("x: cx,"), land.index("cx + rx"),
-                        "index 1 (seat B) must be the centre seat")
+        m = _re.search(r"POS\.forEach\(\(p, i\) => \{([\s\S]*?)\}\);", JS)
+        self.assertIsNotNone(m, "could not find the seat placement loop")
+        body = m.group(1)
+        self.assertIn("colW", body,
+                      "seats must be laid out in equal columns, not literal offsets")
+        self.assertIn("i + 0.5", body,
+                      "seat i must sit in the centre of column i")
+        # One y for every seat: a single y.seats term, not a per-seat offset.
+        self.assertIn("y.seats", body)
+        self.assertNotIn("H *", body,
+                         "seat y must not be anchored to viewport height; that is "
+                         "what put the three seats at three different heights")
+        self.assertEqual(JS.count("colW = (W - SAFE.l - SAFE.r) / 3"), 1,
+                         "exactly one column-width definition")
 
-    # -- UI-05/06 cards and pots ------------------------------------------
     def test_ui05_three_cards_per_seat(self):
         from games.teen_patti_pro.config import DEFAULT_CONFIG
         self.assertEqual(DEFAULT_CONFIG.cards_per_hand, 3)
