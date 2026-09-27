@@ -696,9 +696,17 @@
   // A crown marks the strongest category in the result banner.
   const CROWN_ART = ART_BASE + 'cards/badge-crown.svg';
   const CROWN_IMAGE = preloadImage(CROWN_ART);
-  // Card face template: the blank face a hand-built card is composed on. It is
-  // a source asset for the asset pipeline, not something the runtime draws, so
-  // it is referenced here to document that rather than left looking orphaned.
+  // card-face-template.svg: BUILD-TIME TEMPLATE, not a runtime asset.
+  //
+  // It is the traced blank face (corner rank boxes, empty centre) that
+  // scripts/generate-cards.mjs consumes to compose the 52 faces in this
+  // directory -- template plus rank text, suit glyph and a centre pip. The
+  // dependency runs template -> faces, never faces -> template.
+  //
+  // Kept in assets/ because the pipeline resolves it there (generate-cards.mjs
+  // line 105 uses it as the default --face path). It is listed here so a
+  // future orphan audit reads it as a deliberate build input rather than dead
+  // weight. The runtime never draws it.
   const CARD_FACE_TEMPLATE = ART_BASE + 'cards/card-face-template.svg';
   // Avatar adornments. decorative-ring sits under a seat avatar, timer-ring
   // wraps the countdown, and the gold frame is the default frame in an

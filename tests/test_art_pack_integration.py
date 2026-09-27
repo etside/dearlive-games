@@ -81,12 +81,22 @@ def _all_pack_paths():
     return paths
 
 
+# Deliberately not wired into the renderer, with the reason recorded. Each one
+# must state WHY, so the list cannot quietly grow into a dumping ground.
+BUILD_TIME_INPUTS = {
+    "cards/card-face-template.svg":
+        "consumed by scripts/generate-cards.mjs to compose the 52 faces; "
+        "the runtime never draws it",
+}
+
+
 def _orphan_paths():
     all_files = {str(p.relative_to(PACK))
                  for p in PACK.rglob("*.svg")}
     referenced = _all_pack_paths()
     referenced |= {"avatars/avatar-placeholder.svg",
                    "avatars/avatar-frame-navy.svg"}
+    referenced |= set(BUILD_TIME_INPUTS)
     return sorted(all_files - referenced)
 
 
@@ -189,6 +199,18 @@ class OrphanAssetTest(unittest.TestCase):
         self.assertIn("function cardArt(face)", JS)
         self.assertIn("RANK_SLUG", JS)
         self.assertIn("SUIT_SLUG", JS)
+
+    def test_build_time_inputs_still_exist(self):
+        # An exemption that points at a deleted file is worse than an orphan.
+        for rel, reason in BUILD_TIME_INPUTS.items():
+            self.assertTrue((PACK / rel).is_file(), rel)
+            self.assertTrue(reason.strip(), f"{rel} needs a stated reason")
+
+    def test_build_time_inputs_are_actually_used_by_the_pipeline(self):
+        gen = (ROOT / "scripts/generate-cards.mjs").read_text(encoding="utf-8")
+        for rel in BUILD_TIME_INPUTS:
+            self.assertIn(rel.rsplit("/", 1)[-1], gen,
+                          f"{rel} is exempted but the generator no longer names it")
 
     def test_no_orphans_remain(self):
         # The pack is fully wired. Any file that is neither referenced nor
