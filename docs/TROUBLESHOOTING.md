@@ -47,7 +47,7 @@ If you only want to look around, use the zero-dep path instead — it needs no
 Redis at all:
 
 ```bash
-python -m games.teen_patti_pro.api --confirmed
+python -m games.teen_patti_pro.api --demo
 ```
 
 ## `Refusing production boot, missing: [...]`

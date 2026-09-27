@@ -20,7 +20,7 @@ Two entrypoints, described in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ```bash
 # A. zero-dependency demo — no Redis, no .env
-python -m games.teen_patti_pro.api --confirmed
+python -m games.teen_patti_pro.api --demo
 curl "http://127.0.0.1:5002/demo/session?room=c-room&player=dev"
 
 # B. staging adapter — needs Redis

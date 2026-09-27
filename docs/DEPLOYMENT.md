@@ -5,7 +5,7 @@ and what backing stores you point it at.
 
 | Shape | Command | Ports | Needs Redis | Audience |
 |---|---|---|---|---|
-| **A. Zero-dep demo** | `python -m games.teen_patti_pro.api --confirmed` | 5002 HTTP, 5003 WS | no | first look, CI, demos |
+| **A. Zero-dep demo** | `python -m games.teen_patti_pro.api --demo` | 8000 HTTP, 8001 WS | no | first look, CI, demos |
 | **B. Staging adapter** | `python -m staging.wsgi` | 8000 HTTP | **yes** | UAT against production-shaped routes |
 | **C. Container** | `docker compose -f docker-compose.prod.yml up -d` | 80/443 → 5002/5003 | via compose | VPS |
 
@@ -61,7 +61,7 @@ No Redis, no database, no provider keys, no `.env`. Everything runs in one
 process against in-memory stores.
 
 ```bash
-python -m games.teen_patti_pro.api --confirmed
+python -m games.teen_patti_pro.api --demo
 # TeenPattiPro API: http://0.0.0.0:5002 (config tpp-1.0.0-tbc, confirmed=True, provider=no-keys)
 ```
 
@@ -187,7 +187,7 @@ attached WebSocket. Pick whichever fits the deployment.
 | Local / a VM / any VPS | `python3 -m staging.wsgi` behind nginx, or the container in section C |
 | Embedded in the DearLive app | mount the repo and run `python3 -m games.teen_patti_pro.api`; the app talks to it over HTTP |
 | Serverless / FaaS | `api/index.py` exposes a WSGI callable; any WSGI adapter will serve it |
-| Zero-infrastructure demo | `python3 -m games.teen_patti_pro.api --confirmed` (no Redis, no keys) |
+| Zero-infrastructure demo | `python3 -m games.teen_patti_pro.api --demo` (no Redis, no keys) |
 
 Production runs the **provider API** (`games.teen_patti_pro.api`, HTTP 5002 +
 WebSocket 5003). The staging adapter (`staging.wsgi`, port 8000) is for
@@ -295,7 +295,7 @@ Notes on the ones with a real equivalent:
 ## Zero-dependency demo (no infrastructure at all)
 
 ```bash
-python3 -m games.teen_patti_pro.api --confirmed
+python3 -m games.teen_patti_pro.api --demo
 curl "http://127.0.0.1:5002/demo/session?room=c-room&player=stranger"
 ```
 
@@ -318,8 +318,10 @@ flag** — the demo route is simply active whenever `APP_ENV` is not
    `player_override`, `vip_tier` and `withdrawal_request` exist afterwards.
 3. Fill in `.env` (`bash scripts/setup-dev.sh` creates it from the template).
 4. Start the stack: `python3 -m staging.wsgi`
-5. Verify: `curl localhost:8000/api/v1/health` → `status: "ok"` with
-   `services.database.status == "ok"`.
+5. Verify: `curl localhost:8000/health` → the standard envelope with
+   `data.services.database.status == "ok"`. Note that `services` is reported by
+   the **staging adapter**; the main API's `/health` reports only
+   `game`, `config` and `confirmed`.
 6. Point the frontend at the deployed API.
 
 ### Health contract

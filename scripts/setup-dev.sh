@@ -45,11 +45,15 @@ for candidate in deploy origin upstream; do
   fi
 done
 if [ -z "$REMOTE" ]; then
-  echo "ERROR: no git remote configured." >&2
-  echo "  Add one:  git remote add deploy <repo-url>" >&2
-  exit 1
+  # Not fatal. The release ships a source archive, and a client who unpacks
+  # that has no .git at all -- blocking them here would make the archive
+  # unusable for the one thing it is for.
+  echo "WARNING: no git remote configured; skipping credential setup." >&2
+  echo "         Expected when running from a source archive rather than a clone." >&2
+  echo "         To fix: git remote add deploy <repo-url>" >&2
+else
+  echo "[ok] remote '$REMOTE' -> $(git remote get-url "$REMOTE")"
 fi
-echo "[ok] remote '$REMOTE' -> $(git remote get-url "$REMOTE")"
 
 # --- python -----------------------------------------------------------------
 PY="${PYTHON:-python3}"
@@ -81,8 +85,8 @@ echo ""
 echo "=== Setup complete ==="
 echo "  1. Edit .env            (required values listed in docs/DEPLOYMENT.md)"
 echo "  2. Apply the migration  bash scripts/apply-migration.sh   (needs DATABASE_URL)"
-echo "  3. Zero-dep demo        python3 -m games.teen_patti_pro.api --confirmed"
+echo "  3. Zero-dep demo        python3 -m games.teen_patti_pro.api --demo"
 echo "  4. Staging stack        python3 -m staging.wsgi            (needs Redis)"
-echo "  5. Health check         curl localhost:8000/api/v1/health"
+echo "  5. Health check         curl localhost:8000/health"
 echo ""
 echo "No secret was written by this script and none is ever committed."

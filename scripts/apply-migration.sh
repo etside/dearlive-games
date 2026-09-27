@@ -62,4 +62,4 @@ psql "$DATABASE_URL" -c "\d profit_risk_config" | grep -E "CHECK" || true
 
 echo ""
 echo "Migration applied successfully."
-echo "Next: start the app and check /api/v1/health reports database: ok."
+echo "Next: start the app and GET /health -- it should not report 503."

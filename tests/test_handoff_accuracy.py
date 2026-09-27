@@ -156,5 +156,87 @@ class HandoffNumbersTest(unittest.TestCase):
             self.assertNotIn(overclaim, low, f"overclaims: {overclaim}")
 
 
+class DeliveryInstructionAccuracyTest(unittest.TestCase):
+    """No client-facing file may point at something that does not exist.
+
+    Two of these were wrong before this test existed: `setup-dev.sh` and
+    `DEPLOYMENT.md` both told the client to curl /api/v1/health, which 404s.
+    A wrong path in a setup script costs an integrator an hour.
+    """
+
+    def _client_facing(self):
+        files = [ROOT / "README.md", ROOT / "docs/HANDOFF.md",
+                 ROOT / "docs/DEPLOYMENT.md", ROOT / "docs/TROUBLESHOOTING.md",
+                 ROOT / "scripts/setup-dev.sh", ROOT / "scripts/apply-migration.sh",
+                 ROOT / ".github/workflows/deploy.yml"]
+        return {p: p.read_text(encoding="utf-8") for p in files if p.is_file()}
+
+    def test_health_path_is_the_one_that_is_routed(self):
+        # The only legitimate mention of the wrong path is one that says it
+        # does not exist.
+        for path, text in self._client_facing().items():
+            for line in text.splitlines():
+                if "/api/v1/health" not in line:
+                    continue
+                self.assertRegex(line, r"404|does not exist|no such",
+                                 f"{path.name} cites a path that 404s, "
+                                 f"without saying so: {line.strip()[:70]}")
+
+    def test_health_response_shape_is_not_invented(self):
+        # The main API's /health reports game/config/confirmed. services.* is
+        # the staging adapter's, and must not be attributed to the main API.
+        api_health_keys = {"game", "config", "confirmed"}
+        main = self._client_facing()[ROOT / "docs/HANDOFF.md"]
+        for line in main.splitlines():
+            if "data.services" in line:
+                self.fail("handoff attributes services.* to the main API: " + line)
+
+    def test_scripts_exist_and_are_executable(self):
+        for p in (ROOT / "scripts/setup-dev.sh", ROOT / "scripts/apply-migration.sh",
+                  ROOT / "scripts/serve-demo.sh"):
+            self.assertTrue(p.is_file(), p)
+            import os
+            self.assertTrue(os.access(p, os.X_OK), f"{p} not executable")
+
+    def test_the_demo_flag_is_what_the_docs_prescribe(self):
+        # --confirmed alone is not the documented zero-dependency path; --demo
+        # forces in-memory stores and defaults to port 8000.
+        for path, text in self._client_facing().items():
+            for line in text.splitlines():
+                if "teen_patti_pro.api --confirmed" in line:
+                    self.fail(f"{path.name} prescribes --confirmed as the "
+                              f"zero-dep demo; use --demo: {line.strip()[:60]}")
+
+    def test_setup_script_runs_clean(self):
+        """Runs in a scratch copy, never the working tree.
+
+        setup-dev.sh seeds .env from the template when none exists. It leaves
+        an existing .env alone, but a test that writes into the repository is
+        still the wrong shape, so the script is exercised against a copy.
+        """
+        import shutil
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            scratch = Path(tmp) / "repo"
+            scratch.mkdir()
+            shutil.copytree(ROOT / "scripts", scratch / "scripts")
+            shutil.copy(ROOT / ".env.example", scratch / ".env.example")
+            out = subprocess.run(["bash", str(scratch / "scripts/setup-dev.sh")],
+                                 cwd=scratch, capture_output=True, text=True,
+                                 timeout=300)
+            self.assertEqual(out.returncode, 0,
+                             out.stdout[-400:] + out.stderr[-400:])
+            self.assertIn("Setup complete", out.stdout)
+
+    def test_setup_script_never_clobbers_an_existing_env(self):
+        # The behaviour that makes the test above safe, pinned directly.
+        src = (ROOT / "scripts/setup-dev.sh").read_text(encoding="utf-8")
+        guard = src.index("if [ -f .env ]")
+        write = src.index("cp .env.example .env")
+        self.assertLess(guard, write,
+                        "the -f .env guard must come before the copy")
+
+
 if __name__ == "__main__":
     unittest.main()
