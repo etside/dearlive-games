@@ -36,6 +36,7 @@ import argparse
 import base64
 import hashlib
 import json
+import logging
 import socket
 import struct
 import threading
@@ -139,25 +140,43 @@ class Hub:
             self.leave(conn)
 
     def tick_loop(self):
+        """Drive and publish every room once a second, forever.
+
+        The pump is the only clock-driven transition in the game. It used to be
+        wrapped in a bare `except Exception: pass`, which meant a failure here
+        was invisible: the thread kept running, the page kept receiving
+        round.tick frames, and no round ever advanced. Production sat on
+        BETTING_OPEN with an expired deadline and no clue why.
+
+        Both loops now log with full context -- room, round, phase, exception --
+        and never swallow anything silently. No secrets, tokens or wallet
+        values are logged: only identifiers and status.
+        """
         while True:
             time.sleep(1)
             with self.lock:
                 rooms = list(self.rooms)
-            # Drive the round lifecycle before publishing it. This is the only
-            # clock-driven transition in the game: start_round ran when someone
-            # sat, but nothing closed betting, published a result, settled, or
-            # dealt the next round, so a table dealt once and then sat in
-            # BETTING_OPEN against a deadline that had already passed, forever.
-            # pump() is idempotent per phase.
             for room in rooms:
                 try:
-                    self.svc.pump(room)
+                    out = self.svc.pump(room)
+                    if out and out.get("moved"):
+                        log.info("teen_patti_round_advanced room=%s moved=%s",
+                                 room, ",".join(out["moved"]))
                 except Exception:
-                    pass
+                    st = {}
+                    try:
+                        st = self.svc.state(room, "") or {}
+                    except Exception:
+                        pass
+                    log.exception(
+                        "teen_patti_pump_failed room=%s round_id=%s phase=%s "
+                        "ts=%d",
+                        room, st.get("round_id") or "-",
+                        st.get("status") or "-", int(time.time() * 1000))
             for room in rooms:
                 try:
                     st = self.svc.state(room, "")
-                    if st.get("round") is None and st.get("round_id") is None:
+                    if not st.get("round_id"):
                         continue
                     self.push(room, {"seq": -1, "kind": "round.tick",
                                      "serverTime": int(time.time() * 1000),
@@ -165,8 +184,7 @@ class Hub:
                                      "status": st.get("status"),
                                      "betting_end_at": st.get("betting_end_at")})
                 except Exception:
-                    pass
-
+                    log.exception("teen_patti_tick_push_failed room=%s", room)
 
 def handle(conn: socket.socket, hub: Hub):
     try:
