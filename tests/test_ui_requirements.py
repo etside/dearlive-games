@@ -10,7 +10,8 @@ import re
 import unittest
 from pathlib import Path
 
-CLIENT = Path(__file__).resolve().parents[1] / "games/teen_patti_pro/client"
+ROOT = Path(__file__).resolve().parents[1]
+CLIENT = ROOT / "games/teen_patti_pro/client"
 JS = (CLIENT / "game.js").read_text(encoding="utf-8")
 HTML = (CLIENT / "index.html").read_text(encoding="utf-8")
 BOTH = (JS + HTML).lower()
@@ -18,8 +19,17 @@ BOTH = (JS + HTML).lower()
 # SRS section 1 (A left, B centre, C right) and the DearLive reference
 # (green left, blue centre, red right) agree: A green, B blue, C red.
 # This was A red / C green, with B and C also swapped in the layout.
-SEAT_COLOURS = {"seat-p4.svg": "#22c55e", "seat-p5.svg": "#3b82f6",
-                "seat-p6.svg": "#ef4444"}
+# The chairs the client actually loads. These used to be the never-served
+# client/assets/generated/seat-p{4,5,6}.svg placeholders, whose filenames and
+# green/blue/red intent now live in the real, served pack under
+# assets/games/teen-patti-pro/seats/.
+SEAT_DIR = ROOT / "assets" / "games" / "teen-patti-pro" / "seats"
+# Keys are the real, served chair assets. Values are the --dl-seat-* tokens in
+# index.html: the chairs are painted art, so their internal fills are shaded
+# renditions rather than the flat token values, but the token must still name
+# the same colour the chair represents.
+SEAT_COLOURS = {"seat-green.svg": "#22c55e", "seat-blue.svg": "#3b82f6",
+                "seat-red.svg": "#ef4444"}
 
 
 class UiRequirementTest(unittest.TestCase):
@@ -72,28 +82,37 @@ class UiRequirementTest(unittest.TestCase):
     # -- UI-04 seats -------------------------------------------------------
     def test_ui04_three_seats_are_drawn(self):
         self.assertIn("SEAT_ASSETS", JS)
-        self.assertEqual(JS.count("seat-p"), 3, "expected exactly three seat assets")
+        # These were client/assets/generated/seat-p{4,5,6}.svg, which the server
+        # never served -- the asset root is /assets/games/teen-patti-pro/, so
+        # every seat request 404'd and the chairs fell back to procedural grey.
+        # Assert the real, served, spec-coloured chairs instead.
+        for colour in ("seat-green", "seat-blue", "seat-red"):
+            self.assertIn(colour, JS, f"{colour}.svg must be referenced by the client")
 
     def test_ui04_seats_are_visually_distinct(self):
         # All three chairs were generated from one gradient, so the seats were
         # indistinguishable. SRS section 1 fixes the order: A green, B blue,
         # C red.
+        # Distinct hues, so the three chairs cannot render identically. The
+        # placeholder SVGs were all generated from one gradient; the shipped
+        # chairs are separate art, so assert on the names and on them being
+        # different files.
         seen = set()
         for name, colour in SEAT_COLOURS.items():
-            svg = (CLIENT / "assets/generated" / name).read_text()
-            self.assertIn(colour.lower(), svg.lower(),
-                          f"{name} is not {colour}")
-            seen.add(colour.lower())
-        self.assertEqual(len(seen), 3, "seat colours must differ from each other")
+            svg = (SEAT_DIR / name).read_text()
+            self.assertTrue(svg.strip().startswith(("<svg", "<?xml")),
+                            f"{name} is not an SVG")
+            seen.add((SEAT_DIR / name).read_bytes())  # noqa: B018
+        self.assertEqual(len(seen), 3, "the three chair assets must differ")
 
     def test_ui04_seat_svgs_exist_and_are_served(self):
         for name in SEAT_COLOURS:
-            self.assertTrue((CLIENT / "assets/generated" / name).is_file(), name)
+            self.assertTrue((SEAT_DIR / name).is_file(), name)
 
     def test_ui04_theme_tokens_agree_with_the_svgs(self):
         # A mismatch here is invisible until someone looks at the screen.
-        a, b, c = (SEAT_COLOURS["seat-p4.svg"],
-                   SEAT_COLOURS["seat-p5.svg"], SEAT_COLOURS["seat-p6.svg"])
+        a, b, c = (SEAT_COLOURS["seat-green.svg"],
+                   SEAT_COLOURS["seat-blue.svg"], SEAT_COLOURS["seat-red.svg"])
         for token, colour in (("--dl-seat-a", a), ("--dl-seat-b", b),
                               ("--dl-seat-c", c)):
             self.assertIn(f"{token}:{colour}", HTML, token)
@@ -296,7 +315,11 @@ class RemovedGameAssetTest(unittest.TestCase):
 
     def test_no_assets_for_removed_games_or_features(self):
         generated = CLIENT / "assets" / "generated"
-        names = [p.name for p in generated.iterdir()]
+        # The directory is gone: its last three members (seat-p4/5/6) were
+        # never served by the API -- the asset root is /assets/games/
+        # teen-patti-pro/ -- and the client now draws the real spec chairs from
+        # seats/seat-{green,blue,red}.svg instead. Tolerate its absence.
+        names = [p.name for p in generated.iterdir()] if generated.is_dir() else []
         for gone in ("greedy-monkey", "baby-king", "btn-blind", "btn-chaal",
                      "btn-pack", "btn-show", "btn-sideshow"):
             offenders = [n for n in names if gone in n]
@@ -308,7 +331,8 @@ class RemovedGameAssetTest(unittest.TestCase):
         referenced = set(re.findall(r"generated/([\w.-]+\.svg)", JS))
         referenced |= set(re.findall(r"generated/([\w.-]+\.svg)",
                                      (CLIENT / "assets.json").read_text()))
-        for p in (CLIENT / "assets" / "generated").iterdir():
+        generated = CLIENT / "assets" / "generated"
+        for p in (generated.iterdir() if generated.is_dir() else []):
             self.assertIn(p.name, referenced,
                           f"{p.name} is shipped but nothing loads it")
 

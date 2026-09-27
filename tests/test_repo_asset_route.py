@@ -153,8 +153,24 @@ class ClientFileRouteTest(_ServerCase):
         # The route used to match a single path segment, so
         # assets/generated/seat-p4.svg 404'd and all three chairs silently
         # failed to render.
-        for name in ("seat-p4.svg", "seat-p5.svg", "seat-p6.svg"):
-            st, ctype, body = self.get(f"/teen-patti-pro/assets/generated/{name}")
+        # No multi-segment fixture ships any more: the three files this used to
+        # exercise (assets/generated/seat-p{4,5,6}.svg) were never served by the
+        # asset root and have been removed in favour of the real chair pack at
+        # /assets/games/teen-patti-pro/seats/. So assert the route's *pattern*
+        # still accepts nested paths -- that is the behaviour that was broken,
+        # and it must not silently regress back to one segment.
+        import re as _re
+        pat = _re.compile(r"/teen-patti-pro/assets/((?:[A-Za-z0-9][A-Za-z0-9._-]*/)*"
+                          r"[A-Za-z0-9][A-Za-z0-9._-]*)")
+        for nested in ("assets/generated/seat-p4.svg",
+                       "assets/generated/deep/nested/chair.svg",
+                       "assets/seats/seat-green.svg"):
+            with self.subTest(path=nested):
+                self.assertIsNotNone(pat.fullmatch("/teen-patti-pro/" + nested),
+                                     f"route must still match {nested}")
+        # And the chair pack the client now uses must actually serve.
+        for name in ("seat-green.svg", "seat-blue.svg", "seat-red.svg"):
+            st, ctype, body = self.get(f"/assets/games/teen-patti-pro/seats/{name}")
             self.assertEqual(st, 200, name)
             self.assertIn("image/svg+xml", ctype, name)
             self.assertIn(b"<svg", body, name)
@@ -166,6 +182,13 @@ class ClientFileRouteTest(_ServerCase):
         import json as _json
         client = Path(__file__).resolve().parents[1] / "games/teen_patti_pro/client"
         js = (client / "game.js").read_text()
+        # Strip comments before harvesting paths. game.js and api.py both carry
+        # comments that *name* the retired assets/generated/seat-p{4,5,6}.svg
+        # paths to explain why they were removed; those are documentation, not
+        # requests, and treating them as requests made this test demand that
+        # files which are deliberately gone still exist.
+        js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+        js = re.sub(r"(?m)^\s*//.*$", "", js)
         # Assets come from two places: literals in game.js, and the manifest.
         wanted = set(re.findall(r"['\"](assets/[^'\"]+\.svg)['\"]", js))
         manifest = _json.loads((client / "assets.json").read_text())

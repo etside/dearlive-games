@@ -91,10 +91,17 @@
   const DENOMS = [20, 100, 500, 1000];
   const POS = ['A', 'B', 'C'];
   const SEAT_LABELS = { A: 'YOU', B: 'PLAYER A', C: 'ONLINE' };
+  // Seat art. This pointed at 'assets/generated/seat-p4.svg' & friends, which
+  // do not exist anywhere in the repo -- all three requests 404'd, the images
+  // never loaded, and the chairs silently fell back to procedural shapes with
+  // none of the specified colours. Use the real pack: green left, blue centre,
+  // red right. Spelled literally rather than via ART_BASE because ART_BASE is
+  // declared ~550 lines below this point and a const cannot be read before its
+  // declaration.
   const SEAT_ASSETS = [
-    'assets/generated/seat-p4.svg',
-    'assets/generated/seat-p5.svg',
-    'assets/generated/seat-p6.svg'
+    '/assets/games/teen-patti-pro/seats/seat-green.svg',
+    '/assets/games/teen-patti-pro/seats/seat-blue.svg',
+    '/assets/games/teen-patti-pro/seats/seat-red.svg'
   ];
   const seatImages = SEAT_ASSETS.map(src => {
     const image = new Image();
@@ -951,16 +958,22 @@
 
   function draw(now) {
     ctx.clearRect(0, 0, W, H);
+    // Jungle-green table instead of the old violet casino gradient. Spec:
+    // #4A5D23 -> #2D3A14, dark vignette, gold trim on the table edge.
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#160b2d'); g.addColorStop(0.5, '#3b123f'); g.addColorStop(1, '#100617');
+    g.addColorStop(0, '#4A5D23'); g.addColorStop(0.55, '#3A4A1B'); g.addColorStop(1, '#2D3A14');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(124,58,237,.28)';
+    ctx.fillStyle = 'rgba(15,17,8,.42)';
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * .22, 0); ctx.lineTo(W * .12, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * .78, 0); ctx.lineTo(W * .88, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
     const table = ctx.createRadialGradient(W / 2, H * .43, 20, W / 2, H * .43, Math.max(W, H) * .65);
-    table.addColorStop(0, '#7c3aed'); table.addColorStop(.68, '#3b1b68'); table.addColorStop(1, '#1b0d35');
+    table.addColorStop(0, '#5A6E2C'); table.addColorStop(.68, '#3A4A1B'); table.addColorStop(1, '#1C2410');
     ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, H * .43, W * .44, H * .34, 0, 0, 7); ctx.fill();
     ctx.strokeStyle = THEME.gold; ctx.lineWidth = Math.max(2, W * .008); ctx.stroke();
+    // Dark vignette at the edges, per spec.
+    const vg = ctx.createRadialGradient(W / 2, H * .45, Math.min(W, H) * .35, W / 2, H * .45, Math.max(W, H) * .78);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
     const L = layout(), s = S.snap, u = U();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
