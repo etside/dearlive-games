@@ -890,7 +890,11 @@
   function layout() {
     const land = W > H;
     const cx = W / 2, top = H * (land ? 0.30 : 0.24) + SAFE.t;
-    const rx = Math.min(W * 0.36, (land ? 260 : 300));
+    // Seat centres must leave room for the chair art on both sides.
+    // cx +/- W*0.36 puts them at 55/335 on a 390 viewport, and a ~120px
+    // chair centred there overhangs both edges.
+    const seatInset = Math.min(78, W * 0.20);
+    const rx = Math.max(0, W / 2 - seatInset);
     const seats = {};
     // SRS section 1 and the DearLive reference agree: A left, B centre,
     // C right. This was previously A left, B right, C top-centre, which put
@@ -970,7 +974,12 @@
     ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * .78, 0); ctx.lineTo(W * .88, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
     const table = ctx.createRadialGradient(W / 2, H * .43, 20, W / 2, H * .43, Math.max(W, H) * .65);
     table.addColorStop(0, '#5A6E2C'); table.addColorStop(.68, '#3A4A1B'); table.addColorStop(1, '#1C2410');
-    ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, H * .43, W * .44, H * .34, 0, 0, 7); ctx.fill();
+    // Bound the felt to the *table* band, not the viewport aspect. At
+    // 390x844 the old H*.34 radius made the ellipse 344x574, spanning
+    // y=76..650 and leaving a large empty region under it.
+    const tblRx = W * 0.44;
+    const tblRy = Math.min(H * 0.20, W * 0.44 * 0.62);
+    ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, H * .43, tblRx, tblRy, 0, 0, 7); ctx.fill();
     ctx.strokeStyle = THEME.gold; ctx.lineWidth = Math.max(2, W * .008); ctx.stroke();
     // Dark vignette at the edges, per spec.
     const vg = ctx.createRadialGradient(W / 2, H * .45, Math.min(W, H) * .35, W / 2, H * .45, Math.max(W, H) * .78);
