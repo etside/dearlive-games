@@ -14,6 +14,9 @@ def _env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
+from common.wallet import WalletNotConfigured
+
+
 def build_stores():
     """Return (wallet, tokens, sessions, idempotency, note)."""
     from common.idempotency import MemoryIdempotencyStore
@@ -42,7 +45,17 @@ def build_stores():
     wallet, tokens, sessions, idem = None, None, None, None
     if use_http_wallet:
         from integrations.dearlive import HttpDearLiveWallet
-        wallet = HttpDearLiveWallet()
+        try:
+            wallet = HttpDearLiveWallet()
+        except WalletNotConfigured as exc:
+            # No wallet is wired up. The game must still boot: rounds, seats,
+            # cards, countdown, result and history are all real without money,
+            # and only a bet needs the wallet. Booting with a clearly-marked
+            # unavailable adapter means a bet is refused with
+            # WALLET_NOT_CONFIGURED, instead of the whole service failing to
+            # start because an optional dependency is absent.
+            from integrations.dearlive import UnavailableWallet
+            wallet = UnavailableWallet(str(exc))
     else:
         from integrations.dearlive_mock import MockDearLiveWallet
         wallet = MockDearLiveWallet()

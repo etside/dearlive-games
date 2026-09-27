@@ -270,3 +270,33 @@ def build_wallet_from_env() -> WalletAdapter:
         return HttpDearLiveWallet()
     from integrations.dearlive_mock import MockDearLiveWallet
     return MockDearLiveWallet()
+
+
+class UnavailableWallet(WalletAdapter):
+    """Stands in when no external wallet is configured.
+
+    Every operation raises WalletNotConfigured, which the API maps to
+    503 WALLET_NOT_CONFIGURED. It reports no balance ever -- returning 0 would
+    tell a player they have no money when in fact no wallet exists.
+
+    This is not a mock: it holds no funds, cannot be debited, and cannot be
+    selected by any configuration value.
+    """
+
+    def __init__(self, reason: str = "no external wallet is configured"):
+        self.reason = reason
+
+    def _no(self, *_a, **_k):
+        raise WalletNotConfigured(self.reason)
+
+    def get_balance(self, player_id):
+        return self._no()
+
+    def debit(self, player_id, amount, ref, idempotency_key):
+        return self._no()
+
+    def credit(self, player_id, amount, ref, idempotency_key):
+        return self._no()
+
+    def refund(self, player_id, amount, ref, idempotency_key):
+        return self._no()

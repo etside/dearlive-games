@@ -194,3 +194,50 @@ class ProductionAdapterSelectionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnavailableWalletTest(unittest.TestCase):
+    """No wallet configured must not stop the game booting."""
+
+    def _wallet(self):
+        from integrations.dearlive import UnavailableWallet
+        return UnavailableWallet("no external wallet is configured")
+
+    def test_every_operation_raises_not_configured(self):
+        w = self._wallet()
+        for call in (lambda: w.get_balance("p1"),
+                     lambda: w.debit("p1", 20, "r", "k"),
+                     lambda: w.credit("p1", 20, "r", "k"),
+                     lambda: w.refund("p1", 20, "r", "k")):
+            with self.assertRaises(WalletNotConfigured):
+                call()
+
+    def test_never_reports_a_balance(self):
+        """Returning 0 would read as 'you are broke' rather than 'no wallet'."""
+        with self.assertRaises(WalletNotConfigured):
+            self._wallet().get_balance("p1")
+
+    def test_game_still_boots_without_a_wallet(self):
+        import os
+        from integrations import build_stores
+        os.environ.pop("DEMO_MODE", None)
+        os.environ["REDIS_HOST"] = "127.0.0.1"
+        os.environ["WALLET_BASE_URL"] = "http://127.0.0.1:5002"  # self-ref
+        try:
+            wallet, _t, _s, _i, note = build_stores()
+            self.assertIsNotNone(wallet)
+            with self.assertRaises(WalletNotConfigured):
+                wallet.get_balance("p1")
+        finally:
+            os.environ.pop("WALLET_BASE_URL", None)
+            os.environ.pop("REDIS_HOST", None)
+
+    def test_health_reports_not_configured_for_self_reference(self):
+        from integrations.dearlive import _is_self
+        import os
+        os.environ["GAMES_BASE_URL"] = "https://api.ura-dhura.com"
+        try:
+            self.assertTrue(_is_self("https://api.ura-dhura.com"))
+            self.assertFalse(_is_self("https://wallet.dearlive.com"))
+        finally:
+            os.environ.pop("GAMES_BASE_URL", None)
