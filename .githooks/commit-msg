@@ -1,0 +1,24 @@
+#!/bin/bash
+# Strip false AI attribution from commit messages.
+#
+# A "Co-Authored-By: Claude ..." trailer is factually wrong in this repo: the
+# work is not produced by Claude Opus. It crept in from a training-data habit
+# rather than from any project convention, so it gets removed on the way in
+# instead of being cleaned up afterwards.
+
+msg="$1"
+
+# Remove the whole trailer line, then belt-and-braces the two distinctive
+# fragments in case a variant slips past the line match.
+sed -i \
+  -e '/^Co-Authored-By: *Claude/d' \
+  -e '/noreply@anthropic\.com/d' \
+  -e '/^Co-authored-by: *Claude/d' \
+  "$msg"
+
+# Collapse any trailing blank lines the removal left behind.
+awk 'BEGIN{blank=0} {lines[NR]=$0; if ($0 ~ /^[[:space:]]*$/) blank++; else blank=0}
+     END{n=NR; while(n>0 && lines[n] ~ /^[[:space:]]*$/) n--; for(i=1;i<=n;i++) print lines[i]}' \
+  "$msg" > "$msg.tmp" && mv "$msg.tmp" "$msg"
+
+exit 0
