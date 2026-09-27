@@ -115,6 +115,13 @@
   try { S.sound = localStorage.getItem('tpp_sound') !== 'off'; } catch (e) { S.sound = true; }
   S.hist = [];
   // Supplied master audio (assets/dearlive-master, served under
+  // Master assets (lottie/gif/wav) live under the game's own mount:
+  //   /teen-patti-pro/master/<kind>/<file>
+  // These four paths were client-relative AND mis-ordered, so on
+  // /teen-patti-pro they resolved to /master/... and every one 404'd --
+  // a console error on every timer tick, with no effect on play because
+  // the animation is decorative.
+  const MASTER_BASE = '/teen-patti-pro/master/';
   // master/teen-patti-pro/wav/): played on REAL server state transitions
   // only — never on render. Oscillator fallback if a file is absent.
   const SFX_FILES = { bet: 'bet.wav', win: 'win.wav', coin: 'coin.wav', lose: 'lose.wav',
@@ -125,7 +132,7 @@
     try {
       let a = sfxCache[name];
       if (!a) {
-        a = new Audio('master/teen-patti-pro/wav/' + (SFX_FILES[name] || name));
+        a = new Audio(MASTER_BASE + 'wav/' + (SFX_FILES[name] || name));
         sfxCache[name] = a;
       }
       a.currentTime = 0;
@@ -309,7 +316,7 @@
 
     function playLottie(name, container, opts) {
       return loadLottie().then(() => {
-        const url = 'master/teen-patti-pro/lottie/' + name + '.json';
+        const url = MASTER_BASE + 'lottie/' + name + '.json';
         const anim = lottieLib.loadAnimation({
           container: container,
           renderer: 'svg',
@@ -326,7 +333,7 @@
       }).catch(() => {
         // Fallback to GIF
         const img = document.createElement('img');
-        img.src = 'master/teen-patti-pro/gif/' + name + '.gif.gif';
+        img.src = MASTER_BASE + 'gif/' + name + '.gif.gif';
         img.style.width = '100%'; img.style.height = '100%';
         container.appendChild(img);
         return { destroy: () => img.remove() };
@@ -387,7 +394,7 @@
       if (muted) return Promise.resolve();
       let audio = cache[name];
       if (!audio) {
-        audio = new Audio('master/teen-patti-pro/wav/' + files[name]);
+        audio = new Audio(MASTER_BASE + 'wav/' + files[name]);
         audio.preload = 'auto';
         cache[name] = audio;
       }

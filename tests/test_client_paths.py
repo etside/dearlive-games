@@ -141,3 +141,35 @@ class SingleToolbarTest(unittest.TestCase):
         self.assertIn("const band = {", fn)
         self.assertNotIn("H * 0.4", fn,
                          "layout() must not anchor bands to viewport height")
+
+
+class MasterAssetPathTest(unittest.TestCase):
+    """Lottie / gif / wav art must resolve on the game's own mount.
+
+    All four master-asset URLs were client-relative *and* mis-ordered:
+    'master/teen-patti-pro/lottie/x.json' resolved against '/' to
+    /master/teen-patti-pro/... , while the server serves
+    /teen-patti-pro/master/<kind>/<file>. So every one 404'd -- a console error
+    on each timer tick, invisible in play because the art is decorative, but it
+    is a 404 and it is noise in the browser console.
+    """
+    def test_no_client_relative_master_paths(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+        js = re.sub(r"(?m)^\s*//.*$", "", js)
+        bad = re.findall(r"['\"](master/[^'\"]+)['\"]", js)
+        self.assertEqual(bad, [],
+                         f"client-relative master asset paths: {bad}")
+
+    def test_master_base_is_absolute_and_correctly_ordered(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        m = re.search(r"const MASTER_BASE\s*=\s*'([^']+)'", js)
+        self.assertIsNotNone(m, "MASTER_BASE not defined")
+        self.assertEqual(m.group(1), "/teen-patti-pro/master/")
+        # segment order must be mount/kind/file, not kind/.../mount
+        self.assertTrue(m.group(1).startswith("/teen-patti-pro/master/"))
+
+    def test_server_serves_the_same_shape(self):
+        api = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        self.assertIn(r"/teen-patti-pro/master/([a-z]+)/", api)
