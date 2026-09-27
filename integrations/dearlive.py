@@ -56,6 +56,16 @@ def _is_self(base_url: str) -> bool:
         return False
     if host in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
         return port in (None, 80, 443, 5002, 8000)
+    # Also self-referential when it is this deployment's own public host. The
+    # live box has WALLET_BASE_URL=https://api.ura-dhura.com, which *is* the
+    # game host, so a loopback-only check called it a legitimate external wallet
+    # and then reported UNAVAILABLE after a failed probe -- when the honest
+    # answer is NOT_CONFIGURED, because no wallet has been supplied.
+    own = _env("GAMES_BASE_URL", "").rstrip("/")
+    if own:
+        o = urllib.parse.urlparse(own if "//" in own else "https://" + own)
+        if (o.hostname or "").lower() == host:
+            return True
     return False
 
 
