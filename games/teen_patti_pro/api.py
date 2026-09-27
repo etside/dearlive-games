@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from common import envelope as E
+from common.wallet import WalletError
 from common.admin_store import AdminStoreUnavailable
 from common.session import TokenError
 from .config import TeenPattiConfig, DEFAULT_CONFIG
@@ -1748,6 +1749,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(422, E.err("amount must be integer", E.E_VALIDATION))
                 except ServiceError as exc:
                     return self.fail(exc)
+                except WalletError as exc:
+                    # A wallet that is unreachable or unconfigured must not take
+                    # the request thread down. Unhandled it propagated out of the
+                    # handler, the connection dropped mid-flight, and nginx
+                    # answered 502 with an HTML body the client could not parse.
+                    # A server-side dependency failure is 503, not a client error.
+                    log.warning("bet rejected: wallet unavailable: %s", exc)
+                    return self.send(503, E.err("Wallet unavailable", E.E_INTERNAL))
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/(\S+)/reconnect", path)
             if m:
                 body, err = parse_body(self)
