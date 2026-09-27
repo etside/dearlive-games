@@ -46,6 +46,10 @@
   .iconbtn:hover{background:rgba(30,40,70,.9)}
   .iconbtn:focus-visible{outline:3px solid var(--dl-cyan);outline-offset:2px}
   .iconbtn[aria-pressed="true"]{border-color:var(--dl-accent);color:var(--dl-accent)}
+  /* Panel art hangs on this; it stays hidden when the art does not load. */
+  #youMarker{width:0;height:0;padding:0;overflow:hidden}
+  #youMarker:not([hidden]){width:26px;height:26px;padding:0;
+    background-repeat:no-repeat;background-position:center;background-size:contain}
   .pill{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;
     border-radius:999px;background:rgba(8,12,24,.82);
     border:1px solid rgba(255,255,255,.16);font-size:.82rem;font-weight:600;
@@ -114,6 +118,7 @@
 <div class="hud">
   <div class="hud-left">
     <button type="button" class="iconbtn" id="hBack" aria-label="Back to lobby">&#8592;</button>
+    <span class="pill" id="youMarker" hidden aria-hidden="true"></span>
     <span class="pill" id="roundPill" title="Current round">
       <b id="roundNo">--</b><span id="roomName"></span>
     </span>

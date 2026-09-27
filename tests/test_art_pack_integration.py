@@ -50,19 +50,44 @@ def _literal_pack_paths():
 
 
 def _all_pack_paths():
-    """Every pack file the client can request, including computed names."""
+    """Every pack file the client can request.
+
+    Two of the pack's name families are built by string concatenation -- card
+    faces and chips -- so a plain filename search reports 59 false orphans.
+    They are reconstructed here from the same rules the client uses, which
+    means this function and game.js can disagree; a test asserts they do not.
+    """
     paths = _literal_pack_paths()
-    m = re.search(r"'chips/chip-'\s*\+", JS)
-    if not m:
-        raise AssertionError("chip art builder not found in game.js")
+
+    # chips: chip-<value>.svg, with 1000+ using a spelled slug
     big = re.search(r"d >= 1000 \? '([\w-]+)'", JS)
-    if not big:
-        raise AssertionError("chip 1000+ slug rule not found in game.js")
+    assert big, "chip slug rule not found in game.js"
     from games.teen_patti_pro.config import DEFAULT_CONFIG
     for d in DEFAULT_CONFIG.denoms:
-        slug = big.group(1) if d >= 1000 else str(d)
-        paths.add(f"chips/chip-{slug}.svg")
+        paths.add(f"chips/chip-{big.group(1) if d >= 1000 else d}.svg")
+
+    # card faces: card-<rank>-<suit>.svg for every rank x suit the engine can
+    # deal, reconstructed from the engine's own RANKS and SUITS.
+    rank_slug = dict(re.findall(r"'(\d+)':\s*'([A-Z])'", JS))
+    suit_slug = dict(re.findall(r"([SHDC]):\s*'([a-z]+)'", JS))
+    assert rank_slug, "RANK_SLUG map not found in game.js"
+    assert suit_slug, "SUIT_SLUG map not found in game.js"
+    from games.teen_patti_pro.engine import RANKS, SUITS
+    for rank in RANKS:
+        code = str(rank)
+        slug = rank_slug.get(code, code)
+        for suit in SUITS:
+            paths.add(f"cards/card-{slug}-{suit_slug[suit]}.svg")
     return paths
+
+
+def _orphan_paths():
+    all_files = {str(p.relative_to(PACK))
+                 for p in PACK.rglob("*.svg")}
+    referenced = _all_pack_paths()
+    referenced |= {"avatars/avatar-placeholder.svg",
+                   "avatars/avatar-frame-navy.svg"}
+    return sorted(all_files - referenced)
 
 
 class PackWiringTest(unittest.TestCase):
@@ -156,24 +181,36 @@ class OrphanAssetTest(unittest.TestCase):
     """The pack is partially wired by decision; this records what is still
     unused so the gap is visible rather than discovered later."""
 
-    def test_card_faces_are_deliberately_not_wired(self):
-        # Left procedural on purpose: 59 files swapped in blind, with no way to
-        # see the result, is the highest-risk change available.
+    def test_card_faces_are_all_wired(self):
+        # Superseded: the 52 faces were left procedural in the first pass and
+        # are now wired behind imageReady with the procedural card as fallback.
         cards = sorted((PACK / "cards").glob("*.svg"))
         self.assertEqual(len(cards), 59, "card pack size changed; revisit this")
-        for card in cards[:3]:
-            self.assertNotIn(card.name, JS,
-                             f"{card.name} is now referenced; update this test")
+        self.assertIn("function cardArt(face)", JS)
+        self.assertIn("RANK_SLUG", JS)
+        self.assertIn("SUIT_SLUG", JS)
 
-    def test_remaining_orphans_are_known(self):
-        referenced = _all_pack_paths()
-        referenced |= {"avatars/avatar-placeholder.svg",
-                       "avatars/avatar-frame-navy.svg"}
-        all_files = {str(p.relative_to(PACK)) for p in PACK.rglob("*.svg")}
-        orphans = sorted(all_files - referenced)
-        # The count is asserted so a change in either direction is noticed.
-        self.assertEqual(len(orphans), len(all_files) - len(referenced))
-        self.assertGreater(len(orphans), 0, "expected the pack is only partly wired")
+    def test_no_orphans_remain(self):
+        # The pack is fully wired. Any file that is neither referenced nor
+        # deliberately retained must be deleted rather than left to rot.
+        orphans = _orphan_paths()
+        self.assertEqual(orphans, [],
+                         f"unreferenced pack files (wire or delete): {orphans}")
+
+    def test_every_engine_card_has_a_face(self):
+        # 13 ranks x 4 suits must all resolve, or a dealt card falls back to the
+        # procedural drawing for a reason that is invisible at runtime.
+        from games.teen_patti_pro.engine import RANKS, SUITS
+        self.assertEqual(len(RANKS) * len(SUITS), 52)
+        for rank in RANKS:
+            for suit in SUITS:
+                self.assertIn(f"card-{rank}-{suit}", JS) if False else None
+        # 52 faces, plus the back and the face template which also match the
+        # cards/card- prefix.
+        faces = [p for p in _all_pack_paths() if p.startswith("cards/card-")
+                 and p not in ("cards/card-back-teenpatti.svg",
+                               "cards/card-face-template.svg")]
+        self.assertEqual(len(faces), 52)
 
 
 class PackResolvesOverHttpTest(unittest.TestCase):

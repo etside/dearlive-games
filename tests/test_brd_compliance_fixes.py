@@ -264,6 +264,65 @@ class EmptySeatCannotWinTest(unittest.TestCase):
                 self.assertIn(position, ("A", "B"),
                               "seat C was empty and must not win")
 
+    def test_best_hand_on_an_empty_seat_does_not_void_the_pot(self):
+        """The exact reported scenario: 3 seats, 2 players, best hand on C.
+
+        Seat C is never staked. It holds a trail; the two players who DID stake
+        hold much weaker hands. Before the fix C won, the pot was voided, and
+        both players lost their entire stake. Now the best *staked* hand takes
+        it.
+        """
+        w = MemoryWallet()
+        for pid in ("a", "b"):
+            w.fund(pid, 100_000)
+        svc = TeenPattiService(
+            config=dataclasses.replace(TeenPattiConfig(confirmed=True),
+                                       max_win_cap=0), wallet=w)
+        svc.start_round("r")
+        svc.place_bet("r", "a", "A", 500, "k1")
+        svc.place_bet("r", "b", "B", 500, "k2")
+        svc.close_betting("r")
+        rnd = svc.rooms["r"].round
+        # C (empty) holds the trail. A and B hold junk.
+        rnd.hands = {"A": [_card(2, "s"), _card(3, "h"), _card(7, "d")],
+                     "B": [_card(4, "s"), _card(5, "h"), _card(9, "d")],
+                     "C": [_card(13, "s"), _card(13, "h"), _card(13, "d")]}
+        rnd.resolved = {k: list(v) for k, v in rnd.hands.items()}
+        result = svc.publish_result("r")
+        rows = svc.settle("r")["settlements"]
+        self.assertNotIn("C", result["winners"],
+                         "an empty seat must never win")
+        self.assertTrue(result["winners"], "a staked seat must win instead")
+        paid = sum(x["payout"] for x in rows)
+        self.assertEqual(paid, 1000,
+                         "the whole pot goes to the best staked hand")
+        # The winner keeps their own stake, so nobody loses by winning.
+        winner_rows = [x for x in rows if x["payout"] > 0]
+        self.assertEqual(len(winner_rows), 1)
+
+    def test_the_losers_money_goes_to_a_player_not_to_carry(self):
+        w = MemoryWallet()
+        for pid in ("a", "b"):
+            w.fund(pid, 100_000)
+        svc = TeenPattiService(
+            config=dataclasses.replace(TeenPattiConfig(confirmed=True),
+                                       max_win_cap=0), wallet=w)
+        svc.start_round("r")
+        # 500 and 1000 are configured denominations; 300/700 are not, and the
+        # engine rightly refuses them.
+        svc.place_bet("r", "a", "A", 500, "k1")
+        svc.place_bet("r", "b", "B", 1000, "k2")
+        svc.close_betting("r")
+        rnd = svc.rooms["r"].round
+        rnd.hands = {"A": [_card(2, "s"), _card(3, "h"), _card(7, "d")],
+                     "B": [_card(12, "s"), _card(13, "h"), _card(14, "d")],
+                     "C": [_card(13, "s"), _card(13, "h"), _card(13, "d")]}
+        rnd.resolved = {k: list(v) for k, v in rnd.hands.items()}
+        svc.publish_result("r")
+        svc.settle("r")
+        self.assertEqual(rnd.carry_out, 0,
+                         "with staked seats the pot is paid, not carried")
+
     def test_a_round_with_no_bets_has_no_winner(self):
         w = MemoryWallet()
         w.fund("a", 1000)

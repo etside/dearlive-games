@@ -155,6 +155,8 @@
     room: document.getElementById('roomName'),
     conn: document.getElementById('connPill'),
     dot: document.querySelector('#connPill .dot'),
+    pill: document.getElementById('roundPill'),
+    seat: document.getElementById('youMarker'),
     connText: document.getElementById('connText'),
     latency: document.getElementById('latency'),
     veil: document.getElementById('veil'),
@@ -167,6 +169,25 @@
   function setRoundPill(roundNo, room) {
     if (hud.roundNo) hud.roundNo.textContent = roundNo ? ('#' + roundNo) : '--';
     if (hud.room) hud.room.textContent = room ? String(room).slice(0, 12) : '';
+    // Round/room panel art behind the pill. Optional; the pill keeps its own
+    // styling when the art is absent.
+    if (hud.pill && imageReady(UI_IMAGES.panelRoundRoom, 1, 1)) {
+      hud.pill.style.backgroundImage = 'url("' + UI_ART.panelRoundRoom + '")';
+      hud.pill.style.backgroundSize = '100% 100%';
+      hud.pill.dataset.art = '1';
+    }
+  }
+
+  // "You" panel: a small marker under the local player's seat. Optional.
+  function markLocalSeat(seatId) {
+    if (!hud.seat) return;
+    const art = UI_IMAGES.panelYou;
+    if (imageReady(art, 1, 1)) {
+      hud.seat.style.backgroundImage = 'url("' + UI_ART.panelYou + '")';
+      hud.seat.style.backgroundSize = 'contain';
+      hud.seat.dataset.seat = seatId || '';
+      hud.seat.hidden = false;
+    }
   }
 
   function setConnection(state, text) {
@@ -637,6 +658,117 @@
     SEAT_ART_IMAGES[k] = preloadImage(SEAT_ART[k]);
   });
 
+  // ---- UI art pack -------------------------------------------------------
+  //
+  // Buttons, panels, badges and status art. All optional, all behind
+  // imageReady with the existing DOM/canvas element kept as the fallback, so
+  // an asset that fails to load leaves the control exactly as functional and
+  // as visible as it is now.
+  const UI_ART = {
+    btnBack: ART_BASE + 'ui/btn-back.svg',
+    btnHelp: ART_BASE + 'ui/btn-help.svg',
+    btnHistory: ART_BASE + 'ui/btn-history.svg',
+    btnRepeat: ART_BASE + 'ui/btn-repeat.svg',
+    btnAuto: ART_BASE + 'ui/btn-auto.svg',
+    btnSettings: ART_BASE + 'ui/btn-settings.svg',
+    btnSoundOn: ART_BASE + 'ui/btn-sound-on.svg',
+    btnSoundOff: ART_BASE + 'ui/btn-sound-off.svg',
+    panelBalance: ART_BASE + 'ui/panel-balance.svg',
+    panelPot: ART_BASE + 'ui/panel-pot.svg',
+    panelRoundRoom: ART_BASE + 'ui/panel-round-room.svg',
+    panelYou: ART_BASE + 'ui/panel-you.svg',
+    badgeHot: ART_BASE + 'ui/badge-hot.svg',
+    badgeYou: ART_BASE + 'ui/badge-you.svg',
+    bannerWinner: ART_BASE + 'ui/banner-winner.svg',
+    statusResult: ART_BASE + 'ui/status-result.svg',
+    statusBettingClosed: ART_BASE + 'ui/status-betting-closed.svg',
+    statusDealing: ART_BASE + 'ui/status-dealing.svg'
+  };
+  const UI_IMAGES = {};
+  Object.keys(UI_ART).forEach(function (k) { UI_IMAGES[k] = preloadImage(UI_ART[k]); });
+
+  const SUIT_ART = { S: ART_BASE + 'cards/suit-spade.svg',
+                     H: ART_BASE + 'cards/suit-heart.svg',
+                     D: ART_BASE + 'cards/suit-diamond.svg',
+                     C: ART_BASE + 'cards/suit-club.svg' };
+  const SUIT_IMAGES = {};
+  Object.keys(SUIT_ART).forEach(function (k) { SUIT_IMAGES[k] = preloadImage(SUIT_ART[k]); });
+  // A crown marks the strongest category in the result banner.
+  const CROWN_ART = ART_BASE + 'cards/badge-crown.svg';
+  const CROWN_IMAGE = preloadImage(CROWN_ART);
+  // Card face template: the blank face a hand-built card is composed on. It is
+  // a source asset for the asset pipeline, not something the runtime draws, so
+  // it is referenced here to document that rather than left looking orphaned.
+  const CARD_FACE_TEMPLATE = ART_BASE + 'cards/card-face-template.svg';
+  // Avatar adornments. decorative-ring sits under a seat avatar, timer-ring
+  // wraps the countdown, and the gold frame is the default frame in an
+  // operator-set appearance. All optional, all behind imageReady.
+  const RING_DECORATIVE = preloadImage(ART_BASE + 'avatars/decorative-ring.svg');
+  const RING_TIMER = preloadImage(ART_BASE + 'avatars/timer-ring.svg');
+  const RING_GOLD_FRAME = preloadImage(ART_BASE + 'avatars/frame-ring-gold-sm.svg');
+
+  // Round status -> status icon, for the status line above the table.
+  function roundStatusArt(status) {
+    switch (String(status || '').toUpperCase()) {
+      case 'BETTING_OPEN': return UI_IMAGES.statusOnline;
+      case 'BETTING_CLOSED': return UI_IMAGES.statusBettingClosed;
+      case 'RESULT':
+      case 'SETTLED':
+      case 'CLOSED': return UI_IMAGES.statusResult;
+      case 'DEALING': return UI_IMAGES.statusDealing;
+      default: return UI_IMAGES.statusWaiting;
+    }
+  }
+
+  // Header buttons: swap the glyph for pack art when it is available. The
+  // text glyph stays as the accessible name and as the fallback.
+  function applyButtonArt() {
+    const pairs = [['hBack', 'btnBack'], ['hHelp', 'btnHelp'],
+                   ['hSound', 'btnSoundOn'], ['hMenu', 'btnSettings']];
+    pairs.forEach(function (pair) {
+      const el = document.getElementById(pair[0]);
+      const img = UI_IMAGES[pair[1]];
+      if (el && imageReady(img, 1, 1)) {
+        el.style.backgroundImage = 'url("' + UI_ART[pair[1]] + '")';
+        el.style.backgroundSize = 'contain';
+        el.style.backgroundRepeat = 'no-repeat';
+        el.style.backgroundPosition = 'center';
+        el.dataset.art = '1';
+      }
+    });
+  }
+  function applySoundArt(on) {
+    const el = document.getElementById('hSound');
+    const img = UI_IMAGES[on ? 'btnSoundOn' : 'btnSoundOff'];
+    if (el && imageReady(img, 1, 1)) {
+      el.style.backgroundImage = 'url("' + UI_ART[on ? 'btnSoundOn' : 'btnSoundOff'] + '")';
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.dataset.art = '1';
+    }
+  }
+
+  // ---- card art ----------------------------------------------------------
+  //
+  // The pack ships all 52 faces plus a back. Engine card codes are rank
+  // digits + a suit letter ("14h", "10c"); the pack names them
+  // card-<rank>-<suit>.svg with a spelled-out suit. This maps between the two
+  // and preloads on demand, so a face that is never dealt is never fetched.
+  const RANK_SLUG = { '11': 'J', '12': 'Q', '13': 'K', '14': 'A' };
+  const SUIT_SLUG = { S: 'spade', H: 'heart', D: 'diamond', C: 'club' };
+  const CARD_BACK_ART = ART_BASE + 'cards/card-back-teenpatti.svg';
+  const CARD_BACK_IMAGE = preloadImage(CARD_BACK_ART);
+  const cardArtCache = {};
+  function cardArt(face) {
+    if (!face || face === '**' || face === 'JOK') return null;
+    const m = String(face).match(/^(\d+)([SHDC])$/);
+    if (!m) return null;
+    const rank = RANK_SLUG[m[1]] || m[1];
+    const src = ART_BASE + 'cards/card-' + rank + '-' + SUIT_SLUG[m[2]] + '.svg';
+    if (!cardArtCache[src]) cardArtCache[src] = preloadImage(src);
+    return cardArtCache[src];
+  }
+
   // ---- player appearance (set in DearLive admin, by player id) ----
   //
   // An operator styles a player in the admin panel; the game resolves that
@@ -648,11 +780,22 @@
   const DEFAULT_FRAME = '/assets/games/teen-patti-pro/avatars/avatar-frame-navy.svg';
   const appearances = new Map();   // player_id -> {avatar, frame, title, source}
   const avatarImages = new Map();  // url -> HTMLImageElement
+  const frameImages = new Map();  // url -> HTMLImageElement
 
   function appearanceFor(playerId) {
     if (!playerId) return { avatar: DEFAULT_AVATAR, frame: DEFAULT_FRAME, title: '', source: 'default' };
     return appearances.get(playerId) ||
       { avatar: DEFAULT_AVATAR, frame: DEFAULT_FRAME, title: '', source: 'default' };
+  }
+
+  function loadFrameImage(url) {
+    if (!url) return null;
+    if (frameImages.has(url)) return frameImages.get(url);
+    const img = new Image();
+    img.onerror = () => { img.src = ''; };
+    img.src = url;
+    frameImages.set(url, img);
+    return img;
   }
 
   function loadAvatarImage(url) {
@@ -683,6 +826,7 @@
           source: a.source || 'dearlive'
         });
         loadAvatarImage(appearances.get(playerId).avatar);
+        loadFrameImage(appearances.get(playerId).frame);
         return appearances.get(playerId);
       }
     } catch (e) { /* offline, 404, or a store that is down: keep the default */ }
@@ -747,6 +891,17 @@
     return rank + suit;
   }
   function card(x, y, w, h, face) {
+    // Pack art first, procedural drawing as the fallback. Guarded by
+    // imageReady, so a face that fails to load renders exactly as it did
+    // before the pack existed rather than as a blank rectangle.
+    const art = (face === '**' || !face) ? CARD_BACK_IMAGE : cardArt(face);
+    if (imageReady(art, 1, 1)) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+      ctx.drawImage(art, x, y, w, h);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
     rr(x, y, w, h, 7);
@@ -794,6 +949,15 @@
     ctx.fillText('TEEN PATTI PRO · ' + ROOM, W / 2, 22 + SAFE.t * 0.4);
     ctx.fillStyle = S.connected ? '#7CFC98' : '#ff9b9b'; ctx.font = u.f(13);
     ctx.fillText(S.connected ? (S.polling ? '● POLLING' : '● LIVE') : '○ OFFLINE', W / 2, 42 + SAFE.t * 0.4);
+    // Round-status icon from the pack; the coloured dot above stays visible
+    // either way, so this is additive rather than a replacement.
+    const statusImg = roundStatusArt(s && s.status);
+    if (imageReady(statusImg, 1, 1)) {
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(statusImg, W / 2 - 10, 20 + SAFE.t * 0.4, 20, 20);
+      ctx.restore();
+    }
     // round number (server-authoritative)
     ctx.fillStyle = '#ffe9a8'; ctx.font = u.f(12);
     const rnd = s ? (s.round_no ? ('ROUND ' + s.round_no) : (s.round_id || '')) : '—';
@@ -824,6 +988,11 @@
     }
     // timer ring
     ctx.save();
+    if (imageReady(RING_TIMER, 1, 1)) {
+      // Pack ring behind the countdown. The stroked arc below is kept and drawn
+      // on top, so the progress arc stays readable whatever the art looks like.
+      ctx.drawImage(RING_TIMER, L.cx - 42, L.top + (L.land ? 96 : 150) - 42, 84, 84);
+    }
     ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(255,255,255,.25)';
     ctx.beginPath(); ctx.arc(L.cx, L.top + (L.land ? 96 : 150), 34, 0, 7); ctx.stroke();
     if (secs !== null) {
@@ -844,6 +1013,14 @@
     ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(15);
     const pot = s ? s.pot_total : 0, mine = s ? s.my_bet : 0;
     // FR-06 wording, not the old "POT"/"YOU" abbreviations.
+    // Panel art sits behind the text, never over it, so the figures stay
+    // legible and their position is unchanged if the art is missing.
+    if (imageReady(UI_IMAGES.panelPot, 1, 1)) {
+      const pw = Math.min(W * 0.7, 380), ph = 34;
+      ctx.save(); ctx.globalAlpha = 0.92;
+      ctx.drawImage(UI_IMAGES.panelPot, W / 2 - pw / 2, H * 0.115 - ph * 0.75, pw, ph);
+      ctx.restore();
+    }
     ctx.fillText('Total Bet ' + pot + '   ·   My Total Bet ' + mine,
                  W / 2, H * 0.115);
 
@@ -874,6 +1051,14 @@
       const avatarY = pt.y + L.ch / 2 + 28;
       const look = appearanceFor((s && s.seats && s.seats[p]) || null);
       const av = loadAvatarImage(look.avatar);
+      // Operator-set frame from the admin panel, if any. Falls back to the
+      // decorative ring, then to nothing.
+      const frame = loadFrameImage(look.frame);
+      if (imageReady(frame, 1, 1)) {
+        ctx.drawImage(frame, pt.x - 20, avatarY - 20, 40, 40);
+      } else if (imageReady(RING_DECORATIVE, 1, 1)) {
+        ctx.drawImage(RING_DECORATIVE, pt.x - 21, avatarY - 21, 42, 42);
+      }
       if (av && av.complete && av.naturalWidth) {
         ctx.drawImage(av, pt.x - 15, avatarY - 15, 30, 30);
       } else {
@@ -882,6 +1067,11 @@
         ctx.strokeStyle = active ? '#fbbf24' : '#64748b'; ctx.lineWidth = 2; ctx.stroke();
         ctx.fillStyle = '#312e81'; ctx.font = 'bold ' + u.f(10);
         ctx.fillText('YOU', pt.x, avatarY + 1);
+      }
+      // Seat badges from the pack, drawn above the avatar when available.
+      const badge = p === 'A' ? UI_IMAGES.badgeYou : (active ? UI_IMAGES.badgeHot : null);
+      if (badge && imageReady(badge, 1, 1)) {
+        ctx.drawImage(badge, pt.x - 9, avatarY - 32, 18, 18);
       }
       ctx.fillStyle = active ? '#fbbf24' : '#f8fafc'; ctx.font = 'bold ' + u.f(12);
       ctx.fillText(SEAT_LABELS[p], pt.x, avatarY + 28);
@@ -892,6 +1082,18 @@
 
     // winners banner
     if (s && s.winners && s.winners.length && (s.status === 'RESULT' || s.status === 'SETTLED' || s.status === 'CLOSED')) {
+      if (imageReady(UI_IMAGES.bannerWinner, 1, 1)) {
+        const bw = Math.min(W * 0.62, 340), bh = bw * 0.22;
+        ctx.save();
+        ctx.drawImage(UI_IMAGES.bannerWinner, W / 2 - bw / 2, H * 0.47 - bh / 2, bw, bh);
+        ctx.restore();
+      }
+      // Crown on the top hand: a trail is the strongest category.
+      if (imageReady(CROWN_IMAGE, 1, 1)) {
+        ctx.save();
+        ctx.drawImage(CROWN_IMAGE, W / 2 - 13, H * 0.47 + 26, 26, 26);
+        ctx.restore();
+      }
       ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(W / 2 - 150, H * 0.47, 300, 44, 12); ctx.fill();
       ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(18);
       ctx.fillText('WINNER: ' + s.winners.join(' & '), W / 2, H * 0.47 + 23);
@@ -901,6 +1103,12 @@
     const by = H - Math.max(150, H * 0.20) - SAFE.b;
     ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14 + SAFE.b);
     ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
+    if (imageReady(UI_IMAGES.panelBalance, 1, 1)) {
+      const bw2 = Math.min(190, W * 0.44), bh2 = 30;
+      ctx.save(); ctx.globalAlpha = 0.92;
+      ctx.drawImage(UI_IMAGES.panelBalance, W / 2 - bw2 / 2, by - bh2 * 0.85, bw2, bh2);
+      ctx.restore();
+    }
     ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
     S._chips = [];
     const cw2 = Math.min(64, W / (DENOMS.length + 0.6));
@@ -931,9 +1139,17 @@
     });
     // repeat + status msg
     S._repeat = { x: W - 52, y: by + 44, r: 28 };
-    ctx.save(); ctx.fillStyle = '#155e43'; ctx.beginPath(); ctx.arc(S._repeat.x, S._repeat.y, 24, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('RPT', S._repeat.x, S._repeat.y); ctx.restore();
+    ctx.save();
+    if (imageReady(UI_IMAGES.btnRepeat, 1, 1)) {
+      // Pack art. The RPT disc stays as the fallback so the control is never
+      // invisible and its hit region is unchanged.
+      ctx.drawImage(UI_IMAGES.btnRepeat, S._repeat.x - 24, S._repeat.y - 24, 48, 48);
+    } else {
+      ctx.fillStyle = '#155e43'; ctx.beginPath(); ctx.arc(S._repeat.x, S._repeat.y, 24, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('RPT', S._repeat.x, S._repeat.y);
+    }
+    ctx.restore();
     // Traditional Teen Patti action buttons (BLIND / CHAAL / PACK / SHOW /
     // SIDESHOW) are deliberately NOT drawn. This game is a 3-seat
     // highest-hand / seat-betting variant, per the naming decision recorded in
@@ -1110,6 +1326,7 @@
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       refreshAppearances(S.snap);
       setRoundPill(S.snap && S.snap.round_no, ROOM);
+      markLocalSeat((S.snap && S.snap.seats) ? 'A' : null);
       setVeilForState(S.snap);
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
       
@@ -1254,7 +1471,7 @@
     if (k === 'h' || k === 'H') { openHistory(); e.preventDefault(); return; }
     if (k === '?') { S.panel = 'help'; e.preventDefault(); return; }
     if (k === 'm' || k === 'M') { S.panel = 'menu'; e.preventDefault(); return; }
-    if (k === 's' || k === 'S') { toggleSound(); status('Sound ' + (S.sound ? 'on' : 'off'), 'info'); e.preventDefault(); }
+    if (k === 's' || k === 'S') { toggleSound(); applySoundArt(S.sound); status('Sound ' + (S.sound ? 'on' : 'off'), 'info'); e.preventDefault(); }
   });
   // Header wiring (UI-01). Each button drives the same code path as its
   // keyboard shortcut, so there is one implementation of "toggle sound"
@@ -1274,12 +1491,20 @@
       toggleSound();
       const b = document.getElementById('hSound');
       if (b) b.setAttribute('aria-pressed', S.sound ? 'true' : 'false');
+      applySoundArt(S.sound);
       status('Sound ' + (S.sound ? 'on' : 'off'), 'info');
     });
     on('hHelp', function () { S.panel = S.panel === 'help' ? null : 'help'; });
     on('hMenu', function () { S.panel = S.panel === 'menu' ? null : 'menu'; });
     const sb = document.getElementById('hSound');
     if (sb) sb.setAttribute('aria-pressed', S.sound ? 'true' : 'false');
+    // Pack art for the header buttons. The glyphs stay underneath as the
+    // accessible name and as the fallback if an icon does not load.
+    applyButtonArt();
+    applySoundArt(S.sound);
+    // Re-apply once images have had a chance to decode.
+    setTimeout(function () { applyButtonArt(); applySoundArt(S.sound); }, 400);
+    setTimeout(function () { applyButtonArt(); applySoundArt(S.sound); }, 1500);
     setRoundPill(null, ROOM);
     setConnection('connecting', 'connecting');
     setVeil('loading', 'Connecting', 'Finding your table.');

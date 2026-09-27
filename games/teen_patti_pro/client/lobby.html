@@ -103,7 +103,13 @@ input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;backgr
 .toast.warning{border-color:var(--dl-warning)}
 .toast.info{border-color:var(--dl-info)}
 .demo-badge{position:fixed;top:var(--space-4);right:var(--space-4);z-index:var(--z-critical);padding:var(--space-2) var(--space-4);background:rgba(255,213,74,0.2);border:1px solid rgba(255,213,74,0.4);border-radius:var(--radius-full);font-size:var(--font-size-xs);font-weight:var(--font-weight-bold);color:var(--dl-gold);text-transform:uppercase;letter-spacing:0.1em;display:none}
-.demo-badge.active{display:block}
+.demo-badge.active{display:flex}
+.demo-cta{position:fixed;top:var(--space-4);right:var(--space-4);z-index:var(--z-critical);
+  display:none;align-items:center;gap:var(--space-2);pointer-events:none}
+.demo-cta.active{display:flex;pointer-events:auto}
+/* The badge and the CTA share the top-right corner, so the badge shifts left by
+   the CTA's width to keep them from overlapping. */
+.demo-badge{right:calc(var(--space-4) + 116px)}
 .timer-badge{position:fixed;top:var(--space-4);left:var(--space-4);z-index:var(--z-critical);padding:var(--space-2) var(--space-4);background:rgba(13,17,40,0.95);border:1px solid rgba(255,213,74,0.3);border-radius:var(--radius-full);font-family:var(--font-display);font-size:var(--font-size-sm);font-weight:var(--font-weight-bold);color:var(--dl-gold);display:none}
 .timer-badge.active{display:flex;align-items:center;gap:var(--space-2)}
 .timer-badge.warning{color:var(--dl-warning);border-color:var(--dl-warning)}
@@ -171,6 +177,9 @@ input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;backgr
   </div>
 </footer>
 <div class="demo-badge" id="demoBadge" aria-live="polite">DEMO</div>
+<div class="demo-cta" id="demoCta">
+  <a class="btn btn-primary" id="playRealBtn" href="/teen-patti-pro/lobby.html">Play Real</a>
+</div>
 <div class="timer-badge" id="timerBadge" aria-live="polite" aria-label="Session timer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></div><span id="timerText">00:00</span></div>
 <div id="toastContainer" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <script>
@@ -194,6 +203,8 @@ input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;backgr
     clearRecentBtn:document.getElementById('clearRecent'),
     gamesGrid:document.getElementById('gamesGrid'),
     demoBadge:document.getElementById('demoBadge'),
+    demoCta:document.getElementById('demoCta'),
+    playRealBtn:document.getElementById('playRealBtn'),
     timerBadge:document.getElementById('timerBadge'),
     timerText:document.getElementById('timerText'),
     retryBtn:document.getElementById('retryBtn'),
@@ -213,10 +224,10 @@ input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;backgr
   function renderRecent(){const list=getRecent();const strip=els.recentStrip;strip.innerHTML='';if(list.length===0){els.emptyRecent.classList.remove('hidden');els.clearRecentBtn.classList.add('hidden');return}els.emptyRecent.classList.add('hidden');els.clearRecentBtn.classList.remove('hidden');list.forEach(id=>{const game=GAMES.find(g=>g.id===id);if(!game)return;const item=document.createElement('div');item.className='recent-item';item.setAttribute('role','listitem');item.innerHTML=`<img src="${game.thumb}" alt="${game.name}" class="recent-thumb" loading="lazy"><span style="display:block;text-align:center;margin-top:6px;font-size:11px;font-weight:600;color:var(--dl-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.name}</span>`;item.addEventListener('click',()=>navigateToGame(id));strip.appendChild(item)})}
   function navigateToGame(gameId){addRecent(gameId);window.location.href='/games/'+encodeURIComponent(gameId)+'?mode=live'}
   async function navigateToGameDemo(gameId){addRecent(gameId);try{const response=await fetch('/api/v1/demo/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game_slug:gameId,currency:'USD',lang:'EN',return_url:window.location.href})});const body=await response.json();if(!response.ok)throw new Error(body.message||'Demo unavailable');const data=body.data;const url=new URL('/games/'+encodeURIComponent(gameId),window.location.origin);url.searchParams.set('mode','demo');url.searchParams.set('demo_token',data.demo_token);url.searchParams.set('currency',data.currency);url.searchParams.set('lang',data.lang);url.searchParams.set('return_url',data.return_url||'/lobby');window.location.href=url.toString()}catch(error){toast(error.message,'error')}}
-  function initDemoMode(){const params=new URLSearchParams(window.location.search);state.demoMode=params.get('mode')==='demo';if(state.demoMode){els.demoBadge.classList.add('active');const stored=localStorage.getItem(SESSION_KEY);let session=null;try{session=stored?JSON.parse(stored):null}catch(_){session=null}if(session&&session.expiry>Date.now()){state.demoExpiry=session.expiry;startTimer()}else{state.demoExpiry=Date.now()+DEMO_TTL_MS;localStorage.setItem(SESSION_KEY,JSON.stringify({expiry:state.demoExpiry}));startTimer()}}else{els.demoBadge.classList.remove('active');els.timerBadge.classList.remove('active');clearInterval(state.timerInterval)}}
+  function initDemoMode(){const params=new URLSearchParams(window.location.search);state.demoMode=params.get('mode')==='demo';if(state.demoMode){els.demoBadge.classList.add('active');els.demoCta.classList.add('active');els.playRealBtn.href=(new URLSearchParams(location.search).get('return_url')||'/teen-patti-pro/lobby.html');const stored=localStorage.getItem(SESSION_KEY);let session=null;try{session=stored?JSON.parse(stored):null}catch(_){session=null}if(session&&session.expiry>Date.now()){state.demoExpiry=session.expiry;startTimer()}else{state.demoExpiry=Date.now()+DEMO_TTL_MS;localStorage.setItem(SESSION_KEY,JSON.stringify({expiry:state.demoExpiry}));startTimer()}}else{els.demoBadge.classList.remove('active');els.demoCta.classList.remove('active');els.timerBadge.classList.remove('active');clearInterval(state.timerInterval)}}
   function startTimer(){clearInterval(state.timerInterval);els.timerBadge.classList.add('active');updateTimer();state.timerInterval=setInterval(updateTimer,1000)}
   function updateTimer(){const remaining=Math.max(0,state.demoExpiry-Date.now());const m=Math.floor(remaining/60000).toString().padStart(2,'0');const s=Math.floor((remaining%60000)/1000).toString().padStart(2,'0');els.timerText.textContent=`${m}:${s}`;els.timerBadge.classList.remove('warning','danger');if(remaining<=5*60*1000)els.timerBadge.classList.add('danger');else if(remaining<=10*60*1000)els.timerBadge.classList.add('warning');if(remaining<=0){endDemo()}}
-  function endDemo(){clearInterval(state.timerInterval);state.demoMode=false;state.demoExpiry=0;localStorage.removeItem(SESSION_KEY);els.demoBadge.classList.remove('active');els.timerBadge.classList.remove('active','warning','danger');toast('Demo session ended. Play with real coins to continue.','info');renderGames()}
+  function endDemo(){clearInterval(state.timerInterval);state.demoMode=false;state.demoExpiry=0;localStorage.removeItem(SESSION_KEY);els.demoBadge.classList.remove('active');els.demoCta.classList.remove('active');els.timerBadge.classList.remove('active','warning','danger');toast('Demo session ended. Play with real coins to continue.','info');renderGames()}
   function toast(message,type='info'){const tc=document.getElementById('toastContainer');tc.textContent=message;tc.className='toast show '+type;clearTimeout(tc._hide);tc._hide=setTimeout(()=>tc.classList.remove('show'),4000)}
   function init(){showLoading();setTimeout(()=>{renderGames();renderRecent();initDemoMode();hideLoading();showLobby()},300)}
   els.retryBtn.addEventListener('click',()=>{showLoading();setTimeout(()=>{renderGames();renderRecent();hideLoading();showLobby()},300)})

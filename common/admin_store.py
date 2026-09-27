@@ -503,6 +503,13 @@ class PostgresAdminStore(AdminStore):
     # by the game client keyed on player id. An unset player resolves to the
     # default rather than 404, so a brand-new player renders correctly with no
     # admin work.
+    # Frames an operator can choose from. All optional to the client: an
+    # appearance with no frame set simply draws no frame.
+    APPEARANCE_FRAMES = (
+        "/assets/games/teen-patti-pro/avatars/avatar-frame-navy.svg",
+        "/assets/games/teen-patti-pro/avatars/frame-ring-gold-sm.svg",
+    )
+
     DEFAULT_APPEARANCE = {
         "avatar": "/assets/games/teen-patti-pro/avatars/avatar-placeholder.svg",
         "frame": "/assets/games/teen-patti-pro/avatars/avatar-frame-navy.svg",
