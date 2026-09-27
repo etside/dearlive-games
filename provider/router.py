@@ -360,6 +360,13 @@ def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
     service = binding.resolve(ctx)
     session = service.sessions.create(player_id, table.table_id, binding.engine_id)
     binding.join(ctx, table.table_id, player_id)
+    # Seat the player *and* deal. join() only adds the player to the room's
+    # member map; ensure_round refuses to start a round while that map is
+    # empty, and nothing else in this path called it. So the session came back
+    # valid, the client subscribed, and the snapshot carried round: null -- a
+    # seated table with no game on it, which rendered as an empty canvas.
+    # See tests/test_round_bootstrap.py.
+    binding.ensure_round(ctx, table.table_id)
     record = ctx.tokens.mint(session.session_id, {
         "player_id": player_id, "game_code": game_code,
         "table_id": table.table_id, "currency": currency,
