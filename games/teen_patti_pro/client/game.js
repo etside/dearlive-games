@@ -33,7 +33,9 @@
     seatA: '#ef4444', seatB: '#3b82f6', seatC: '#22c55e',
     text: '#ffffff', potText: '#ffe9a8',
   };
-  fetch('theme.json').then(r => r.json()).then(t => {
+    // Absolute: a relative 'theme.json' resolves to /theme.json and 404s,
+    // the same class of bug as the game.js script reference.
+    fetch('/teen-patti-pro/theme.json').then(r => r.json()).then(t => {
     try {
       const c = t.canvas || {}, th = t.theme || {};
       if (c.feltA) THEME.feltA = c.feltA;
