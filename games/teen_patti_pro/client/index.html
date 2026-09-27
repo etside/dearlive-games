@@ -146,7 +146,11 @@
 <div id="live" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="kbhint">Keys: 1-4 chip &middot; A/B/C seat &middot; Enter bet &middot; H history &middot; ? help &middot; M menu &middot; S sound</div>
 <noscript><p style="padding:24px;font-size:16px">Teen Patti Pro needs JavaScript enabled to run.</p></noscript>
-<script src="game.js"></script>
+<!-- Absolute, because a relative "game.js" resolves against "/" on the
+     canonical /teen-patti-pro (no trailing slash) and 404s. The page
+     loaded, drew a 300x150 blank canvas, opened no socket and sat on
+     "connecting" -- with no console error pointing anywhere useful. -->
+    <script src="/teen-patti-pro/game.js"></script>
 <script>
   // The toast owns a dismiss control; the canvas renderer only sets text/kind.
   document.addEventListener('DOMContentLoaded', function () {
