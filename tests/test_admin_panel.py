@@ -83,14 +83,18 @@ class PanelSourceTest(unittest.TestCase):
         """
         api = open("games/teen_patti_pro/api.py", encoding="utf-8").read()
         routes = set()
-        for anchor in ("def do_GET", "def do_POST", "def do_PUT",
+        # do_GET/do_POST are now thin wrappers around _do_GET/_do_POST so a
+        # top-level guard can turn any unhandled error into a JSON envelope
+        # instead of a dropped connection and an nginx 502 HTML page. Route
+        # extraction has to read the inner bodies.
+        for anchor in ("def _do_GET", "def _do_POST", "def _do_PUT",
                        "def do_DELETE", "def _admin_post", "def _admin_put",
                        "def _admin_delete"):
             if anchor not in api:
                 continue
             tail = api[api.index(anchor):]
             nxt = len(tail)
-            for other in ("def do_GET", "def do_POST", "def do_PUT",
+            for other in ("def _do_GET", "def _do_POST", "def _do_PUT",
                           "def do_DELETE", "def _admin_post", "def _admin_put",
                           "def _admin_delete", "\n    def "):
                 i = tail.find(other, 1)

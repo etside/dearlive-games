@@ -241,3 +241,35 @@ class UnavailableWalletTest(unittest.TestCase):
             self.assertFalse(_is_self("https://wallet.dearlive.com"))
         finally:
             os.environ.pop("GAMES_BASE_URL", None)
+
+
+class NoRouteLeaksAStackTraceTest(unittest.TestCase):
+    """Every production API answers in JSON, whatever happens.
+
+    An unhandled error used to kill the request thread mid-response. nginx then
+    returned 502 with an HTML body and the client reported
+    "Unexpected token '<'" -- which reads as a client bug and is not. The trace
+    went to the journal while the caller got nothing usable.
+    """
+
+    def test_verbs_are_wrapped_in_the_json_guard(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        self.assertIn("def _json_guard(self", src)
+        for verb in ("do_GET", "do_POST"):
+            i = src.index(f"def {verb}(self):")
+            block = src[i:i + 120]
+            self.assertIn("_json_guard", block,
+                          f"{verb} must route through the JSON guard")
+
+    def test_guard_maps_wallet_states_to_distinct_codes(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        i = src.index("def _json_guard(self")
+        block = src[i:src.index("def do_GET", i)]
+        self.assertIn("E_WALLET_NOT_CONFIGURED", block)
+        self.assertIn("E_WALLET_UNAVAILABLE", block)
+        self.assertIn("E_INTERNAL", block)
+        self.assertIn("log.exception", block,
+                      "an unexpected error must still be logged server-side")
+        self.assertNotIn("traceback.print", block)

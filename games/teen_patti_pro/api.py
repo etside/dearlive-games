@@ -1014,6 +1014,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        return self._json_guard(self._do_GET)
+
+    def _do_GET(self):
         url = urllib.parse.urlparse(self.path)
         path, qs = url.path, urllib.parse.parse_qs(url.query)
         try:
@@ -1566,7 +1569,34 @@ class Handler(BaseHTTPRequestHandler):
         except ServiceError as exc:
             return self.fail(exc)
 
+    def _json_guard(self, fn):
+        """Run a verb handler; never let an exception reach socketserver.
+
+        An unhandled error used to kill the request thread mid-response, so
+        nginx returned 502 with an HTML body and the client reported
+        "Unexpected token '<'". Worse, the traceback went to the journal
+        while the caller got nothing usable. Every production API answers in
+        JSON: a dependency that is down is 503, a bug is 500, and neither
+        leaks a stack trace, a filesystem path or a credential.
+        """
+        try:
+            return fn()
+        except WalletNotConfigured as exc:
+            log.warning("wallet not configured: %s", exc)
+            return self.send(503, E.err("Wallet service is not connected",
+                                           E.E_WALLET_NOT_CONFIGURED))
+        except WalletError as exc:
+            log.warning("wallet unavailable: %s", exc)
+            return self.send(503, E.err("Wallet service is temporarily "
+                                           "unavailable", E.E_WALLET_UNAVAILABLE))
+        except Exception:                      # noqa: BLE001
+            log.exception("unhandled request error")
+            return self.send(500, E.err("Internal error", E.E_INTERNAL))
+
     def do_POST(self):
+        return self._json_guard(self._do_POST)
+
+    def _do_POST(self):
         url = urllib.parse.urlparse(self.path)
         path = url.path
         try:
