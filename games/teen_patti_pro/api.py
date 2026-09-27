@@ -659,6 +659,34 @@ class Handler(BaseHTTPRequestHandler):
             return sess.player_id
         return self._provider_player(m.group(1))
 
+    def session_room(self, fallback: str = "") -> str:
+        """The room the *session* belongs to. Never the client's query string.
+
+        The current-round and result routes read ?room= and defaulted it to
+        "default". A real session is issued against a concrete table
+        (teen-patti-high), so every poll asked for a room that does not exist
+        and came back `round: null, status: WAITING`. The client polls this on
+        a timer and assigns the result to S.snap, so that empty payload
+        overwrote the authoritative snapshot the WebSocket had just delivered.
+        With status no longer BETTING_OPEN, placeBet() refused and no bet was
+        ever sent -- the table looked permanently "Betting closed".
+
+        The session is the authority on which room a player is sitting at.
+        """
+        auth = self.headers.get("Authorization", "")
+        m = re.fullmatch(r"Bearer (\S+)", auth)
+        if m:
+            sess = self.svc.sessions.get(m.group(1))
+            room = getattr(sess, "room_id", "") if sess else ""
+            if room:
+                return room
+            rec = self._provider_token_record(m.group(1)) or {}
+            room = rec.get("table_id") or rec.get("room_id") or ""
+            if room:
+                return room
+        qs = urllib.parse.parse_qs(self.path.partition("?")[2])
+        return (qs.get("room") or [fallback or "default"])[0]
+
     def session_identity_any(self):
         """Bearer identity plus the canonical game that issued the credential."""
         auth = self.headers.get("Authorization", "")
@@ -1113,7 +1141,7 @@ class Handler(BaseHTTPRequestHandler):
                                 "transactions": rows, "count": len(rows)})
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rounds/current", path)
             if m:
-                room = qs.get("room", ["default"])[0]
+                room = self.session_room()
                 pid = self.session_player()
                 if not pid:
                     return self.send(401, E.err("Bearer session required", E.E_AUTH))
@@ -1129,7 +1157,7 @@ class Handler(BaseHTTPRequestHandler):
                 pid = self.session_player()
                 if not pid:
                     return self.send(401, E.err("Bearer session required", E.E_AUTH))
-                room = qs.get("room", ["default"])[0]
+                room = self.session_room()
                 st = self.svc.state(room, pid)
                 if st.get("status") not in ("RESULT", "SETTLED", "CLOSED"):
                     return self.send(404, E.err("Result not published", E.E_NOT_FOUND))

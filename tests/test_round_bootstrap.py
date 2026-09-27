@@ -341,3 +341,48 @@ class ClockLoggingTest(unittest.TestCase):
                          "tick_loop still swallows a failure silently")
         self.assertIn("log.exception(", body,
                       "a failure in the round clock must be logged")
+
+
+class SessionRoomAuthorityTest(unittest.TestCase):
+    """The room comes from the session, not from ?room=.
+
+    Found by driving the real browser flow with Playwright. The current-round
+    route read the room from the query string and defaulted it to "default",
+    while a real session is issued against a concrete table (teen-patti-high).
+    The client polls that route on a timer and assigns the result to S.snap, so
+    the empty payload for the wrong room overwrote the authoritative snapshot the
+    WebSocket had just sent. status stopped being BETTING_OPEN, placeBet()
+    refused, and no bet request was ever made -- the table sat on "Betting
+    closed" forever with a perfectly healthy round behind it.
+    """
+
+    def test_current_round_route_does_not_trust_the_query_room(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        i = src.index('r"/api/v1/games/teen-patti-pro/rounds/current"')
+        block = src[i:i + 700]
+        self.assertNotIn('qs.get("room"', block,
+                         "current-round must resolve the room from the session")
+        self.assertIn("self.session_room()", block)
+
+    def test_result_route_does_not_trust_the_query_room(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        i = src.index('r"/api/v1/games/teen-patti-pro/rounds/(\\S+)/result"') \
+            if 'rounds/(\\S+)/result' in src else \
+            src.index('/result", path')
+        block = src[i:i + 700]
+        self.assertIn("self.session_room()", block)
+        self.assertNotIn('qs.get("room", ["default"])[0]\n                  st = self.svc.state',
+                         block)
+
+    def test_session_room_helper_exists_and_prefers_the_session(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        self.assertIn("def session_room(self", src)
+        i = src.index("def session_room(self")
+        body = src[i:i + 1400]
+        # session lookup must come before the query-string fallback
+        self.assertLess(body.index("self.svc.sessions.get"),
+                        body.index('qs.get("room")'),
+                        "the session must be consulted before ?room=")
