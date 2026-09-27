@@ -1724,14 +1724,15 @@ class Handler(BaseHTTPRequestHandler):
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.settle(m.group(1)), "Settled")
-            # [^/]+ not \S+: \S+ is greedy and the trailing group is optional, so
-            # "/rooms/qaZ/rounds/qaZ-r1/bets" matched with room_id =
-            # "qaZ/rounds/qaZ-r1" (greedy wins before backtracking to the short
-            # parse). That silently addressed a phantom room, which had no open
-            # round, so every bet came back 409 BETTING_CLOSED.
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/([^/]+)/(?:rounds/([^/]+)/)?bets", path)
             if m:
-                room_id = m.group(1)
+                # The room comes from the session, not the path. The client
+                # builds this URL from its own ?room= (play-url.sh hands out
+                # room=default), so the bet was validated against a room with
+                # no round and no betting window: 409 BETTING_CLOSED while a
+                # healthy round was open at the table the player was actually
+                # seated at. A client must not nominate the table it bets on.
+                room_id = self.session_room(fallback=m.group(1))
                 pid = self.session_player()
                 if not pid:
                     return self.send(401, E.err("Bearer session required", E.E_AUTH))

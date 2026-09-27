@@ -386,3 +386,20 @@ class SessionRoomAuthorityTest(unittest.TestCase):
         self.assertLess(body.index("self.svc.sessions.get"),
                         body.index('qs.get("room")'),
                         "the session must be consulted before ?room=")
+
+    def test_bets_route_binds_the_room_to_the_session(self):
+        """A client must not nominate the table it bets on.
+
+        The client builds the bets URL from its own ?room=, and play-url.sh
+        hands out room=default, so the bet was validated against a room with no
+        round and no betting window: 409 BETTING_CLOSED while a healthy round
+        was open at the table the player was actually seated at.
+        """
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        i = src.index('rooms/([^/]+)/(?:rounds/([^/]+)/)?bets')
+        block = src[i:i + 1200]
+        self.assertIn("room_id = self.session_room(fallback=m.group(1))", block,
+                      "the bets route must resolve the room from the session")
+        self.assertNotIn("room_id = m.group(1)\n", block,
+                         "the bets route still trusts the path room")
