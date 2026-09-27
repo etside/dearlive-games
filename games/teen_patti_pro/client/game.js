@@ -918,6 +918,13 @@
     return { cx, top, seats, cw, ch, land, y, band, usable, colW };
   }
 
+  // Coerce anything to a finite number, defaulting to 0. Guards the whole UI
+  // against `undefined` / NaN reaching a fillText.
+  function num(v) {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
   function rr(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -1059,7 +1066,11 @@
 
     // pot
     ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(15);
-    const pot = s ? s.pot_total : 0, mine = s ? s.my_bet : 0;
+    // One normalisation boundary. The server now always sends pot_total /
+    // my_bet, but the client must not be able to render the string
+    // "undefined" if a snapshot is ever missing them -- that is what the
+    // idle table showed. num() coerces to a finite number and never NaN.
+    const pot = num(s && s.pot_total), mine = num(s && s.my_bet);
     // FR-06 wording, not the old "POT"/"YOU" abbreviations.
     // Panel art sits behind the text, never over it, so the figures stay
     // legible and their position is unchanged if the art is missing.

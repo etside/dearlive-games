@@ -654,7 +654,18 @@ class Room:
     def snapshot(self, viewer: str, now_ms: int) -> dict:
         r = self.round
         if r is None:
-            return {"room_id": self.room_id, "round": None, "serverTime": now_ms}
+            # Same key set as a live snapshot. This used to return only
+            # room_id / round / serverTime, so every consumer that read
+            # pot_total or my_bet got `undefined` -- the game rendered
+            # "Total Bet undefined  My Total Bet undefined" on the idle table.
+            # One shape always: a table with no round genuinely has a zero pot
+            # and a zero personal stake, and `status` says so explicitly.
+            return {"room_id": self.room_id, "round": None, "round_id": "",
+                    "round_no": 0, "status": "WAITING",
+                    "serverTime": now_ms, "betting_end_at": None,
+                    "pots": {}, "pot_total": 0, "my_bet": 0, "carry_in": 0,
+                    "seats": {}, "hands": {}, "winners": [],
+                    "config_version": getattr(self.config, "version", "")}
         reveal = r.status in (RoundStatus.RESULT, RoundStatus.SETTLED, RoundStatus.CLOSED)
         pots: Dict[str, int] = {}
         mine = 0

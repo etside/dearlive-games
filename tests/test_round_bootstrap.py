@@ -147,3 +147,52 @@ class RoundBootstrapTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IdleSnapshotShapeTest(unittest.TestCase):
+    """The snapshot must have ONE shape, round or no round.
+
+    `Room.snapshot` returned a three-key dict when no round existed
+    (`room_id`, `round`, `serverTime`) and a full dict otherwise. Consumers
+    reading `pot_total` / `my_bet` therefore got `undefined` on an idle table,
+    and the game drew "Total Bet undefined  My Total Bet undefined" -- which is
+    the state a player sees between rounds, so it was not a rare edge case.
+
+    These tests pin one shape. The zero values are not placeholders: an idle
+    table has a genuinely zero pot and zero personal stake, and `status` is
+    explicitly WAITING.
+    """
+
+    def _idle(self):
+        svc = _service()
+        svc.sessions.create("player_1", "t", "teen-patti")
+        return svc.state("t", "player_1")
+
+    def test_idle_snapshot_has_the_same_keys_as_a_live_one(self):
+        svc = _service()
+        room = "t"
+        svc.sessions.create("player_1", room, "teen-patti")
+        idle = svc.state(room, "player_1")
+        self.assertIsNone(idle["round"], "precondition: no round yet")
+
+        svc._room(room).create_session("player_1")
+        svc.ensure_round(room)
+        live = svc.state(room, "player_1")
+        self.assertIsNotNone(live["round_id"], "precondition: a round is dealt")
+
+        for key in ("pot_total", "my_bet", "status", "pots", "seats", "hands"):
+            self.assertIn(key, idle, f"idle snapshot is missing {key!r}")
+            self.assertIn(key, live, f"live snapshot is missing {key!r}")
+
+    def test_idle_pot_values_are_real_zeros_not_none(self):
+        idle = self._idle()
+        self.assertEqual(idle["pot_total"], 0)
+        self.assertEqual(idle["my_bet"], 0)
+        self.assertEqual(idle["status"], "WAITING")
+
+    def test_never_none_for_numeric_fields(self):
+        for snap in (self._idle(),):
+            for key in ("pot_total", "my_bet", "carry_in", "round_no"):
+                self.assertIsInstance(snap[key], (int, float),
+                                      f"{key} must be numeric, got {snap[key]!r}")
+                self.assertFalse(snap[key] is None)
