@@ -7,7 +7,19 @@
   'use strict';
   const q = new URLSearchParams(location.search);
   const API = (q.get('api') || window.location.origin).replace(/\/$/, '');
-  const WS = (q.get('ws') || window.DL_WEBSOCKET_URL || '').replace(/\/$/, '');
+  // WS endpoint resolution, in priority order:
+  //   1. ?ws=...            explicit launch override
+  //   2. window.DL_WEBSOCKET_URL   host page may inject a configured value
+  //   3. same-origin /ws   default, so a bare /teen-patti-pro URL just works
+  // Previously this fell through to '' when neither override was present, and
+  // `new WebSocket('')` threw, so the client silently degraded to polling and
+  // sat on "connecting" forever. The suite missed it because the test only
+  // asserted the DL_WEBSOCKET_URL identifier exists in the source, never that
+  // a usable URL resolves. See tests/test_ws_url_resolution.py.
+  const WS_RAW = q.get('ws') || window.DL_WEBSOCKET_URL || '';
+  const WS = WS_RAW
+    ? WS_RAW.replace(/\/$/, '')
+    : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   const SESSION = q.get('session') || '';
   const DEMO_TOKEN = q.get('demo_token') || '';
   const ROOM = q.get('room') || 'default';

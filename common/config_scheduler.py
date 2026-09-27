@@ -93,11 +93,21 @@ def apply_due_changes(store, now: Optional[str] = None,
     report: Dict[str, Any] = {"now": now, "checked": 0, "applied": [],
                               "failed": [], "skipped": []}
 
-    # Prefer the claiming read when the store has it, so two API processes
-    # sweeping at the same instant cannot both apply the same change. A store
-    # without it (a test double, or an older deploy) still works: worst case
-    # both processes see the same row.
+    # Prefer the claiming read when the store really implements it, so two API
+    # processes sweeping at the same instant cannot both apply the same change.
+    #
+    # "Really implements it" is the operative phrase. AdminStore declares
+    # claim_due_scheduled_changes as a protocol stub whose body is `...`, so it
+    # returns None. PostgresAdminStore subclasses AdminStore but does not
+    # override that method, so getattr finds the inherited stub, it is
+    # callable, and calling it returns None -- which then blew up on len(due)
+    # every 60 seconds in production. Detect the stub by identity against the
+    # base class and fall back to the plain read. See
+    # tests/test_config_scheduler.py.
+    from common.admin_store import AdminStore as _AdminStoreBase
     claim = getattr(store, "claim_due_scheduled_changes", None)
+    if getattr(claim, "__func__", None) is _AdminStoreBase.claim_due_scheduled_changes:
+        claim = None
     try:
         due = (claim(now, limit=limit, grace_seconds=CLAIM_GRACE_SECONDS)
                if callable(claim)
@@ -107,6 +117,14 @@ def apply_due_changes(store, now: Optional[str] = None,
         # convenience loop; it must never take the server down with it.
         log.warning("scheduled change sweep skipped: %s", type(exc).__name__)
         report["error"] = type(exc).__name__
+        return report
+
+    if due is None:
+        # A store may legitimately have nothing due and return None rather
+        # than an empty list. Never let that reach len().
+        log.warning("scheduled change sweep got None from %s",
+                    type(store).__name__)
+        report["checked"] = 0
         return report
 
     report["checked"] = len(due)
