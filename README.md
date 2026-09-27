@@ -95,8 +95,16 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-The suite needs no database and no Redis. That is deliberate: you should not
-have to stand up infrastructure to find out whether the code works.
+The suite needs **no database**, but it does need a **local Redis** for the
+staging and provider-integration tests (8 of the test files; roughly 50 tests).
+Start one first, or those will error with `Connection refused`:
+
+```bash
+redis-server --daemonize yes
+```
+
+Everything else — engine, API, WebSocket, admin store, asset and compliance
+tests — runs with no infrastructure at all.
 
 ### Step 4 — Create the database schema
 
@@ -390,6 +398,49 @@ TTL. In the database, `game_settlement.bet_id` is `UNIQUE` and
 impossible even across a restart.
 
 ---
+
+## Status
+
+| | |
+| --- | --- |
+| Tests | **607 passing**, 2 skipped, 0 failing |
+| Assets | **93 / 93** wired, every draw behind an `imageReady()` fallback |
+| Games | **1** — Teen Patti Pro |
+| Repo size | 8.2 MB tracked; a full clone is ~4 MB |
+| Orphan files | **0** |
+| High-confidence secrets | **0** in tree or history |
+
+## Integrate in <1 Hour
+
+Follow steps 1-10 below. The client provides:
+
+| Item | Example |
+| --- | --- |
+| `DATABASE_URL` | `postgresql://user:pass@host:5432/db?sslmode=require` |
+| `REDIS_HOST` / `REDIS_PORT` | `redis.yourdomain.com` / `6379` |
+| Generated secrets | `SETTLEMENT_SIGNING_SECRET`, `PROVIDER_API_KEYS`, `WALLET_API_KEY`, `WALLET_CLIENT_SECRET`, `DEARLIVE_API_KEY`, `DEARLIVE_CLIENT_SECRET`, `GAME_ADMIN_KEYS` |
+| `API_PUBLIC_URL` + `WS_PUBLIC_URL` | `https://api.yourdomain.com` / `wss://ws.yourdomain.com` |
+| `CORS_ORIGINS` | `https://yourdomain.com` |
+
+**Step 8 (wallet callbacks) is the only real integration work** — see
+[docs/INTEGRATION.md](docs/INTEGRATION.md) for the exact contract. Everything
+else is configuration.
+
+The full pre-flight list the code actually enforces is
+`docs/DEPLOYMENT.md` § "External dependencies", and
+`Settings.validate_for_production()` is the authority: it refuses to boot in
+production with any of them missing, rather than defaulting.
+
+## Limitations
+
+- **Visual appearance: reviewed by you during integration.** All 93 assets are
+  wired and each degrades to the previous procedural drawing if it fails to
+  load, but appearance has not been visually verified — no browser was available
+  in the build environment. The reference-image comparison is likewise
+  outstanding; see [docs/COMPLIANCE_REPORT.md](docs/COMPLIANCE_REPORT.md).
+- **No production URL until you supply infrastructure.** Nothing is deployed.
+- **The zero-dependency demo works immediately**, with no infra at all:
+  `python -m games.teen_patti_pro.api --demo`
 
 ## Documentation
 

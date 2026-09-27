@@ -4,6 +4,91 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-09-27
+
+Compliance pass against the BRD/SRS. Five requirements were declared but
+implemented as no-ops, and one money bug was found while testing them.
+
+### Added
+- **Complete asset pack integration (93/93).** 52 card faces resolved from the
+  engine's card codes, plus the back, 4 chips, 3 seats, 8 buttons, 4 panels,
+  3 badges, 7 status icons, 5 avatar assets and 6 misc. Every draw sits behind
+  an `imageReady()` check, so a failing asset degrades to the procedural
+  drawing that shipped before the pack existed.
+- **Card face generator**: 52 faces composed from `card-face-template.svg`
+  plus the four suit glyphs, via `scripts/generate-cards.mjs`.
+- **"Play Real" CTA** in the demo banner, honouring `return_url`.
+- **Regression coverage** for the empty-seat defect in the reported shape:
+  3 seats, 2 players, the best hand on the unoccupied seat.
+- **Operator console** at `/admin` — nine sections plus scheduling, replacing a
+  69-line JSON dumper that pointed at a deleted namespace and was never served.
+- Wallet ledger with all eight transaction types and a balance that reconciles
+  against the transaction sum; `GET /api/v1/wallet/transactions`.
+- `POST /admin/games/{slug}/rules/rollback`.
+- `balance.updated` WebSocket event, emitted on debit and credit.
+
+### Fixed
+- **An empty seat could win the pot.** `calculate_result` scored every dealt
+  seat, so with 3 seats and 2 players the best hand landing on the unoccupied
+  seat voided the pot — both players lost their entire stake to cards nobody
+  had bet on and the money carried forward. Measured at **6 of 25 two-player
+  rounds**. Winner selection is now restricted to seats with an accepted bet.
+- **BR-11 hand rankings were not admin-configurable.** `ranking_order` was
+  declared in config and referenced nowhere; the evaluator returned hardcoded
+  6/5/4/3/2/1. It now derives category strength from the configured order.
+- **BR-14 max win cap was never enforced.** `max_win_cap` carried the comment
+  "100 = 100x bet" and nothing read it. Now clamped per bet in `settle()`,
+  with the clamped amount carried so `paid + carried == pot`.
+- **All three seat chairs 404'd.** The client asset route matched a single path
+  segment, so `assets/generated/seat-p{4,5,6}.svg` never resolved.
+- **Seat order and colours were out of spec** — now A left/green, B centre/blue,
+  C right/red, per SRS section 1 and the reference description.
+- **`card-face-template.svg` marked as a build-time input**, with two guards so
+  the exemption cannot outlive its justification.
+- FR-06 labels read `POT`/`YOU`; now `Total Bet` / `My Total Bet`.
+- History rewritten to remove a committed `node_modules` tree and an accidental
+  177 MB vendored GCC toolchain on a stale `master` branch: **92 MB → 4.1 MB**
+  for a full clone.
+
+### Changed
+- **Orphan detector** reconstructs the card and chip name families from the
+  same rules the client uses. A plain filename search reported 59 false
+  orphans because those names are built by string concatenation.
+- All asset draws behind an `imageReady()` **naturalWidth** check: a 404'd
+  `<img>` reports `complete=true` with zero size, so `complete` alone would
+  draw a blank rectangle.
+- `serverTime` is ISO8601 per the SRS, with `serverTimeMs` alongside for
+  arithmetic.
+- Default betting window 20s → 30s.
+- WebSocket frames carry three vocabularies side by side (`kind`, `ws_event`,
+  `provider_event`) so the SRS names do not break the existing client or the
+  live DearLive contract.
+- `GAME_ADMIN_KEYS` entries with an unknown role are refused at boot instead of
+  403-ing on every request.
+- **Corrected a false claim**: the test suite was documented as needing no
+  Redis. Eight test files covering the staging and provider-integration paths do
+  require a local Redis; roughly 50 tests error without it.
+
+### Security
+- Full secret scan across every blob in every commit. 17 matches, **all
+  verified false positives**: literal `user:pass` placeholders, a test fixture
+  self-documenting as `shared-secret-under-test`, vendored dependency
+  documentation, and `jose`'s `indexOf('-----BEGIN PRIVATE KEY-----')` string
+  comparison. Zero high-confidence patterns in tree or history.
+- Both static file routes enforce path containment and whitelist extensions.
+- The admin surface refuses rather than degrades: unknown roles rejected at
+  boot, missing database yields `503` with a reason rather than fabricated
+  zeros.
+
+### Known Limitations
+- **Visual appearance**: verified by the client during integration. All 93
+  assets are wired with fallbacks, but no browser was available in the build
+  sandbox, so appearance was never rendered.
+- **Visual reference match**: unverified — the reference images were requested
+  and are not present.
+- **No production URL**: the client supplies `DATABASE_URL`, Redis and secrets.
+- **Chrome render**: not available in the build sandbox.
+
 ## [1.0.0] — 2026-09-26
 
 Plug-and-play release for a single game: **Teen Patti Pro**. Everything a

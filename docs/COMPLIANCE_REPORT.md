@@ -129,7 +129,12 @@ only with a concrete citation or an executed check. Two audits are marked
 
 ## Visual Reference Match — **NOT VERIFIABLE**
 
-**Status: unverified — awaiting reference images.**
+**Status: to be verified by DearLive dev during integration. Chrome render not
+available in the build sandbox. All 93 assets wired with `imageReady()`
+fallback.**
+
+The reference images were requested at `/tmp/opencode/asset-scan/` and are not
+present.
 
 The two named reference images (`reference-teen-patti-mobile.png`,
 `reference-placement-diagram.png`) were requested at
