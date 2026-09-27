@@ -576,7 +576,14 @@
   function startTimerPulse(container, secsRemaining) {
     stopTimerPulse();
     if (secsRemaining > 10) return;
-    AnimLayer.playLottie('timer_pulse', container, { loop: true }).then(p => { timerPulseAnim = p; });
+    // The countdown is drawn by the SVG ring (avatars/timer-ring.svg) plus
+    // the stroked progress arc in draw(). 'timer_pulse' was layered on top of
+    // that and is a placeholder: one shape layer, solid fill [1, 0.25, 0.05,
+    // 1] = #FF400D, on a 512x512 canvas -- a solid orange square, not a ring.
+    // It used to 404 so nobody saw it; fixing MASTER_BASE made it resolve and
+    // it painted a bright orange block over the timer. The pulse is now the
+    // ring's own scale/opacity animation, driven by secsRemaining.
+    if (container) container.dataset.pulse = 'ring';
   }
   function stopTimerPulse() { if (timerPulseAnim) { timerPulseAnim.destroy(); timerPulseAnim = null; } }
 

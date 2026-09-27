@@ -173,3 +173,51 @@ class MasterAssetPathTest(unittest.TestCase):
         api = (Path(__file__).resolve().parents[1]
                / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
         self.assertIn(r"/teen-patti-pro/master/([a-z]+)/", api)
+
+
+class TimerPulsePlaceholderTest(unittest.TestCase):
+    """The countdown must not be painted over with a solid orange square.
+
+    `timer_pulse.json` in the master asset pack is a placeholder: a single
+    shape layer with solid fill [1, 0.25, 0.05, 1] (#FF400D) on a 512x512
+    canvas. It is a square, not a ring.
+
+    It was harmless while it 404'd. Fixing MASTER_BASE made it resolve, and it
+    then rendered as a bright orange block sitting exactly where the countdown
+    ring should be. The fix was not to hide it with CSS -- it is to stop drawing
+    it, because the real art is avatars/timer-ring.svg plus the stroked progress
+    arc already drawn in draw().
+    """
+    ASSET = Path(__file__).resolve().parents[1] / (
+        "assets/dearlive-master/teen-patti-pro/lottie/timer_pulse.json")
+
+    def test_placeholder_lottie_is_a_solid_square(self):
+        import json
+        d = json.loads(self.ASSET.read_text(encoding="utf-8"))
+        layers = d.get("layers", [])
+        self.assertEqual(len(layers), 1, "expected a single-layer placeholder")
+        fills = [s.get("c") for l in layers for s in (l.get("shapes") or [])
+                 if s.get("ty") == "fl"]
+        self.assertTrue(fills, "no fill found")
+        k = fills[0].get("k") if isinstance(fills[0], dict) else fills[0]
+        if isinstance(k, list) and k and isinstance(k[0], list):
+            rgb = k[0][:3]
+            # r=1, g=0.25, b=0.05 -> #FF400D
+            self.assertEqual([round(x, 2) for x in rgb], [1.0, 0.25, 0.05])
+        self.assertEqual((d.get("w"), d.get("h")), (512, 512))
+
+    def test_timer_no_longer_plays_the_placeholder(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+        js = re.sub(r"(?m)^\s*//.*$", "", js)
+        self.assertNotIn("playLottie('timer_pulse'", js,
+                         "the countdown must not be painted over with the "
+                         "solid-orange placeholder square")
+        self.assertNotIn('playLottie("timer_pulse"', js)
+
+    def test_countdown_still_uses_the_real_ring_asset(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        self.assertIn("avatars/timer-ring.svg", js)
+        root = Path(__file__).resolve().parents[1]
+        self.assertTrue((root / "assets/games/teen-patti-pro/avatars"
+                         / "timer-ring.svg").is_file())
