@@ -61,4 +61,9 @@ E_DUPLICATE = "DUPLICATE_REQUEST"
 E_CONFLICT = "STATE_CONFLICT"
 E_RATE_LIMIT = "RATE_LIMITED"
 E_INTERNAL = "INTERNAL_ERROR"
+# Wallet-specific. Deliberately distinct: a player must be able to tell
+# "you have no money" from "the wallet is down" from "no wallet is wired
+# up yet". Collapsing them into one code made the UI show 0 for all three.
+E_WALLET_UNAVAILABLE = "WALLET_UNAVAILABLE"
+E_WALLET_NOT_CONFIGURED = "WALLET_NOT_CONFIGURED"
 E_TBC_BLOCKED = "TBC_RULE_UNCONFIRMED"  # real-money action on unconfirmed config

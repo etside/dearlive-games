@@ -35,6 +35,19 @@ class TxnRef:
 class WalletError(Exception):
     pass
 
+class WalletNotConfigured(WalletError):
+    """No external wallet is wired up.
+
+    Deliberately distinct from WalletError ("the wallet is up but broken") and
+    from InsufficientBalance ("the player has no money"). The UI has to be able
+    to tell all three apart: collapsing them makes an unconfigured deployment
+    display a balance of 0, which reads as "you are broke" rather than "there
+    is no wallet here yet".
+    """
+
+
+    pass
+
 
 class InsufficientBalance(WalletError):
     pass

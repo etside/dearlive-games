@@ -19,6 +19,7 @@ from pathlib import Path
 
 from common import envelope as E
 from common.wallet import WalletError
+from integrations.dearlive import WalletNotConfigured
 from common.admin_store import AdminStoreUnavailable
 from common.session import TokenError
 from .config import TeenPattiConfig, DEFAULT_CONFIG
@@ -660,6 +661,42 @@ class Handler(BaseHTTPRequestHandler):
             return sess.player_id
         return self._provider_player(m.group(1))
 
+    def _wallet_health(self) -> dict:
+        """Configured / reachable view of the wallet provider. No secrets.
+
+        Deliberately does not report a balance: this endpoint is unauthenticated
+        and a balance is player data. It answers the operational question --
+        "is there a wallet, and does it reply" -- so an unconfigured deployment
+        is distinguishable from an outage at a glance.
+        """
+        import os
+        import time as _t
+        base = (os.environ.get("WALLET_BASE_URL")
+                or os.environ.get("DEARLIVE_API_BASE_URL") or "")
+        out = {"configured": bool(base), "state": "NOT_CONFIGURED",
+               "reachable": False, "latency_ms": None, "detail": ""}
+        if not base:
+            out["detail"] = "WALLET_BASE_URL / DEARLIVE_API_BASE_URL is not set"
+            return out
+        from integrations.dearlive import _is_self
+        if _is_self(base):
+            out["detail"] = ("wallet base URL points at this service; set it to "
+                             "the DearLive wallet host")
+            return out
+        wallet = self.svc.wallet
+        t0 = _t.time()
+        try:
+            wallet.get_balance("__healthcheck__")
+            out.update(reachable=True, state="CONNECTED",
+                       latency_ms=int((_t.time() - t0) * 1000))
+        except Exception as exc:                     # noqa: BLE001
+            name = type(exc).__name__
+            out.update(state="UNAVAILABLE",
+                       detail="provider did not answer a balance probe",
+                       error=name)
+            out["latency_ms"] = int((_t.time() - t0) * 1000)
+        return out
+
     def session_room(self, fallback: str = "") -> str:
         """The room the *session* belongs to. Never the client's query string.
 
@@ -1074,6 +1111,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "public, max-age=86400")
                 self.end_headers()
                 return self.wfile.write(body)
+            if path == "/health/wallet":
+                # Operational view of the wallet provider. Reports whether one
+                # is configured and whether it answers; it never returns a
+                # balance, and never echoes a key, token or base-URL credential.
+                return self.ok(self._wallet_health())
             if path == "/health":
                 return self.ok({"game": "teen-patti-pro", "config": self.svc.config.version,
                                  "confirmed": self.svc.config.confirmed})
@@ -1749,6 +1791,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(422, E.err("amount must be integer", E.E_VALIDATION))
                 except ServiceError as exc:
                     return self.fail(exc)
+                except WalletNotConfigured as exc:
+                    # No external wallet is wired up. This is a configuration
+                    # state, not an outage, and the client must be able to tell
+                    # them apart: showing 0 here would imply the player has no
+                    # money rather than that no wallet exists.
+                    log.warning("bet rejected: wallet not configured: %s", exc)
+                    return self.send(503, E.err("Wallet service is not connected",
+                                                E.E_WALLET_NOT_CONFIGURED))
                 except WalletError as exc:
                     # A wallet that is unreachable or unconfigured must not take
                     # the request thread down. Unhandled it propagated out of the

@@ -32,11 +32,31 @@ import urllib.request
 from typing import Any, Dict, Optional
 
 from common.wallet import (Balance, InsufficientBalance, TxnRef, WalletAdapter,
+                         WalletNotConfigured,
                            WalletError)
 
 
 def _env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
+
+
+def _is_self(base_url: str) -> bool:
+    """True when the wallet URL addresses this very service.
+
+    Deployments that leave WALLET_BASE_URL pointing at the game host make the
+    wallet call back into Teen Patti, where no wallet endpoint exists. Every
+    get_balance then raised DearLiveApiError 404, escaped the request handler
+    and surfaced as a dropped connection and an nginx 502 HTML page.
+    """
+    try:
+        parts = urllib.parse.urlparse(base_url)
+        host = (parts.hostname or "").lower()
+        port = parts.port
+    except Exception:
+        return False
+    if host in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
+        return port in (None, 80, 443, 5002, 8000)
+    return False
 
 
 class DearLiveApiError(WalletError):
@@ -108,7 +128,18 @@ class HttpDearLiveWallet(WalletAdapter):
                  txn_status_path: str = "/wallets/txn/{key}"):
         base_url = base_url or _env("WALLET_BASE_URL", _env("DEARLIVE_API_BASE_URL", ""))
         if not base_url:
-            raise WalletError("WALLET_BASE_URL (or DEARLIVE_API_BASE_URL) is not configured")
+            raise WalletNotConfigured(
+                "WALLET_BASE_URL (or DEARLIVE_API_BASE_URL) is not configured")
+        # Self-reference guard. Deployments that leave these pointing at the game
+        # host make the wallet call back into this service, where no wallet
+        # endpoint exists: every get_balance raised DearLiveApiError 404, which
+        # surfaced as a dropped connection and an nginx 502 HTML page. That is
+        # "no wallet is wired up", not "the wallet is down", and it must be
+        # reported as such rather than attempted.
+        if _is_self(base_url):
+            raise WalletNotConfigured(
+                f"wallet base URL {base_url!r} points at this service; set it to "
+                "the DearLive wallet host")
         self.http = _Http(base_url, api_key or _env("WALLET_API_KEY"),
                           client_id or _env("WALLET_CLIENT_ID"),
                           client_secret or _env("WALLET_CLIENT_SECRET"),
