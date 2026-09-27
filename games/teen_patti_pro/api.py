@@ -10,6 +10,8 @@ X-Signature), handled by provider/router.py.
 import argparse
 import json
 import logging
+
+log = logging.getLogger(__name__)
 import os
 import re
 import time

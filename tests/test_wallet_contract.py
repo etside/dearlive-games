@@ -274,3 +274,32 @@ class NoRouteLeaksAStackTraceTest(unittest.TestCase):
         self.assertIn("log.exception", block,
                       "an unexpected error must still be logged server-side")
         self.assertNotIn("traceback.print", block)
+
+
+class ApiLoggerTest(unittest.TestCase):
+    """api.py must define `log` before the guard uses it.
+
+    The JSON guard calls log.exception(). `import logging` was present but the
+    module-level `log` was not, so the except branch raised NameError *inside*
+    the handler -- the guard could not report an error without becoming one,
+    and the connection was still dropped. Same failure shape as the ws.py
+    logger bug: an instrumented path where the instrument was never defined.
+    """
+
+    def test_api_defines_its_logger(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        self.assertIn("import logging", src)
+        self.assertIn("log = logging.getLogger(__name__)", src)
+
+    def test_logger_defined_before_the_guard_uses_it(self):
+        lines = (Path(__file__).resolve().parents[1]
+                 / "games/teen_patti_pro/api.py").read_text(
+                     encoding="utf-8").split("\n")
+        defined = next((i for i, l in enumerate(lines)
+                        if l.startswith("log = logging.getLogger")), None)
+        self.assertIsNotNone(defined, "no module-level logger in api.py")
+        first = next((i for i, l in enumerate(lines)
+                      if "log.exception(" in l or "log.warning(" in l), None)
+        self.assertIsNotNone(first, "the guard logs nothing")
+        self.assertLess(defined, first, "`log` is used before it is defined")
