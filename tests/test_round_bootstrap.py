@@ -17,6 +17,7 @@ This test drives the real service through a real session and asserts the round
 exists, rather than asserting that a line of source calls a particular function.
 """
 import unittest
+from pathlib import Path
 
 from games.teen_patti_pro.service import TeenPattiService
 
@@ -296,3 +297,47 @@ class RoundLifecyclePumpTest(unittest.TestCase):
         self.assertEqual(r.status.value, "RESULT",
                          "result is published; settlement is what the TBC gate blocks")
         self.assertNotIn("settlement.completed", out["moved"])
+
+
+class ClockLoggingTest(unittest.TestCase):
+    """The lifecycle clock must be observable, and must not die on a typo.
+
+    This exists because it already happened. `tick_loop` was instrumented with
+    `log.info` / `log.exception`, but the module-level `log = logging.getLogger`
+    never landed in ws.py -- the anchor string I used lives in service.py. The
+    first call raised NameError *outside* the try block, which killed the daemon
+    thread with no output. Production then sat on BETTING_OPEN with an expired
+    deadline, and `except Exception: pass` around the pump had already hidden
+    the earlier symptom.
+    """
+
+    def test_ws_module_defines_its_logger(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/ws.py").read_text(encoding="utf-8")
+        self.assertIn("log = logging.getLogger(__name__)", src,
+                      "ws.py uses log.* but never defines `log`")
+        self.assertIn("import logging", src)
+
+    def test_logger_is_defined_before_first_use(self):
+        path = (Path(__file__).resolve().parents[1]
+                / "games/teen_patti_pro/ws.py")
+        lines = path.read_text(encoding="utf-8").split("\n")
+        defined = next((i for i, l in enumerate(lines)
+                        if l.startswith("log = logging.getLogger")), None)
+        self.assertIsNotNone(defined, "no module-level logger")
+        first_use = next((i for i, l in enumerate(lines)
+                          if "log.info(" in l or "log.exception(" in l), None)
+        self.assertIsNotNone(first_use, "the clock logs nothing at all")
+        self.assertLess(defined, first_use,
+                        "`log` is used before it is defined -- the daemon "
+                        "thread would die on the first tick, silently")
+
+    def test_tick_loop_has_no_silent_exception(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/ws.py").read_text(encoding="utf-8")
+        i = src.index("def tick_loop(self):")
+        body = src[i:src.index("def handle(", i)]
+        self.assertNotIn("except Exception:\n            pass", body,
+                         "tick_loop still swallows a failure silently")
+        self.assertIn("log.exception(", body,
+                      "a failure in the round clock must be logged")

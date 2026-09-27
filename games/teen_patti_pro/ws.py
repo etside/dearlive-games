@@ -42,6 +42,14 @@ import struct
 import threading
 import time
 
+log = logging.getLogger(__name__)
+# The lifecycle clock has to be observable in production. With no handler
+# Python drops everything below WARNING, so round transitions were invisible
+# and a pump doing nothing looked identical to a healthy one.
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
