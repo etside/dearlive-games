@@ -143,6 +143,17 @@ class Hub:
             time.sleep(1)
             with self.lock:
                 rooms = list(self.rooms)
+            # Drive the round lifecycle before publishing it. This is the only
+            # clock-driven transition in the game: start_round ran when someone
+            # sat, but nothing closed betting, published a result, settled, or
+            # dealt the next round, so a table dealt once and then sat in
+            # BETTING_OPEN against a deadline that had already passed, forever.
+            # pump() is idempotent per phase.
+            for room in rooms:
+                try:
+                    self.svc.pump(room)
+                except Exception:
+                    pass
             for room in rooms:
                 try:
                     st = self.svc.state(room, "")

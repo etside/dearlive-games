@@ -10,11 +10,14 @@ SessionStore + AuditLog + webhooks. Enforces:
 """
 import hashlib
 import json
+import logging
 import threading
 import time
 from typing import Any, Dict, List
 
 from common import envelope as E
+
+log = logging.getLogger(__name__)
 from common.audit import AuditLog
 from common.idempotency import (IdempotencyStore, MemoryIdempotencyStore,
                                 IdempotencyConflict, ClaimResult)
@@ -266,6 +269,65 @@ class TeenPattiService:
         return result
 
     # ---- result + settle ----
+    def pump(self, room_id: str) -> dict:
+        """Advance one room's round to whatever the clock says it owes.
+
+        There was no driver. `start_round` ran when a player sat, but nothing
+        ever called close_betting / publish_result / settle, so a round dealt,
+        its betting_end_at passed, and the table sat in BETTING_OPEN forever --
+        the client kept ticking a countdown to a deadline that had already
+        passed and the round never reached a result. That is why production
+        showed "Betting closed -- waiting for the result" with no round
+        actually running.
+
+        Idempotent and safe to call every second: each step is guarded by the
+        round's own status, so re-pumping a room in the same phase is a no-op.
+        Returns the phases it moved through, for tests and logging.
+        """
+        room = self._room(room_id)
+        r = room.round
+        if r is None:
+            return {"room_id": room_id, "moved": []}
+        moved = []
+        now = self._now()
+
+        if r.status == RoundStatus.BETTING_OPEN:
+            end = getattr(r, "betting_end_at_ms", None) or getattr(r, "betting_end_at", 0)
+            if end and now >= end:
+                self.close_betting(room_id)
+                moved.append("betting.closed")
+
+
+        # After betting closes the engine parks in BETTING_CLOSED until a result
+        # is calculated; calculate and settle it, then roll into the next round.
+        r = room.round
+        if r is not None and r.status == RoundStatus.BETTING_CLOSED:
+            self.publish_result(room_id)
+            moved.append("result.declared")
+            r = room.round
+        # publish_result leaves the round in RESULT, not SETTLED. Settling only
+        # from SETTLED stalled every table there forever, which is the other
+        # half of "no round is running".
+        if r is not None and r.status in (RoundStatus.RESULT,
+                                          RoundStatus.SETTLED,
+                                          RoundStatus.SETTLED_PENDING):
+            try:
+                self.settle(room_id)
+                moved.append("settlement.completed")
+            except Exception as exc:  # settlement retries itself; do not spin
+                log.warning("settlement deferred: %s", exc)
+            r = room.round
+
+        # Deal the next round only if the table is still occupied. ensure_round
+        # refuses when it is not, so an abandoned table goes quiet rather than
+        # dealing cards to nobody.
+        r = room.round
+        if r is None or r.status in (RoundStatus.SETTLED, RoundStatus.CLOSED):
+            out = self.ensure_round(room_id)
+            if out.get("started"):
+                moved.append("round.created")
+        return {"room_id": room_id, "moved": moved}
+
     def publish_result(self, room_id: str) -> dict:
         room = self._room(room_id)
         # Announced before evaluation, not after: a client showing a spinner
