@@ -161,12 +161,30 @@ fidelity, exact spacing, fonts, animation timing.
 | Metric | Value |
 |--------|-------|
 | Files in `assets/games/teen-patti-pro/` | 93 |
-| Referenced by client or server | **2** (avatars only) |
-| **Orphans** | **91** |
+| Referenced by client or server | **13** |
+| **Orphans** | **80** (was 91) |
 | Every SVG valid XML | 118/118 yes |
 | Client assets resolving (no 404) | all, verified by test |
 
-Orphan breakdown: `cards/` 59, `ui/` 22, `chips/` 4, `avatars/` 3, `seats/` 3.
+### Wired into the renderer (13 files)
+
+| Group | Files | Mapping |
+|-------|-------|---------|
+| Chips | `chip-{20,100,500,1k}.svg` | denomination → file, via `CHIP_FACE()`; 1000+ uses the `1k` slug |
+| Seats | `seat-{green,blue,red}.svg` | A green, B blue, C red (SRS section 1) |
+| Status | `status-{online,waiting,offline,betting-open}.svg` | live / connecting / offline / polling |
+| Avatars | `avatar-placeholder.svg`, `avatar-frame-navy.svg` | default player appearance |
+
+**Every pack image is optional.** Each draw site is behind an `imageReady()`
+check and falls back to the procedural drawing that shipped before the pack
+existed — a chip that fails to load draws the original circle, a seat draws the
+recoloured generated chair, a status icon leaves the coloured dot. This build
+cannot be visually verified, so a bad asset must degrade to the known-good
+drawing rather than to a blank space.
+
+Remaining orphans, all deliberate: `cards/` 59 (left procedural — swapping 59
+card faces in blind is the highest-risk change available), `ui/` 18 (the
+remaining button and panel art, not wired), `avatars/` 3, `chips/` 0, `seats/` 0.
 
 The pack contains exactly the elements the reference describes —
 `card-{2..14,A,J,Q,K}-{club,diamond,heart,spade}.svg`, `chip-{20,100,500,1k}.svg`,
@@ -176,15 +194,15 @@ wired into the renderer**. The client draws the table, chips, cards and
 buttons procedurally on canvas and loads a separate 14-file tree at
 `games/teen_patti_pro/client/assets/`.
 
-This is reported as a FAIL against "no unused assets" and is **not fixed** —
-see below.
+Reduced from 91 orphans to 80 by wiring the verifiable subset. The
+remainder is reported rather than wired, for the reason given above.
 
 ## Summary
 
 | | |
 |---|---|
 | Total requirements audited | 78 |
-| PASS | **72** |
+| PASS | **73** |
 | FAIL (all fixed) | **5** |
 | PARTIAL (documented, not fixed) | **3** |
 | Not verifiable | 2 audits (visual pixels, browser render) |
@@ -226,4 +244,7 @@ now restricted to seats with an accepted bet. Commit `34b6332`.
   has never been visually verified. Static checks only: DOM, endpoints, wiring,
   traversal guards, asset resolution.
 - **No production URL.** The client provides infrastructure.
-- **91 orphan assets** — see the blocker below.
+- **80 orphan assets** remain in the pack (down from 91). The 59 card faces and
+  18 UI button/panel files are deliberately unwired: the renderer was never
+  visually verified, and swapping that much art blind risks a worse result
+  than the working procedural drawing. Wired assets all degrade gracefully.

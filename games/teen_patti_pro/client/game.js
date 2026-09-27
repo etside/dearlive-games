@@ -154,6 +154,7 @@
     roundNo: document.getElementById('roundNo'),
     room: document.getElementById('roomName'),
     conn: document.getElementById('connPill'),
+    dot: document.querySelector('#connPill .dot'),
     connText: document.getElementById('connText'),
     latency: document.getElementById('latency'),
     veil: document.getElementById('veil'),
@@ -171,6 +172,20 @@
   function setConnection(state, text) {
     if (hud.conn) hud.conn.dataset.conn = state;
     if (hud.connText) hud.connText.textContent = text || state;
+    // Swap the status icon when one is loaded; the coloured dot remains the
+    // fallback so the indicator is never blank.
+    if (hud.dot) {
+      const art = STATUS_IMAGES[state];
+      if (imageReady(art, 1, 1)) {
+        hud.dot.style.backgroundImage = 'url("' + STATUS_ART[state] + '")';
+        hud.dot.style.backgroundSize = 'contain';
+        hud.dot.style.backgroundRepeat = 'no-repeat';
+        hud.dot.dataset.art = '1';
+      } else {
+        hud.dot.style.backgroundImage = '';
+        hud.dot.dataset.art = '';
+      }
+    }
   }
 
   /* Latency is measured, never estimated: a WebSocket ping round trip, falling
@@ -575,6 +590,53 @@
     await Promise.all(promises);
   }
 
+  // ---- art pack preloading ----------------------------------------------
+  //
+  // Every art-pack image is optional. If one fails to load, the renderer falls
+  // back to drawing the chip / seat / status procedurally, exactly as it did
+  // before the pack was wired in. That is deliberate: this build cannot be
+  // visually verified (no browser available), so an asset that renders badly
+  // must degrade to the known-good drawing rather than to a blank space.
+  function preloadImage(src) {
+    const img = new Image();
+    img.src = src;
+    return img;
+  }
+  function imageReady(img, w, h) {
+    return !!(img && img.complete && img.naturalWidth > 0 && w > 0 && h > 0);
+  }
+  const ART_BASE = '/assets/games/teen-patti-pro/';
+  // Chip denomination -> art file. The pack names them by value, so the
+  // mapping is a lookup rather than an index that could silently drift.
+  const CHIP_ART = {
+    20: CHIP_FACE(20), 100: CHIP_FACE(100),
+    500: CHIP_FACE(500), 1000: CHIP_FACE(1000)
+  };
+  function CHIP_FACE(d) { return ART_BASE + 'chips/chip-' + (d >= 1000 ? '1k' : d) + '.svg'; }
+  // Seats follow SRS section 1 and the reference: A green, B blue, C red.
+  const SEAT_ART = { A: ART_BASE + 'seats/seat-green.svg',
+                     B: ART_BASE + 'seats/seat-blue.svg',
+                     C: ART_BASE + 'seats/seat-red.svg' };
+  // Connection state -> status icon. SRS section 8 vocabulary; the pack
+  // supplies one icon per state. Same fallback rule as chips and seats.
+  const STATUS_ART = {
+    live: ART_BASE + 'ui/status-online.svg',
+    polling: ART_BASE + 'ui/status-betting-open.svg',
+    connecting: ART_BASE + 'ui/status-waiting.svg',
+    offline: ART_BASE + 'ui/status-offline.svg',
+    error: ART_BASE + 'ui/status-offline.svg'
+  };
+  const STATUS_IMAGES = {};
+  Object.keys(STATUS_ART).forEach(function (k) {
+    STATUS_IMAGES[k] = preloadImage(STATUS_ART[k]);
+  });
+  const CHIP_IMAGES = {};
+  DENOMS.forEach(function (d) { CHIP_IMAGES[d] = preloadImage(CHIP_ART[d]); });
+  const SEAT_ART_IMAGES = {};
+  Object.keys(SEAT_ART).forEach(function (k) {
+    SEAT_ART_IMAGES[k] = preloadImage(SEAT_ART[k]);
+  });
+
   // ---- player appearance (set in DearLive admin, by player id) ----
   //
   // An operator styles a player in the admin panel; the game resolves that
@@ -796,7 +858,17 @@
         ctx.strokeStyle = active ? '#fbbf24' : '#ffd54a'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(pt.x, pt.y, 66, 0, 7); ctx.stroke(); ctx.restore();
       }
-      if (seatImages[i] && seatImages[i].complete) ctx.drawImage(seatImages[i], pt.x - 60, pt.y - 38, 120, 72);
+      // Seat art: prefer the art pack's purpose-named variants (A green, B blue,
+      // C red) and fall back to the recoloured generated chairs. The pack is
+      // 192x192 square, so it is drawn square; the generated chairs are 120x72
+      // and keep their own rect. aspect-corrected in both cases.
+      const artSeat = SEAT_ART_IMAGES[p];
+      if (imageReady(artSeat, 1, 1)) {
+        const ssz = 96;
+        ctx.drawImage(artSeat, pt.x - ssz / 2, pt.y - ssz / 2, ssz, ssz);
+      } else if (seatImages[i] && seatImages[i].complete && seatImages[i].naturalWidth) {
+        ctx.drawImage(seatImages[i], pt.x - 60, pt.y - 38, 120, 72);
+      }
       const hands = (s && s.hands && s.hands[p]) || ['**', '**', '**'];
       hands.forEach((f, j) => card(pt.x - L.cw * 1.15 + j * (L.cw + 5), pt.y - L.ch / 2, L.cw, L.ch, f));
       const avatarY = pt.y + L.ch / 2 + 28;
@@ -838,11 +910,22 @@
       // DearLive reference chip colors: 20 green, 100 blue, 500 purple, 1K red.
       const face = d === 20 ? '#22c55e' : d === 100 ? '#3b82f6' : d === 500 ? '#8b5cf6' : '#ef4444';
       ctx.save();
-      ctx.fillStyle = sel ? '#ffd54a' : face;
-      ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
-      ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#c8e6c9'; ctx.stroke();
-      ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold ' + u.f(12);
-      ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y);
+      const art = CHIP_IMAGES[d];
+      if (imageReady(art, 48, 48)) {
+        // Art pack. Drawn at 48px; the pack is 192x192 so it downscales.
+        if (sel) { ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 3; ctx.stroke(); }
+        ctx.drawImage(art, x - 24, y - 24, 48, 48);
+        ctx.fillStyle = sel ? '#3a2f00' : '#fff';
+        ctx.font = 'bold ' + u.f(12);
+        ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y);
+      } else {
+        // Fallback: the procedural chip, unchanged from before the pack.
+        ctx.fillStyle = sel ? '#ffd54a' : face;
+        ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
+        ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#c8e6c9'; ctx.stroke();
+        ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold ' + u.f(12);
+        ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y);
+      }
       ctx.restore();
       S._chips.push({ d, x, y, r: 28 });
     });
