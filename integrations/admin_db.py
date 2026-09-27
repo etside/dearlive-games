@@ -15,8 +15,13 @@ because the zeros read as "a quiet day" instead of "no data source".
 import os
 from typing import Optional
 
-from common.admin_store import (PostgresAdminStore, UnavailableAdminStore,
-                                AdminStoreUnavailable)
+# AdminStore is imported for the return annotation below. Annotations are
+# evaluated eagerly on Python 3.12/3.13 (the declared floor), so omitting it
+# raises NameError at import time there while working fine on 3.14+, which
+# defers evaluation. This is caught by
+# tests/test_annotation_compatibility.py.
+from common.admin_store import (AdminStore, PostgresAdminStore,
+                                UnavailableAdminStore, AdminStoreUnavailable)
 
 # Reconnect on each cursor rather than holding one long-lived connection: the
 # admin surface is low-traffic and a per-request connection avoids a stale
