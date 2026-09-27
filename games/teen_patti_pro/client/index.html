@@ -78,7 +78,16 @@
   @media (prefers-reduced-motion:reduce){
     .veil .spin{animation-duration:3s}
     .pill[data-conn="connecting"] .dot{animation:none}
-  }
+      white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+    /* The room/round pill is the only elastic element in the bar; the icon
+       buttons are fixed size and must never be squeezed or clipped off the
+       viewport edge. Latency is nice-to-have and yields first. */
+    #roundPill{flex:0 1 auto;min-width:0}
+    #roundPill b,#roundPill #roomName{overflow:hidden;text-overflow:ellipsis;
+      white-space:nowrap}
+    #connPill{flex:0 0 auto}
+    .iconbtn{flex:0 0 38px}
+    @media (max-width:400px){ .latency{display:none} }
   /* UI-14: the canvas renderer is resolution independent, so there is nothing
      to reflow; these rules only stop the HUD crowding a 360px phone. */
   @media (max-width:420px){
