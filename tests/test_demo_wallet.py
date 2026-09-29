@@ -153,3 +153,39 @@ class DemoBetFlowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DemoTokenTtlTest(unittest.TestCase):
+    def test_default_ttl_unchanged_when_demo_hours_unset(self):
+        import os
+        from provider.context import build_context
+        from provider.router import DEFAULT_SESSION_TTL
+        saved = {k: os.environ.get(k) for k in
+                 ("DEMO_TOKEN_TTL_HOURS", "PROVIDER_SESSION_TTL_SECONDS")}
+        os.environ.pop("DEMO_TOKEN_TTL_HOURS", None)
+        os.environ.pop("PROVIDER_SESSION_TTL_SECONDS", None)
+        try:
+            from unittest.mock import MagicMock
+            ctx = build_context(MagicMock(), MagicMock())
+            self.assertEqual(ctx.session_ttl_s, DEFAULT_SESSION_TTL)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_demo_hours_override_token_ttl(self):
+        import os
+        from provider.context import build_context
+        from unittest.mock import MagicMock
+        saved = os.environ.get("DEMO_TOKEN_TTL_HOURS")
+        os.environ["DEMO_TOKEN_TTL_HOURS"] = "24"
+        try:
+            ctx = build_context(MagicMock(), MagicMock())
+            self.assertEqual(ctx.session_ttl_s, 24 * 3600)
+        finally:
+            if saved is None:
+                os.environ.pop("DEMO_TOKEN_TTL_HOURS", None)
+            else:
+                os.environ["DEMO_TOKEN_TTL_HOURS"] = saved

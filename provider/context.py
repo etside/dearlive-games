@@ -79,8 +79,10 @@ def build_context(service, wallet_adapter, redis=None, catalog: Optional[TableCa
         keys=load_api_keys() if keys is None else keys,
         base_url=base_url or public_base_url(),
         currency=currency,
-        session_ttl_s=session_ttl_s or _int_env("PROVIDER_SESSION_TTL_SECONDS",
-                                                DEFAULT_SESSION_TTL),
+        session_ttl_s=(session_ttl_s
+                       or _int_env("DEMO_TOKEN_TTL_HOURS", 0) * 3600
+                       or _int_env("PROVIDER_SESSION_TTL_SECONDS",
+                                   DEFAULT_SESSION_TTL)),
         client_path=client_path or _env("PROVIDER_CLIENT_PATH", DEFAULT_CLIENT_URL),
         redis=redis is not None)
 
