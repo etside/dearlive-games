@@ -43,19 +43,30 @@ def build_stores():
                 MockDearLiveSessions(), MemoryIdempotencyStore(),
                 "sandbox(mock)")
     wallet, tokens, sessions, idem = None, None, None, None
+    demo_wallet = (_env("APP_ENV", "sandbox").strip().lower() != "production"
+                   and _env("DEMO_WALLET_ENABLED", "false").strip().lower()
+                   in ("1", "true", "yes"))
     if use_http_wallet:
         from integrations.dearlive import HttpDearLiveWallet
         try:
             wallet = HttpDearLiveWallet()
         except WalletNotConfigured as exc:
-            # No wallet is wired up. The game must still boot: rounds, seats,
-            # cards, countdown, result and history are all real without money,
-            # and only a bet needs the wallet. Booting with a clearly-marked
-            # unavailable adapter means a bet is refused with
-            # WALLET_NOT_CONFIGURED, instead of the whole service failing to
-            # start because an optional dependency is absent.
-            from integrations.dearlive import UnavailableWallet
-            wallet = UnavailableWallet(str(exc))
+            if demo_wallet:
+                # Demo/staging only: real in-memory balances + idempotency so
+                # the full bet/settle flow is exercisable without DearLive.
+                # Unreachable in production: the flag check above plus the
+                # adapter's own __init__ guard both refuse it there.
+                from integrations.wallet_demo import DemoWalletAdapter
+                wallet = DemoWalletAdapter()
+            else:
+                # No wallet is wired up. The game must still boot: rounds, seats,
+                # cards, countdown, result and history are all real without money,
+                # and only a bet needs the wallet. Booting with a clearly-marked
+                # unavailable adapter means a bet is refused with
+                # WALLET_NOT_CONFIGURED, instead of the whole service failing to
+                # start because an optional dependency is absent.
+                from integrations.dearlive import UnavailableWallet
+                wallet = UnavailableWallet(str(exc))
     else:
         from integrations.dearlive_mock import MockDearLiveWallet
         wallet = MockDearLiveWallet()
