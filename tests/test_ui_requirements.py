@@ -502,8 +502,10 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         html = (CLIENT / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("flex-wrap:wrap", html,
                          "the HUD must not wrap its control groups")
-        self.assertIn(".hud-left{flex:0 1 auto;overflow:hidden}", html)
-        self.assertIn(".hud-right{flex:0 0 auto;margin-left:auto}", html)
+        self.assertIn(".hud-left{flex:1 1 auto;min-width:0;overflow:hidden}", html)
+        self.assertIn("#roundPill{flex:1 1 auto;min-width:86px}", html,
+                      "the round pill needs a readable floor, not unrestricted shrink")
+        self.assertIn(".hud-right{flex:0 0 auto", html)
 
     def test_history_control_matches_its_asset_aspect(self):
         """btn-history.svg is a 256x64 pill, not a square icon.

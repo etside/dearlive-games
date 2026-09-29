@@ -44,8 +44,13 @@
        This was lost once when index.html was checked out wholesale, so
        SingleToolbarLayoutTest now guards it. */
     .hud-left,.hud-right{display:flex;gap:6px;align-items:center;min-width:0}
-    .hud-left{flex:0 1 auto;overflow:hidden}
-    .hud-right{flex:0 0 auto;margin-left:auto}
+    /* Back + round pill are the left group. The pill is the only elastic
+       item and has a readable floor, so it ellipsises instead of collapsing
+       to "# d..". Fixed controls never shrink. */
+    .hud-left{flex:1 1 auto;min-width:0;overflow:hidden}
+    #roundPill{flex:1 1 auto;min-width:86px}
+    .hud-right{flex:0 0 auto;margin-left:6px}
+    .hud-left > .iconbtn,.hud-right > .iconbtn,.pillbtn{flex:0 0 auto}
     /* btn-history.svg is a 256x64 pill, not a 192x192 square icon like
        btn-help / btn-settings. Forcing it into the square iconbtn slot with
        background-size:contain squashed it into an unreadable box. It gets its
@@ -64,7 +69,11 @@
   .iconbtn:focus-visible{outline:3px solid var(--dl-cyan);outline-offset:2px}
   .iconbtn[aria-pressed="true"]{border-color:var(--dl-accent);color:var(--dl-accent)}
   /* Panel art hangs on this; it stays hidden when the art does not load. */
-  #youMarker{width:0;height:0;padding:0;overflow:hidden}
+    /* [hidden] must actually hide. `.pill{display:inline-flex}` beat the UA
+       stylesheet's `[hidden]{display:none}`, so this empty marker still
+       painted a ghost box beside the Back button. */
+    [hidden]{display:none !important}
+    #youMarker{width:0;height:0;padding:0;overflow:hidden}
   #youMarker:not([hidden]){width:26px;height:26px;padding:0;
     background-repeat:no-repeat;background-position:center;background-size:contain}
   .pill{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;
@@ -99,7 +108,6 @@
     /* The room/round pill is the only elastic element in the bar; the icon
        buttons are fixed size and must never be squeezed or clipped off the
        viewport edge. Latency is nice-to-have and yields first. */
-    #roundPill{flex:0 1 auto;min-width:0}
     #roundPill b,#roundPill #roomName{overflow:hidden;text-overflow:ellipsis;
       white-space:nowrap}
     #connPill{flex:0 0 auto}
