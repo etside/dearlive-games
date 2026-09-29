@@ -1799,6 +1799,31 @@ class Handler(BaseHTTPRequestHandler):
                 if denied:
                     return self.send(*denied)
                 return self.ok(self.svc.settle(m.group(1)), "Settled")
+            m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/([^/]+)/seat", path)
+            if m:
+                # Seat acquisition. The room comes from the authenticated
+                # session, never from the path or the query string, so a client
+                # cannot nominate a different table. Atomic under the room lock;
+                # concurrent claims for the last seat yield exactly one owner.
+                # A full table returns spectator (200), not an error, so the
+                # auto-claim on subscribe can never 409 a connecting player.
+                # An explicit claim for an occupied seat returns 409 STATE_CONFLICT.
+                room_id = self.session_room(fallback=m.group(1))
+                pid = self.session_player()
+                if not pid:
+                    return self.send(401, E.err("Bearer session required", E.E_AUTH))
+                body, err = parse_body(self)
+                if err:
+                    return self.send(422, err)
+                want = str(body.get("seat", "auto") or "auto")
+                if want.strip().upper() not in ("AUTO", "A", "B", "C"):
+                    return self.send(422, E.err("seat must be auto, A, B or C",
+                                                E.E_VALIDATION))
+                try:
+                    return self.ok(self.svc.claim_seat(room_id, pid, want),
+                                   "Seat claimed")
+                except ServiceError as exc:
+                    return self.fail(exc)
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/([^/]+)/(?:rounds/([^/]+)/)?bets", path)
             if m:
                 # The room comes from the session, not the path. The client

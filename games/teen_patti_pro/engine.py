@@ -274,10 +274,47 @@ class Room:
         self.carry_over = 0
         self.members: Dict[str, dict] = {}
 
-    # ---- sessions ----
-    def create_session(self, player_id: str) -> dict:
-        self.members[player_id] = {"joined_at": int(time.time() * 1000)}
-        return {"room_id": self.room_id, "player_id": player_id}
+    # ---- sessions / seats ----
+    # Seat ownership binds to player identity, never to a socket. create_session
+    # is called on every subscribe/reconnect, so re-entry by the same player is
+    # a no-op that preserves their seat; only an explicit leave releases it.
+    # The whole claim runs under self.lock: two players racing for the last
+    # seat cannot both observe it free (read-then-assign is the race this
+    # exists to prevent).
+    def claim_seat(self, player_id: str, seat: str = "auto") -> dict:
+        want = (seat or "auto").strip().upper() or "AUTO"
+        seats = list(self.config.seats)
+        with self.lock:
+            existing = self.members.get(player_id) or {}
+            if existing.get("seat"):
+                return {"room_id": self.room_id, "player_id": player_id,
+                        "seat": existing["seat"], "status": "seated",
+                        "claimed": False}
+            if want in seats:
+                owner = next((p for p, m in self.members.items()
+                              if (m or {}).get("seat") == want), None)
+                if owner is not None:
+                    raise LifecycleError(f"Seat {want} is occupied")
+                chosen = want
+            elif want == "AUTO":
+                taken = {(m or {}).get("seat") for m in self.members.values()}
+                chosen = next((s for s in seats if s not in taken), "")
+            else:
+                raise LifecycleError(f"Unknown seat {seat!r}")
+            self.members[player_id] = {
+                "joined_at": existing.get("joined_at") or int(time.time() * 1000),
+                "seat": chosen or None,
+            }
+            if chosen:
+                return {"room_id": self.room_id, "player_id": player_id,
+                        "seat": chosen, "status": "seated", "claimed": True}
+            return {"room_id": self.room_id, "player_id": player_id,
+                    "seat": None, "status": "spectator", "claimed": False}
+
+    def create_session(self, player_id: str, seat: str = "auto") -> dict:
+        out = self.claim_seat(player_id, seat)
+        return {"room_id": self.room_id, "player_id": player_id,
+                "seat": out["seat"], "status": out["status"]}
 
     def leave_session(self, player_id: str) -> dict:
         with self.lock:
@@ -651,6 +688,35 @@ class Room:
             return voided
 
     # ---- views ----
+    def _occupancy(self, viewer: str = "") -> dict:
+        """Authoritative seat occupancy, independent of bets and wallet state.
+
+        `seats` elsewhere in the snapshot means bets-by-position and the betting
+        renderer depends on that meaning, so occupancy gets its own keys. Built
+        once per snapshot() call -- snapshot() runs on every 1 Hz round.tick,
+        so this stays a single pass, never a list rebuilt inside a per-seat
+        loop. A table with no round still reports occupancy: an empty table is
+        a seating state, not a missing one.
+        """
+        order = list(self.config.seats)
+        occ = {s: None for s in order}
+        for pid, m in self.members.items():
+            st = (m or {}).get("seat")
+            if st in occ and occ[st] is None:
+                occ[st] = pid
+        mine = (self.members.get(viewer) or {}).get("seat")
+        return {
+            "seatOccupancy": occ,
+            "members": [{"playerId": pid,
+                         "seat": (m or {}).get("seat"),
+                         "joinedAt": (m or {}).get("joined_at"),
+                         "status": "seated" if (m or {}).get("seat") else "spectator"}
+                        for pid, m in self.members.items()],
+            "mySeat": mine,
+            "isSpectator": mine is None,
+            "availableSeats": [s for s in order if occ[s] is None],
+        }
+
     def snapshot(self, viewer: str, now_ms: int) -> dict:
         r = self.round
         if r is None:
@@ -665,7 +731,8 @@ class Room:
                     "serverTime": now_ms, "betting_end_at": None,
                     "pots": {}, "pot_total": 0, "my_bet": 0, "carry_in": 0,
                     "seats": {}, "hands": {}, "winners": [],
-                    "config_version": getattr(self.config, "version", "")}
+                    "config_version": getattr(self.config, "version", ""),
+                    **self._occupancy(viewer)}
         reveal = r.status in (RoundStatus.RESULT, RoundStatus.SETTLED, RoundStatus.CLOSED)
         pots: Dict[str, int] = {}
         mine = 0
@@ -698,6 +765,7 @@ class Room:
                           if reveal and self.config.jokers else {}),
             "winners": r.winner_positions if reveal else [],
             "config_version": r.config_version,
+            **self._occupancy(viewer),
         }
 
     def events_since(self, seq: int, viewer: str) -> List[dict]:

@@ -203,6 +203,21 @@ class IdleSnapshotShapeTest(unittest.TestCase):
                                       f"{key} must be numeric, got {snap[key]!r}")
                 self.assertFalse(snap[key] is None)
 
+    def test_idle_branch_carries_occupancy_fields(self):
+        svc = _service()
+        svc._room("t").claim_seat("p1")
+        svc._room("t").claim_seat("p2")
+        idle = svc.state("t", "ghost")
+        self.assertIsNone(idle["round"], "precondition: no round yet")
+        self.assertEqual(idle["seatOccupancy"],
+                         {"A": "p1", "B": "p2", "C": None})
+        self.assertEqual(idle["availableSeats"], ["C"])
+        self.assertEqual(
+            [(m["playerId"], m["seat"], m["status"]) for m in idle["members"]],
+            [("p1", "A", "seated"), ("p2", "B", "seated")])
+        self.assertTrue(idle["isSpectator"])
+        self.assertIsNone(idle["mySeat"])
+
 
 class RoundLifecyclePumpTest(unittest.TestCase):
     """A seated table must advance past BETTING_OPEN on its own.
@@ -403,3 +418,124 @@ class SessionRoomAuthorityTest(unittest.TestCase):
                       "the bets route must resolve the room from the session")
         self.assertNotIn("room_id = m.group(1)\n", block,
                          "the bets route still trusts the path room")
+
+
+class SeatOccupancyTest(unittest.TestCase):
+    """Authoritative seats live in room.members, never in bets.
+
+    The snapshot's `seats` key means bets-by-position and the betting renderer
+    depends on that meaning, so occupancy is exposed separately as
+    seatOccupancy/members/mySeat/isSpectator/availableSeats, in BOTH snapshot
+    branches. No wallet, no bet, and no round is required to know who sits
+    where.
+    """
+
+    def _room(self, svc, room="t"):
+        return svc._room(room)
+
+    def test_first_three_callers_take_abc_fourth_is_spectator(self):
+        svc = _service()
+        got = [self._room(svc).claim_seat(f"p{i}")["seat"] for i in range(1, 5)]
+        self.assertEqual(got, ["A", "B", "C", None])
+        snap = svc.state("t", "p4")
+        self.assertTrue(snap["isSpectator"])
+        self.assertIsNone(snap["mySeat"])
+        self.assertEqual(snap["availableSeats"], [])
+
+    def test_occupancy_visible_before_any_bet_or_round(self):
+        svc = _service()
+        svc._room("t").claim_seat("p1")
+        snap = svc.state("t", "p1")
+        self.assertEqual(snap["seatOccupancy"], {"A": "p1", "B": None, "C": None})
+        self.assertEqual(snap["mySeat"], "A")
+        self.assertFalse(snap["isSpectator"])
+        self.assertEqual(snap["availableSeats"], ["B", "C"])
+        self.assertEqual(
+            [(m["playerId"], m["seat"], m["status"]) for m in snap["members"]],
+            [("p1", "A", "seated")])
+
+    def test_idle_branch_carries_occupancy_too(self):
+        svc = _service()
+        svc._room("t").claim_seat("p1")
+        svc._room("t").claim_seat("p2")
+        snap = svc.state("t", "ghost")
+        self.assertIsNone(snap["round"])
+        self.assertEqual(snap["seatOccupancy"]["A"], "p1")
+        self.assertEqual(snap["seatOccupancy"]["B"], "p2")
+        self.assertEqual(snap["seatOccupancy"]["C"], None)
+        self.assertTrue(snap["isSpectator"])
+        self.assertEqual(snap["availableSeats"], ["C"])
+        self.assertEqual(len(snap["members"]), 2)
+
+    def test_bets_by_position_meaning_is_untouched(self):
+        svc = _service()
+        svc._room("t").claim_seat("p1")
+        snap = svc.state("t", "p1")
+        self.assertEqual(snap["seats"], {},
+                         "no bets yet: bets-by-position must stay empty")
+
+    def test_explicit_taken_seat_conflicts(self):
+        svc = _service()
+        svc._room("t").claim_seat("p1", "B")
+        from games.teen_patti_pro.engine import LifecycleError
+        with self.assertRaises(LifecycleError):
+            svc._room("t").claim_seat("p2", "B")
+        # and through the service boundary it becomes a 409-class error
+        from games.teen_patti_pro.service import ServiceError
+        with self.assertRaises(ServiceError) as cm:
+            svc.claim_seat("t", "p2", "B")
+        self.assertEqual(cm.exception.code, "STATE_CONFLICT")
+
+    def test_duplicate_claim_is_idempotent(self):
+        svc = _service()
+        first = svc._room("t").claim_seat("p1", "C")
+        second = svc._room("t").claim_seat("p1", "A")
+        self.assertEqual(first["seat"], "C")
+        self.assertEqual(second["seat"], "C")
+        self.assertFalse(second["claimed"])
+
+    def test_reconnect_preserves_the_seat(self):
+        svc = _service()
+        svc._room("t").claim_seat("p1", "B")
+        again = svc._room("t").create_session("p1")
+        self.assertEqual(again["seat"], "B")
+        self.assertEqual(again["status"], "seated")
+
+    def test_concurrent_claims_yield_exactly_three_owners(self):
+        import threading
+        svc = _service()
+        results, errors = {}, []
+        barrier = threading.Barrier(6)
+
+        def go(i):
+            try:
+                barrier.wait(timeout=10)
+                results[f"c{i}"] = svc._room("t").claim_seat(f"c{i}")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=go, args=(i,)) for i in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        self.assertEqual(errors, [])
+        seated = sorted(r["seat"] for r in results.values() if r["seat"])
+        self.assertEqual(seated, ["A", "B", "C"])
+        self.assertEqual(sum(1 for r in results.values() if not r["seat"]), 3)
+        owners = [svc._room("t").members[f"c{i}"].get("seat") for i in range(6)]
+        self.assertEqual(sorted(o for o in owners if o), ["A", "B", "C"])
+
+
+class SeatRouteBindingTest(unittest.TestCase):
+    """POST .../rooms/:room/seat resolves the room from the session."""
+
+    def test_route_exists_and_binds_session_room(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/api.py").read_text(encoding="utf-8")
+        i = src.index('rooms/([^/]+)/seat')
+        block = src[i:i + 1500]
+        self.assertIn("self.session_room(fallback=m.group(1))", block,
+                      "seat route must resolve the room from the session")
+        self.assertIn("self.svc.claim_seat(room_id, pid, want)", block)
+        self.assertIn('"seat must be auto, A, B or C"', block)

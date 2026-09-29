@@ -230,6 +230,13 @@ def handle(conn: socket.socket, hub: Hub):
                 room = sess.room_id  # server-authoritative, never client-supplied
                 hub.svc.sessions.touch(sess.session_id)
                 hub.join(room, conn, player)
+                # Auto-claim a seat on subscribe so a player never has to find a
+                # hidden API. Idempotent: reconnects keep their existing seat,
+                # and a full table yields spectator instead of an error.
+                try:
+                    hub.svc._room(room).create_session(player)
+                except Exception:
+                    log.exception("teen_patti_subscribe_claim_failed room=%s", room)
                 _send_frame(conn, json.dumps({
                     "kind": "snapshot",
                     "data": hub.svc.state(room, player)}))

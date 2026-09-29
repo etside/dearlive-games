@@ -140,6 +140,16 @@ class TeenPattiService:
         return {"session_id": sess.session_id, "player_id": lt.player_id,
                 "room_id": lt.room_id, "game_id": lt.game_id}
 
+    def claim_seat(self, room_id: str, player_id: str, seat: str = "auto") -> dict:
+        """Atomically claim a seat. Maps engine conflicts onto ServiceError."""
+        room = self._room(room_id)
+        try:
+            out = room.claim_seat(player_id, seat)
+        except LifecycleError as exc:
+            raise ServiceError(E.E_CONFLICT, str(exc))
+        out["seatOccupancy"] = room._occupancy(player_id)["seatOccupancy"]
+        return out
+
     # ---- rounds ----
     def start_round(self, room_id: str, actor: str = "system") -> dict:
         room = self._room(room_id)
