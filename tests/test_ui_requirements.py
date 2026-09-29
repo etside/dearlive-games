@@ -503,9 +503,11 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         self.assertNotIn("flex-wrap:wrap", html,
                          "the HUD must not wrap its control groups")
         self.assertIn(".hud-left{flex:1 1 auto;min-width:0;overflow:hidden}", html)
-        self.assertIn("#roundPill{flex:1 1 auto;min-width:86px}", html,
-                      "the round pill needs a readable floor, not unrestricted shrink")
-        self.assertIn(".hud-right{flex:0 0 auto", html)
+        self.assertIn("#roundPill{flex:1 1 auto;min-width:0", html,
+                      "round/room is the only flexible element; the "
+                      "86px floor overlapped the status pill")
+        self.assertIn("#hHist{flex:0 0 auto", html,
+                      "history needs a fixed slot, never a shrinking one")
 
     def test_history_control_matches_its_asset_aspect(self):
         """btn-history.svg is a 256x64 pill, not a square icon.

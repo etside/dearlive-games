@@ -48,9 +48,16 @@
        item and has a readable floor, so it ellipsises instead of collapsing
        to "# d..". Fixed controls never shrink. */
     .hud-left{flex:1 1 auto;min-width:0;overflow:hidden}
-    #roundPill{flex:1 1 auto;min-width:86px}
+    /* Round/Room is the ONLY flexible element. The 86px floor added last
+       pass pushed it into the connection pill at 360/412/430, so the floor
+       is gone: the pill truncates instead, and History/Menu/Back are fixed.
+       The floor is enforced by the narrow-width collapse below rather than
+       by stealing space from the status indicator. */
+    #roundPill{flex:1 1 auto;min-width:0;overflow:hidden}
     .hud-right{flex:0 0 auto;margin-left:6px}
     .hud-left > .iconbtn,.hud-right > .iconbtn,.pillbtn{flex:0 0 auto}
+    /* History: fixed slot, natural pill aspect, never shrinks. */
+    #hHist{flex:0 0 auto;width:74px;height:32px;padding:0}
     /* btn-history.svg is a 256x64 pill, not a 192x192 square icon like
        btn-help / btn-settings. Forcing it into the square iconbtn slot with
        background-size:contain squashed it into an unreadable box. It gets its
