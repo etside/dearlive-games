@@ -766,8 +766,9 @@
   // Header buttons: swap the glyph for pack art when it is available. The
   // text glyph stays as the accessible name and as the fallback.
   function applyButtonArt() {
-    const pairs = [['hBack', 'btnBack'], ['hHelp', 'btnHelp'],
-                   ['hSound', 'btnSoundOn'], ['hMenu', 'btnSettings']];
+    const pairs = [['hBack', 'btnBack'], ['hHist', 'btnHistory'],
+                   ['hHelp', 'btnHelp'], ['hSound', 'btnSoundOn'],
+                   ['hMenu', 'btnSettings']];
     pairs.forEach(function (pair) {
       const el = document.getElementById(pair[0]);
       const img = UI_IMAGES[pair[1]];
@@ -1038,17 +1039,12 @@
     // round-status icon is drawn here now: the canvas previously painted its own
     // HIST control at W-32, underneath the DOM icon row, so the two layers
     // overlapped and it was clipped at the right edge.
+    // Back / Help / Sound / Menu are DOM buttons in the HUD (index.html).
+    // The canvas used to paint a second copy of that strip at SAFE.l+24,
+    // which sat directly behind the real controls and read as faded ghost
+    // icons across the top of every screenshot. S._ctl stays empty so the
+    // canvas hit-test finds nothing there and the DOM row is the only one.
     S._ctl = [];
-    const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
-    const step = Math.min(46, (W * 0.52) / ctl.length);
-    ctl.forEach((c, i) => {
-      const x = SAFE.l + 24 + i * step, y = 26 + SAFE.t * 0.4;
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(x - 18, y - 16, 36, 32, 8); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(15);
-      ctx.fillText(c[0], x, y + 1); ctx.restore();
-      S._ctl.push({ act: c[1], x, y, r: 24 });
-    });
     ctx.save();
     let secs = null;
     if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
@@ -1130,7 +1126,13 @@
       // own column.
       const spread = L.cw * 0.5;
       const fanX0 = pt.x - ((hands.length - 1) * spread) / 2;
-      hands.forEach((f, j) => card(fanX0 + j * spread, pt.y - L.ch / 2, L.cw, L.ch, f));
+      // Sit the hand just above the chair back rather than across it. The chair
+        // art spans pt.y-38..pt.y+34, and the fan used to be centred on pt.y, so
+        // the cards covered the upholstery while the avatar and label below
+        // carried the seat. A 6px overlap keeps them visually connected to
+        // their chair without hiding it.
+        const cardTop = pt.y - 38 - L.ch + 6;
+        hands.forEach((f, j) => card(fanX0 + j * spread, cardTop, L.cw, L.ch, f));
       const avatarY = pt.y + L.ch / 2 + 28;
       const look = appearanceFor((s && s.seats && s.seats[p]) || null);
       const av = loadAvatarImage(look.avatar);

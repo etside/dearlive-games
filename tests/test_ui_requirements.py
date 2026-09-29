@@ -442,3 +442,51 @@ class CardFanGeometryTest(unittest.TestCase):
                 self.assertIn("band = { header:", JS)
                 self.assertIn("usable * band.seats", JS,
                               "seats must be anchored to the grid, not the top")
+
+
+class SingleToolbarAndIconTest(unittest.TestCase):
+    """One toolbar, and no font-dependent glyphs.
+
+    The canvas painted its own Back / Help / Sound / Menu strip at SAFE.l+24,
+    directly behind the real DOM buttons, and every screenshot showed the pair
+    as faded ghost icons. The DOM row is the only toolbar now; S._ctl stays
+    empty so the canvas hit-test finds nothing there.
+
+    HIST also shipped as a raw Unicode codepoint (&#9646;) that Android's font
+    stack has no glyph for, so it rendered as a tofu box. The button now uses
+    the supplied ui/btn-history.svg, like every other control.
+    """
+
+    def test_canvas_does_not_paint_a_control_strip(self):
+        code = JS
+        self.assertIn("S._ctl = [];", code)
+        self.assertNotIn("'back'], ['?'", code,
+                         "the canvas control strip is back")
+        self.assertNotIn("S._ctl.push({ act: c[1]", code,
+                         "the canvas must not register hit targets behind the "
+                         "DOM toolbar")
+
+    def test_hist_uses_supplied_art_not_a_unicode_glyph(self):
+        html = (CLIENT / "index.html").read_text(encoding="utf-8")
+        i = html.index('id="hHist"')
+        tag = html[html.rindex("<button", 0, i):html.index("</button>", i)]
+        self.assertNotIn("&#", tag,
+                         "the HIST button must not depend on a font glyph")
+        # the art pair must include hHist so applyButtonArt styles it
+        self.assertIn("['hHist', 'btnHistory']", JS)
+        self.assertIn("ui/btn-history.svg", JS)
+        art = (Path(__file__).resolve().parents[1]
+               / "assets/games/teen-patti-pro/ui/btn-history.svg")
+        self.assertTrue(art.is_file(), "btn-history.svg missing from the pack")
+
+    def test_every_hud_button_uses_supplied_art(self):
+        for el, key in (("hBack", "btnBack"), ("hHist", "btnHistory"),
+                        ("hHelp", "btnHelp"), ("hSound", "btnSoundOn"),
+                        ("hMenu", "btnSettings")):
+            with self.subTest(el=el):
+                self.assertIn(f"['{el}', '{key}']", JS)
+
+    def test_cards_sit_above_the_chair_back(self):
+        self.assertIn("const cardTop = pt.y - 38 - L.ch + 6;", JS,
+                      "the hand must clear the chair back rather than cover it")
+        self.assertNotIn("card(fanX0 + j * spread, pt.y - L.ch / 2", JS)
