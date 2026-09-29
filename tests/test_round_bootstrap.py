@@ -102,6 +102,72 @@ def _service(confirmed: bool = False):
                            sessions=_Sessions(), idempotency=_Idem(), **kw)
 
 
+class SubscribeBootstrapTest(unittest.TestCase):
+    """The WebSocket subscribe path must seat the player *and* deal a round.
+
+    Regression, seen live: a player opened the launch URL, the socket reported
+    "live 252ms", the HUD said "Waiting for players -- No round is running" and
+    the balance stayed null. The subscribe handler called
+    `svc._room(room).create_session(player)` directly, which only adds the
+    player to the room's members map. Round creation lives in the service
+    (`ensure_round`, which refuses to deal into an empty room), and nothing on
+    the socket path called it -- so the first connection sat at a table with no
+    round. These tests drive the same call sequence the socket handler uses.
+    """
+
+    def test_claim_seat_then_ensure_round_gives_a_playable_snapshot(self):
+        svc = _service()
+        room = "teen-patti-low"
+        svc.sessions.create("player_1", room, "teen-patti")
+        # Exactly what the subscribe handler now does, in this order.
+        out = svc.claim_seat(room, "player_1", "auto")
+        self.assertEqual(out.get("status"), "seated")
+        self.assertTrue(out.get("seat"), f"no seat assigned: {out}")
+        started = svc.ensure_round(room)
+        self.assertTrue(started.get("started"), f"no round started: {started}")
+        snap = svc.state(room, "player_1")
+        self.assertTrue(snap.get("round_id"), f"null round in snapshot: {snap}")
+        self.assertEqual(snap.get("status"), "BETTING_OPEN",
+                         f"first seated player must land in a betting window: "
+                         f"{snap.get('status')}")
+        self.assertTrue(snap.get("betting_end_at"),
+                        "no betting deadline -> timer cannot count down")
+
+    def test_reconnect_does_not_restart_a_live_round(self):
+        """A second connect must not kill the round the player is already in."""
+        svc = _service()
+        room = "teen-patti-low"
+        svc.sessions.create("player_1", room, "teen-patti")
+        svc.claim_seat(room, "player_1", "auto")
+        first = svc.ensure_round(room)
+        self.assertTrue(first.get("started"))
+        round_id = first["round_id"]
+
+        again = svc.claim_seat(room, "player_1", "auto")
+        self.assertEqual(again.get("seat"), "A", "reconnect lost its seat")
+        second = svc.ensure_round(room)
+        self.assertFalse(second.get("started"),
+                         f"reconnect restarted the round: {second}")
+        self.assertEqual(second.get("round_id"), round_id)
+
+    def test_spectator_never_disturbs_the_table(self):
+        """A full table yields spectator; their connect must not deal cards."""
+        svc = _service()
+        room = "teen-patti-low"
+        for p in ("p1", "p2", "p3"):
+            svc.sessions.create(p, room, "teen-patti")
+            svc.claim_seat(room, p, "auto")
+        svc.ensure_round(room)
+        live = svc.state(room, "p1").get("round_id")
+
+        svc.sessions.create("p4", room, "teen-patti")
+        out = svc.claim_seat(room, "p4", "auto")
+        self.assertEqual(out.get("status"), "spectator", f"4th player seated: {out}")
+        self.assertFalse(svc.ensure_round(room).get("started"))
+        self.assertEqual(svc.state(room, "p4").get("round_id"), live)
+        self.assertTrue(svc.state(room, "p4").get("isSpectator"))
+
+
 class RoundBootstrapTest(unittest.TestCase):
     def test_seated_table_has_a_round(self):
         svc = _service()

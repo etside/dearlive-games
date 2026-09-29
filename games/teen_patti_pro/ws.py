@@ -233,13 +233,40 @@ def handle(conn: socket.socket, hub: Hub):
                 # Auto-claim a seat on subscribe so a player never has to find a
                 # hidden API. Idempotent: reconnects keep their existing seat,
                 # and a full table yields spectator instead of an error.
+                # This goes through the service (not the room directly) so the
+                # round bootstrap below runs on the very first connection --
+                # previously the first player sat at a table with no round until
+                # an operator ticker or the launch route happened to start one.
                 try:
-                    hub.svc._room(room).create_session(player)
+                    hub.svc.claim_seat(room, player, "auto")
                 except Exception:
                     log.exception("teen_patti_subscribe_claim_failed room=%s", room)
+                # Bootstrap a round when the table has seated players and none
+                # is in flight. ensure_round is a no-op while a round is active,
+                # so reconnecting players never disturb the current round.
+                try:
+                    out = hub.svc.ensure_round(room)
+                    if out.get("started"):
+                        log.info("teen_patti_round_bootstrapped room=%s "
+                                 "round_id=%s", room, out.get("round_id"))
+                except Exception:
+                    log.exception("teen_patti_ensure_round_failed room=%s", room)
                 _send_frame(conn, json.dumps({
                     "kind": "snapshot",
                     "data": hub.svc.state(room, player)}))
+                # Nudge everyone already watching so a round created by this
+                # connection reaches the other seats immediately, not on the
+                # next one-second tick.
+                try:
+                    with hub.lock:
+                        others = [c for c, _p in hub.rooms.get(room, set())
+                                  if c is not conn]
+                    for other in others:
+                        _send_frame(other, json.dumps({
+                            "kind": "event",
+                            "data": hub.svc.state(room, player)}))
+                except Exception:
+                    log.exception("teen_patti_peer_snapshot_failed room=%s", room)
     except OSError:
         pass
     finally:

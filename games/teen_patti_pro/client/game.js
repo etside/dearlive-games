@@ -1530,12 +1530,23 @@
       status(friendlyError(e), 'error');
     }
   }
-  async function refreshWallet() {
+  async function refreshWallet(attempt) {
     try {
       const w = await api('/api/v1/wallet/balance');
-      if (w.available !== S.balance) announce('Balance ' + w.available);
-      S.balance = w.available;
+      if (w && typeof w.available === 'number') {
+        if (w.available !== S.balance) announce('Balance ' + w.available);
+        S.balance = w.available;
+        S._balanceRetries = 0;
+        return true;
+      }
     } catch (e) { }
+    // The wallet can still be warming up when the first frame lands (the
+    // session and its wallet are minted in the same request). Retry briefly so
+    // the HUD resolves to a number instead of sitting on "BAL --".
+    const n = (attempt || 0) + 1;
+    S._balanceRetries = n;
+    if (n < 6) setTimeout(function () { refreshWallet(n); }, 700 * n);
+    return false;
   }
   function startPolling() {
     S.polling = true;
@@ -1648,6 +1659,9 @@
       window.__tppAnim.AnimLayer.hardReset();
       ws.send(JSON.stringify({ action: 'subscribe', room: ROOM, session: SESSION }));
       refresh();
+      // Live mode stops the wallet poll, so the balance has to be fetched here
+      // or the HUD sits on "BAL --" for the whole session.
+      refreshWallet();
     };
     ws.onmessage = ev => {
       try {
