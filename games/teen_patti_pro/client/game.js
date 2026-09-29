@@ -1047,10 +1047,6 @@
       S._ctl.push({ act: c[1], x, y, r: 24 });
     });
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(hx - 26, 11 + SAFE.t * 0.4, 52, 32, 8); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('HIST', hx, 27 + SAFE.t * 0.4);
-    ctx.restore();
-    S._ctl.push({ act: 'history', x: hx, y: 26 + SAFE.t * 0.4, r: 28 });
     let secs = null;
     if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
       // serverTime-anchored: estimate server now from last snapshot skew
