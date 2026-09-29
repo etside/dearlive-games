@@ -2199,16 +2199,17 @@ def _start_config_sweeper(store, interval_s: int = 60):
     return ScheduledChangeSweeper(store, interval_seconds=interval_s).start()
 
 
-    def _load_latest_rules(self):
+    @classmethod
+    def _load_latest_rules(cls):
         """Load the latest confirmed rules from admin store and update service config."""
         try:
-            if self.admin_store is None:
+            if cls.admin_store is None:
                 return
-            rules_data = self.admin_store.get_game_rules("teen-patti-pro")
+            rules_data = cls.admin_store.get_game_rules("teen-patti-pro")
             if rules_data and rules_data.get("rules"):
                 payload = rules_data["rules"]
                 confirmed = rules_data.get("confirmed", False)
-                from .config import TeenPattiConfig
+                from games.teen_patti_pro.config import TeenPattiConfig
                 # Build config from stored rules, preserving confirmed status
                 config_kwargs = {k: v for k, v in payload.items()
                                  if k not in ("updated_by", "tbc")}
@@ -2218,7 +2219,7 @@ def _start_config_sweeper(store, interval_s: int = 60):
                     config_kwargs["tbc"] = tuple(payload.get("tbc", []))
                 new_config = TeenPattiConfig(**config_kwargs)
                 # Update service config (applies to next round)
-                self.svc.config = new_config
+                cls.svc.config = new_config
                 return True
         except Exception:
             pass
