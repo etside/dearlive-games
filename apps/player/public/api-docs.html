@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teen Patti Pro — API Docs</title>
+<style>
+  :root{
+    --ink:#1a1d23; --muted:#5b6472; --line:#e5e8ee; --bg:#ffffff;
+    --panel:#f6f8fb; --accent:#0b6cff; --accent-ink:#ffffff;
+    --code-bg:#0f172a; --code-ink:#e2e8f0; --warn-bg:#fff8e6; --warn-line:#e8b400;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6}
+  header.top{border-bottom:1px solid var(--line);padding:28px 24px;max-width:960px;margin:0 auto}
+  header.top h1{margin:0 0 6px;font-size:28px;letter-spacing:-.02em}
+  header.top p{margin:0;color:var(--muted)}
+  nav.toc{max-width:960px;margin:0 auto;padding:16px 24px 0;display:flex;flex-wrap:wrap;gap:8px}
+  nav.toc a{font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--line);
+    border-radius:999px;padding:4px 12px}
+  nav.toc a:hover{background:var(--panel)}
+  main{max-width:960px;margin:0 auto;padding:8px 24px 80px}
+  section{padding:28px 0;border-bottom:1px solid var(--line)}
+  section:last-child{border-bottom:0}
+  h2{font-size:22px;margin:0 0 12px;letter-spacing:-.01em}
+  h3{font-size:16px;margin:20px 0 8px}
+  p,li{font-size:15px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+  th,td{text-align:left;padding:8px 10px;border:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel);font-weight:600}
+  pre{position:relative;background:var(--code-bg);color:var(--code-ink);border-radius:10px;
+    padding:16px;overflow-x:auto;font-size:13px;line-height:1.5}
+  pre code{background:none;border:0;padding:0;color:inherit}
+  button.copy{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.12);
+    color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:6px;
+    font-size:12px;padding:4px 10px;cursor:pointer}
+  button.copy:hover{background:rgba(255,255,255,.22)}
+  .note{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;
+    padding:10px 14px;font-size:14px;margin:12px 0}
+  .note strong{display:block;margin-bottom:2px}
+  a{color:var(--accent)}
+  footer{max-width:960px;margin:0 auto;padding:0 24px 48px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Teen Patti Pro — API Docs</h1>
+  <p>Integration reference for the DearLive Teen Patti Pro game server.
+  Base URL: <code>https://api.ura-dhura.com</code></p>
+</header>
+<nav class="toc">
+  <a href="#auth">Authentication</a>
+  <a href="#demo">Demo URL</a>
+  <a href="#production">Production URL</a>
+  <a href="#params">Query Parameters</a>
+  <a href="#endpoints">Endpoints</a>
+  <a href="#envelope">Response Envelope</a>
+  <a href="#mint">Mint Session</a>
+  <a href="#bet">Place Bet</a>
+  <a href="#ws">WebSocket Events</a>
+  <a href="#integration">Integration</a>
+  <a href="#support">Support</a>
+</nav>
+<main>
+
+<section id="auth">
+  <h2>Authentication</h2>
+  <p>Three credential types, each for a different caller:</p>
+  <table>
+    <tr><th>Caller</th><th>Credential</th><th>How</th></tr>
+    <tr><td>Demo player</td><td><code>demo_token</code></td>
+      <td>Issued by <code>POST /api/v1/demo/sessions</code>; sent as query param <code>?demo_token=…</code>, which the client forwards as an <code>Authorization: Demo …</code> header.</td></tr>
+    <tr><td>Operator backend (server-to-server)</td><td>HMAC keypair</td>
+      <td>Four headers on every call: <code>X-API-Key</code> (public key id), <code>X-Timestamp</code> (unix seconds), <code>X-Nonce</code> (unique per request), <code>X-Signature</code> (<code>hex(HMAC-SHA256(secret, canonical))</code> where <code>canonical = METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(raw_body)</code>). PATH only — the query string is never signed.</td></tr>
+    <tr><td>Player client</td><td>Session token</td>
+      <td><code>Authorization: Bearer &lt;session_id&gt;</code> on game routes, or the <code>gst_…</code> launch token where a route accepts it. Tokens are short-lived; the shared HMAC secret is never embedded in a launch URL or returned to a player.</td></tr>
+  </table>
+</section>
+
+<section id="demo">
+  <h2>Demo URL</h2>
+  <p>Create a demo session, then open the game with the returned token:</p>
+  <pre><button class="copy">Copy</button><code>POST /api/v1/demo/sessions
+{"game_slug":"teen-patti-pro","currency":"USD","lang":"EN"}
+
+# then open:
+https://api.ura-dhura.com/teen-patti-pro?demo_token=&lt;demo_token&gt;</code></pre>
+  <div class="note"><strong>No anonymous demo mode.</strong>
+  A bare <code>?operator=demo&amp;user=…</code> query string does not authenticate anyone on this deployment.
+  Demo play requires a <code>demo_token</code> from <code>POST /api/v1/demo/sessions</code>,
+  or run the game process with <code>--demo</code>. An offline fixed-seed replay is also available at
+  <code>/teen-patti-pro/demo.html</code> (no wallet, no live state).</div>
+</section>
+
+<section id="production">
+  <h2>Production URL (per player)</h2>
+  <p>Your backend mints one session per player via <code>POST /api/v1/sessions</code> (HMAC-signed).
+  The response contains <code>launch_url</code> — that <strong>is</strong> the per-player play URL.
+  Opening it returns HTTP 302 to the game page with the session attached:</p>
+  <pre><button class="copy">Copy</button><code>launch_url: https://api.ura-dhura.com/api/v1/provider/launch/&lt;token&gt;
+  → 302 → /teen-patti-pro/?session=&lt;token&gt;[&amp;room=&lt;table_id&gt;]</code></pre>
+  <p>One session per player. Never share a <code>launch_url</code> between players and never put the HMAC secret in a URL.</p>
+</section>
+
+<section id="params">
+  <h2>Query Parameters</h2>
+  <p>Parameters the game page itself reads from its own URL:</p>
+  <table>
+    <tr><th>param</th><th>values</th><th>purpose</th></tr>
+    <tr><td><code>session</code></td><td>session id or <code>gst_…</code> token</td><td>Player authentication for REST and WebSocket.</td></tr>
+    <tr><td><code>room</code></td><td>table id, default <code>default</code></td><td>Table selection. Authoritative room comes from the session; an unknown room returns an empty waiting state, not another table's data.</td></tr>
+    <tr><td><code>demo_token</code></td><td><code>demo-…</code></td><td>Demo authentication (sent as <code>Authorization: Demo …</code>).</td></tr>
+    <tr><td><code>api</code></td><td>origin URL</td><td>Override the API origin (embedding/testing).</td></tr>
+    <tr><td><code>ws</code></td><td>websocket URL</td><td>Override the realtime endpoint.</td></tr>
+  </table>
+  <div class="note"><strong>Not supported as game-URL params.</strong>
+  <code>operator</code>, <code>user</code>, <code>token</code>, <code>currency</code>, <code>lang</code>,
+  <code>return_url</code> and <code>jurisdiction</code> are not read from the game URL.
+  <code>currency</code>/<code>lang</code>/<code>return_url</code> belong in the
+  <code>POST /api/v1/demo/sessions</code> body (<code>game_slug</code>, <code>currency</code>, <code>lang</code>, <code>return_url</code>).</div>
+</section>
+
+<section id="endpoints">
+  <h2>Endpoints</h2>
+  <table>
+    <tr><th>Method &amp; path</th><th>Auth</th><th>Purpose</th></tr>
+    <tr><td><code>GET /health</code></td><td>none</td><td>Liveness probe.</td></tr>
+    <tr><td><code>POST /api/v1/sessions</code></td><td>HMAC or launch_token</td><td>Mint a player session. Returns <code>session_id</code>, <code>session_token</code>, <code>launch_url</code>, <code>table_id</code>, expiry.</td></tr>
+    <tr><td><code>GET /api/v1/sessions/{id}</code></td><td>HMAC or token</td><td>Read a session.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/seat</code></td><td>Bearer session</td><td>Claim a seat (<code>{"seat":"auto"|"A"|"B"|"C"}</code>). Room is resolved from the session, not the path. Full table → spectator.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/bets</code></td><td>Bearer session + <code>Idempotency-Key</code></td><td>Place a bet (<code>{"position":"A"|"B"|"C","amount":100}</code>). Amount must be a configured denomination. Retrying the same key replays the original result — never a second debit.</td></tr>
+    <tr><td><code>GET /api/v1/games/teen-patti-pro/rounds/current?room={room}</code></td><td>Bearer session</td><td>Current round snapshot for the session's room.</td></tr>
+    <tr><td><code>POST /api/v1/demo/sessions</code></td><td>operator token</td><td>Create a demo session (returns <code>demo_token</code>).</td></tr>
+    <tr><td><code>wss://ws.ura-dhura.com/ws/game</code></td><td>session subscribe frame</td><td>Realtime channel (see below). Host is deployment-configured; use the <code>websocket_url</code> from the session response when present.</td></tr>
+  </table>
+</section>
+
+<section id="envelope">
+  <h2>Response Envelope</h2>
+  <p>Every JSON response — success and error — uses one envelope:</p>
+  <pre><button class="copy">Copy</button><code>{
+  "success": true,
+  "code": "OK",
+  "message": "OK",
+  "data": { "...": "..." },
+  "serverTime": "2026-01-04T12:00:00+00:00",
+  "serverTimeMs": 1767528000000,
+  "requestId": "9f2c…"
+}</code></pre>
+  <p>Errors keep the same shape with <code>"success": false</code> and a machine-readable <code>code</code>
+  (e.g. <code>BETTING_CLOSED</code>, <code>INSUFFICIENT_BALANCE</code>, <code>STATE_CONFLICT</code>,
+  <code>WALLET_UNAVAILABLE</code>, <code>WALLET_NOT_CONFIGURED</code>). HTTP status mirrors the outcome
+  (401 auth, 404 unknown, 409 conflict, 422 validation, 429 rate-limit, 503 wallet).</p>
+</section>
+
+<section id="mint">
+  <h2>Sample: Mint Session</h2>
+  <pre><button class="copy">Copy</button><code>TS=$(date +%s); NONCE=$(openssl rand -hex 8)
+BODY='{"player_id":"p123"}'
+SIG=$(printf "POST\n/api/v1/sessions\n$TS\n$NONCE\n$(printf '%s' "$BODY" | openssl dgst -sha256 | cut -d' ' -f2)" \
+  | openssl dgst -sha256 -hmac "$OPERATOR_SECRET" | cut -d' ' -f2)
+curl -X POST https://api.ura-dhura.com/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $OPERATOR_KEY_ID" \
+  -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Signature: $SIG" \
+  -d "$BODY"</code></pre>
+  <p>Response (<code>data</code> envelope omitted for brevity):</p>
+  <pre><button class="copy">Copy</button><code>{
+  "session_id": "dl-sess-…",
+  "session_token": "gst_…",
+  "table_id": "teen-patti-low",
+  "launch_url": "https://api.ura-dhura.com/api/v1/provider/launch/gst_…",
+  "websocket_url": "https://api.ura-dhura.com/ws/game",
+  "expires_at_ms": 1767531600000
+}</code></pre>
+  <div class="note"><strong>Field name.</strong> The per-player play URL is called
+  <code>launch_url</code> in the response (there is no separate <code>play_url</code> field).
+  Open it in a WebView or browser — it redirects to the game with the session attached.</div>
+</section>
+
+<section id="bet">
+  <h2>Sample: Place Bet</h2>
+  <pre><button class="copy">Copy</button><code>curl -X POST \
+  https://api.ura-dhura.com/api/v1/games/teen-patti-pro/rooms/default/bets \
+  -H "Authorization: Bearer &lt;session_id&gt;" \
+  -H "Idempotency-Key: &lt;uuid&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"position":"A","amount":100}'</code></pre>
+  <p><code>position</code> is the seat (<code>A</code>/<code>B</code>/<code>C</code>);
+  <code>amount</code> must be one of the configured denominations (20 / 100 / 500 / 1000 by default).
+  The room segment is informational — the room is resolved from the Bearer session, so a mismatched
+  room cannot bet into another table. Reusing an <code>Idempotency-Key</code> with the same payload
+  replays the original acceptance; reusing it with a different payload is rejected as
+  <code>DUPLICATE_REQUEST</code>.</p>
+</section>
+
+<section id="ws">
+  <h2>WebSocket Events</h2>
+  <p>Connect to the <code>websocket_url</code> from the session response, then send
+  <code>{"action":"subscribe","session":"&lt;session_id&gt;"}</code> (room is taken from the
+  session, never from the client). Either side may send <code>{"action":"ping"}</code>;
+  the server answers <code>{"kind":"pong"}</code>. Snapshots arrive as
+  <code>{"kind":"snapshot","data":{…}}</code>; errors as <code>{"kind":"error","data":{"code":…}}</code>.</p>
+  <div class="note"><strong>Naming.</strong> The wire protocol uses the dotted SRS §8 names below,
+  not SCREAMING_CASE. Map them 1:1 when bridging to another convention.</div>
+  <table>
+    <tr><th>Wire event (<code>kind</code>)</th><th>Meaning</th></tr>
+    <tr><td><code>round.created</code></td><td>ROUND_CREATED — a new round object exists.</td></tr>
+    <tr><td><code>round.opened</code></td><td>ROUND_OPENED / GUESSING_STARTED — betting is live; countdown runs to <code>betting_end_at</code>.</td></tr>
+    <tr><td><code>round.updated</code></td><td>State refresh — covers bet accepted (BET_ACCEPTED), cards dealt (CARDS_DEALT) and general updates. Bet rejections arrive as <code>error</code>, not here.</td></tr>
+    <tr><td><code>betting.closed</code></td><td>BETTING_CLOSED — no further bets accepted.</td></tr>
+    <tr><td><code>result.processing</code></td><td>Result is being evaluated server-side.</td></tr>
+    <tr><td><code>result.declared</code></td><td>RESULT_DECLARED — winners and hands included (faces hidden until this event).</td></tr>
+    <tr><td><code>settlement.started</code></td><td>Settlement began.</td></tr>
+    <tr><td><code>settlement.completed</code></td><td>SETTLEMENT_COMPLETED — balances updated exactly once (idempotent).</td></tr>
+    <tr><td><code>balance.updated</code></td><td>Player balance changed; re-read the authoritative value.</td></tr>
+    <tr><td><code>round.closed</code></td><td>ROUND_CLOSED — the round is immutable; the next <code>round.created</code> starts a new round id.</td></tr>
+    <tr><td><code>error</code></td><td>Failure with <code>data.code</code> (e.g. <code>UNAUTHENTICATED</code>, <code>BET_REJECTED</code>).</td></tr>
+  </table>
+</section>
+
+<section id="integration">
+  <h2>Integration (DearLive)</h2>
+  <p><strong>Step 1 — backend mints a session per player.</strong>
+  Your server calls <code>POST /api/v1/sessions</code> with its HMAC credentials
+  (<a href="#mint">sample above</a>). Store the <code>session_id</code>; hand the <code>launch_url</code> to the client.</p>
+  <p><strong>Step 2 — open the play URL in a WebView.</strong> Load the <code>launch_url</code>
+  fullscreen. It 302-redirects to the game with the session attached — no cookies, no extra auth step, no HMAC secret on the device.</p>
+  <p><strong>Step 3 — implement the 4 wallet callbacks</strong> described in
+  <code>docs/INTEGRATION.md</code> (balance, debit, credit, refund/status) so the game server can settle
+  against the DearLive wallet. Until then the game runs in its standalone mode; wallet-dependent calls
+  return <code>503 WALLET_UNAVAILABLE</code> / <code>WALLET_NOT_CONFIGURED</code>, never a fake balance.</p>
+</section>
+
+<section id="support">
+  <h2>Support</h2>
+  <p><strong>Email:</strong> <code>support@ura-dhura.com</code> (operator-configured — confirm the address with your account manager).<br>
+  <strong>Status:</strong> <code>GET https://api.ura-dhura.com/health</code> — live service status.<br>
+  <strong>Sandbox:</strong> run the game process with <code>--demo</code> locally, or use
+  <code>POST /api/v1/demo/sessions</code> for token-based demo play; an offline fixed-seed replay lives at
+  <code>/teen-patti-pro/demo.html</code>.</p>
+</section>
+
+</main>
+<footer>Teen Patti Pro API docs — generated from the deployed server contract. Event names follow SRS §8 as implemented in <code>common/wire_events.py</code>.</footer>
+<script>
+document.querySelectorAll("button.copy").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var code = btn.parentElement.querySelector("code");
+    var text = code ? code.innerText : "";
+    function done(ok) {
+      btn.textContent = ok ? "Copied" : "Copy";
+      setTimeout(function () { btn.textContent = "Copy"; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(true); } catch (e) { done(false); }
+      document.body.removeChild(ta);
+    }
+  });
+});
+</script>
+</body>
+</html>

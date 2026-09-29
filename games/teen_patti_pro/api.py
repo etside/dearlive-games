@@ -944,7 +944,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         return self.wfile.write(body)
 
-    def serve_repo_asset(self, rel: str):
+    PLAYER_DIR = Path(__file__).parent.parent.parent / "apps" / "player" / "public"
+
+    def serve_player_doc(self, name: str):
+        """Serve a player-facing document page.
+
+        Only allowlisted filenames, no path separators: unlike serve_admin this
+        takes a fixed name, never a URL-derived relative path, so there is no
+        traversal surface at all.
+        """
+        allowed = {"api-docs.html"}
+        if name not in allowed:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        target = (self.PLAYER_DIR / name).resolve()
+        try:
+            target.relative_to(self.PLAYER_DIR.resolve())
+        except ValueError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        if not target.is_file():
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        try:
+            body = target.read_bytes()
+        except OSError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        return self.wfile.write(body)
         """Serve a file from the repo assets/ tree, read-only and contained.
 
         rel is untrusted: it comes straight off the URL. Rejecting "..", the
@@ -1082,6 +1110,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.wfile.write(body)
             if path == "/admin" or path.startswith("/admin/"):
                 return self.serve_admin(path[len("/admin"):])
+            if path == "/api-docs":
+                return self.serve_player_doc("api-docs.html")
             m = re.fullmatch(r"/teen-patti-pro/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 return self.serve_client(m.group(1))
