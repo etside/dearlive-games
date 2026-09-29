@@ -945,6 +945,10 @@ class Handler(BaseHTTPRequestHandler):
     # should not have to run a second web server, and the panel is useless
     # without the API it talks to.
     ADMIN_DIR = Path(__file__).parent.parent.parent / "apps" / "admin" / "public"
+    # Shared chrome (navbar css/js) included by the game client, the player
+    # home and the admin shell. Served by this process because three pages
+    # referencing /shared/* with no route 404'd in production.
+    SHARED_DIR = Path(__file__).parent.parent.parent / "apps" / "shared"
     ASSET_SUFFIXES = (".svg", ".png", ".webp", ".jpg", ".jpeg", ".json")
     ASSET_MIME = {".svg": "image/svg+xml", ".png": "image/png",
                   ".webp": "image/webp", ".jpg": "image/jpeg",
@@ -980,6 +984,41 @@ class Handler(BaseHTTPRequestHandler):
                 ".svg": "image/svg+xml", ".png": "image/png",
                 ".ico": "image/x-icon"}.get(target.suffix.lower(),
                                             "application/octet-stream")
+        try:
+            body = target.read_bytes()
+        except OSError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        return self.wfile.write(body)
+
+    def serve_shared(self, rel: str):
+        """Serve a file from the shared chrome directory (navbar css/js).
+
+        Same containment rules as serve_admin. Only .js/.css are servable:
+        navbar.html is an authoring fragment, not a page, and must never be
+        addressable on its own.
+        """
+        rel = (rel or "").lstrip("/")
+        if not rel:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        parts = rel.split("/")
+        if any(p in ("..", ".", "") for p in parts):
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        target = (self.SHARED_DIR / rel).resolve()
+        try:
+            target.relative_to(self.SHARED_DIR.resolve())
+        except ValueError:
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        allowed = (".js", ".css")
+        if target.suffix.lower() not in allowed or not target.is_file():
+            return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        mime = {".js": "application/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8"}.get(target.suffix.lower(),
+                                                       "application/octet-stream")
         try:
             body = target.read_bytes()
         except OSError:
@@ -1193,6 +1232,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.wfile.write(body)
             if path == "/admin" or path.startswith("/admin/"):
                 return self.serve_admin(path[len("/admin"):])
+            if path == "/shared" or path.startswith("/shared/"):
+                return self.serve_shared(path[len("/shared"):])
             if path == "/api-docs":
                 return self.serve_player_doc("api-docs.html")
             m = re.fullmatch(r"/teen-patti-pro/([A-Za-z0-9][A-Za-z0-9._-]*)", path)

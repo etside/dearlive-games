@@ -104,8 +104,13 @@ class ClientAssetPathsTest(unittest.TestCase):
         for banned in ("#4A5D23", "#2D3A14", "#3A4A1B"):
             self.assertNotIn(banned, self.source,
                              f"retired jungle-felt colour {banned} still present")
-        self.assertIn("cover", self.source.lower() if "cover" in self.source.lower()
-                      else "Math.max(W / bg.naturalWidth",
+        # Cover-fit, not letterbox: the scale factor must be the MAX of the
+        # two axis ratios, so the art always fills the frame and the overflow
+        # is cropped. (An earlier revision of this assertion looked for the
+        # word "cover", which lived only in a // comment this test strips --
+        # it could never pass no matter what the code did. This checks the
+        # actual scaling expression instead.)
+        self.assertIn("Math.max(W / bg.naturalWidth", self.source,
                       "background must cover-fit rather than letterbox")
 
 

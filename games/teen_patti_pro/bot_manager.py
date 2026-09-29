@@ -10,14 +10,15 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import Dict, List, Optional
 
-if TYPE_CHECKING:
-    from .service import TeenPattiService
-else:
-    from .service import TeenPattiService, ServiceError
-from common.wallet import WalletError, InsufficientBalance
-from common.wallet import WalletError, InsufficientBalance
+# Direct runtime import (not TYPE_CHECKING): typing.get_type_hints() resolves
+# string annotations against the importing module's namespace, so a
+# TYPE_CHECKING-only name breaks every module that does
+# `from .bot_manager import create_bot_manager` (ws.py hit exactly this).
+# No cycle: service.py never imports bot_manager or ws.
+from .service import TeenPattiService
+from common.wallet import InsufficientBalance, WalletError
 
 
 # Curated realistic names (mixed regions, no "guest"/"player"/numbers)
@@ -299,6 +300,6 @@ class BotManager:
                 del self._timers[room_id]
 
 
-def create_bot_manager(service: "TeenPattiService") -> "BotManager":
+def create_bot_manager(service: TeenPattiService) -> BotManager:
     """Factory to create bot manager."""
     return BotManager(service)
