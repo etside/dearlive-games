@@ -1891,8 +1891,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(422, E.err("seat must be auto, A, B or C",
                                                 E.E_VALIDATION))
                 try:
-                    return self.ok(self.svc.claim_seat(room_id, pid, want),
-                                   "Seat claimed")
+                    out = self.svc.claim_seat(room_id, pid, want)
+                    # Bootstrap a round on first seating so a lone player never
+                    # sits at a table with no round. ensure_round is idempotent
+                    # (no-op when a round is already active), so this is safe
+                    # on every claim including reconnects.
+                    if out.get("status") == "seated":
+                        try:
+                            self.svc.ensure_round(room_id)
+                        except Exception:
+                            pass
+                    return self.ok(out, "Seat claimed")
                 except ServiceError as exc:
                     return self.fail(exc)
             m = re.fullmatch(r"/api/v1/games/teen-patti-pro/rooms/([^/]+)/(?:rounds/([^/]+)/)?bets", path)
