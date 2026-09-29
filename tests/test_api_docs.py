@@ -71,3 +71,24 @@ class ApiDocsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCanonicalGameCodeAccepted(unittest.TestCase):
+    """Provider-minted tokens carry game_code teen_patti_pro (TEEN_CODE).
+
+    game_service() only accepted {"teen-patti-pro", "teen_patti"}, so every
+    Bearer gst_* request to a game_service() route -- including
+    GET /api/v1/wallet/balance -- 404'd as "Unknown game" and the client
+    showed a null balance on a funded wallet.
+    """
+
+    def test_teen_ids_includes_canonical_provider_code(self):
+        from games.teen_patti_pro import api as api_mod
+        from provider.games import TEEN_CODE
+        self.assertIn(TEEN_CODE, api_mod.Handler.TEEN_IDS)
+
+    def test_game_service_resolves_canonical_code(self):
+        from games.teen_patti_pro import api as api_mod
+        from provider.games import TEEN_CODE
+        self.assertEqual(
+            api_mod.Handler.game_kind(api_mod.Handler, TEEN_CODE), "teen")
