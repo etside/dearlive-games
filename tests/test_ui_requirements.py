@@ -490,3 +490,17 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         self.assertIn("const cardTop = pt.y - 38 - L.ch + 6;", JS,
                       "the hand must clear the chair back rather than cover it")
         self.assertNotIn("card(fanX0 + j * spread, pt.y - L.ch / 2", JS)
+
+    def test_toolbar_never_wraps(self):
+        """Guards a fix that was silently lost once.
+
+        The HUD's no-wrap rule was reverted when index.html was checked out
+        wholesale during an unrelated edit, and the toolbar quietly went back to
+        wrapping onto a second row at 360-430px. It is the kind of CSS that
+        looks fine at 390 and breaks at 360, so it is pinned here.
+        """
+        html = (CLIENT / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("flex-wrap:wrap", html,
+                         "the HUD must not wrap its control groups")
+        self.assertIn(".hud-left{flex:0 1 auto;overflow:hidden}", html)
+        self.assertIn(".hud-right{flex:0 0 auto;margin-left:auto}", html)
