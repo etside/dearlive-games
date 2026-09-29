@@ -378,3 +378,67 @@ class NoRemovedFeatureInClientTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CardFanGeometryTest(unittest.TestCase):
+    """A seat's cards must be a fan centred on that seat, inside its column.
+
+    Regression: the hand was drawn from `pt.x - L.cw*1.15`, stepping by
+    `L.cw + 5` -- anchored to the LEFT of the seat rather than around it. At
+    360px that laid nine cards from x=2 to x=403: a single strip across the
+    whole viewport, overlapping the neighbouring seat, running off the right
+    edge and covering the chairs. The card size was also a flat 0.42 of the
+    column, which does not leave room for a three-card fan.
+    """
+
+    VIEWPORTS = ((360, 800), (390, 844), (412, 915), (430, 932))
+
+    @staticmethod
+    def _geometry(w):
+        col_w = w / 3
+        cw = max(26, min(40, col_w * 0.30))
+        spread = cw * 0.5
+        fan = spread + cw                      # how far past the seat centre
+        return col_w, cw, spread, fan
+
+    def test_cards_are_centred_on_the_seat_not_anchored_left(self):
+        for w, _h in self.VIEWPORTS:
+            with self.subTest(width=w):
+                self.assertNotIn("L.cw * 1.15", JS,
+                                 "the hand fan is anchored left of the seat "
+                                 "again")
+                self.assertIn("pt.x - ((hands.length - 1) * spread) / 2", JS,
+                              "the fan must be centred on the seat centre")
+
+    def test_fan_stays_inside_the_viewport(self):
+        for w, _h in self.VIEWPORTS:
+            with self.subTest(width=w):
+                _col, _cw, _spread, fan = self._geometry(w)
+                left = (w / 3) / 2 - fan
+                right = w - (w / 3) / 2 + fan
+                self.assertGreaterEqual(left, 0,
+                                        f"leftmost card clips at {w}px")
+                self.assertLessEqual(right, w,
+                                     f"rightmost card overflows at {w}px")
+
+    def test_card_size_fits_the_column(self):
+        """spread + cw must be at most half a column, or the fan overlaps seats."""
+        for w, _h in self.VIEWPORTS:
+            with self.subTest(width=w):
+                col_w, cw, _spread, fan = self._geometry(w)
+                self.assertLessEqual(fan, col_w / 2 + 0.01,
+                                     f"fan wider than its column at {w}px")
+
+    def test_card_keeps_a_card_aspect_ratio(self):
+        _col, cw, _s, _f = self._geometry(360)
+        self.assertAlmostEqual(cw * 1.42 / cw, 1.42, places=5)
+        self.assertGreater(cw, 24, "cards must stay legible")
+
+    def test_card_band_sits_below_the_hud(self):
+        """Cards must never enter the toolbar band."""
+        # HUD is 38px tall at top+8; the cards band starts after the header band.
+        for w, h in self.VIEWPORTS:
+            with self.subTest(size=f"{w}x{h}"):
+                self.assertIn("band = { header:", JS)
+                self.assertIn("usable * band.seats", JS,
+                              "seats must be anchored to the grid, not the top")

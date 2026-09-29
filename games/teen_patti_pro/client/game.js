@@ -928,7 +928,10 @@
       seats[p] = { x: SAFE.l + colW * (i + 0.5),
                    y: y.seats + usable * band.seats * 0.5 };
     });
-    const cw = Math.min(colW * 0.42, 62), ch = cw * 1.42;
+    // beyond the seat centre, so spread + cw <= colW/2. With spread = cw/2,
+    // cw <= colW/3. The old flat 0.42*colW put a 50px card in a 120px column
+    // and the fan, anchored left of the seat, ran off the viewport.
+    const cw = Math.max(26, Math.min(40, colW * 0.30)), ch = cw * 1.42;
     return { cx, top, seats, cw, ch, land, y, band, usable, colW };
   }
 
@@ -1119,7 +1122,15 @@
         ctx.drawImage(seatImages[i], pt.x - 60, pt.y - 38, 120, 72);
       }
       const hands = (s && s.hands && s.hands[p]) || ['**', '**', '**'];
-      hands.forEach((f, j) => card(pt.x - L.cw * 1.15 + j * (L.cw + 5), pt.y - L.ch / 2, L.cw, L.ch, f));
+      // Fan the hand symmetrically about the seat. It used to start at
+      // pt.x - L.cw*1.15 and step by L.cw+5, i.e. anchored LEFT of the seat: at
+      // 360px that laid nine cards from x=2 to x=403 as one continuous strip
+      // across the viewport, overlapping the next seat and running off the right
+      // edge. Cards now overlap slightly, as a real hand does, and stay in their
+      // own column.
+      const spread = L.cw * 0.5;
+      const fanX0 = pt.x - ((hands.length - 1) * spread) / 2;
+      hands.forEach((f, j) => card(fanX0 + j * spread, pt.y - L.ch / 2, L.cw, L.ch, f));
       const avatarY = pt.y + L.ch / 2 + 28;
       const look = appearanceFor((s && s.seats && s.seats[p]) || null);
       const av = loadAvatarImage(look.avatar);
