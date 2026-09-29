@@ -96,6 +96,16 @@ def _recv_frame(conn: socket.socket):
     return payload.decode("utf-8", "replace")
 
 
+def _looks_like_token(value: str) -> bool:
+    """True for a provider session token, false for a plain session id.
+
+    Session ids are opaque strings too, so we key off the minted prefix rather
+    than trying to redeem every value: redeeming a session id would be a wasted
+    lookup, and a wrong prefix should fall through to the session store.
+    """
+    return value.startswith("gst_")
+
+
 class Hub:
     def __init__(self, svc, tokens=None):
         self.svc = svc
@@ -108,17 +118,32 @@ class Hub:
 
         The B2B shared secret is never accepted here; only a session id or a
         short-lived gst_ session token.
+
+        The token may arrive as `session_token` (operator/SDK clients) or as
+        `session` (our own player page, which forwards the `?session=` value
+        the launch redirect handed it). Only `session_token` used to be
+        redeemed, so every browser subscribe was rejected with
+        "Unknown or expired session": the socket was open, so the HUD showed
+        "live", but no seat, no snapshot and no round ever arrived -- which is
+        exactly the "Waiting for players" report from the field. Both fields
+        are now tried as a token first, then as a session id.
         """
-        token = str(payload.get("session_token") or "").strip()
-        if token and self.tokens is not None:
-            from provider.sessions import resolve as _resolve
-            record = _resolve(self.tokens, token)
-            if record is None:
-                return None, ""
-            session = self.svc.sessions.get(record["session_id"])
-            if session is None:
-                return None, ""
-            return session, session.player_id
+        from provider.sessions import resolve as _resolve
+        candidates = [str(payload.get("session_token") or "").strip(),
+                      str(payload.get("session") or "").strip()]
+        for value in candidates:
+            if not value:
+                continue
+            if self.tokens is not None and _looks_like_token(value):
+                record = _resolve(self.tokens, value)
+                if record is not None:
+                    session = self.svc.sessions.get(record["session_id"])
+                    if session is not None:
+                        return session, session.player_id
+            session = self.svc.sessions.get(value)
+            if session is not None:
+                return session, session.player_id
+        return None, ""
         session_id = str(payload.get("session") or token or "").strip()
         session = self.svc.sessions.get(session_id) if session_id else None
         if session is None:

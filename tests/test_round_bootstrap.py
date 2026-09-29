@@ -77,6 +77,12 @@ class _Sessions:
     def touch(self, sid):
         pass
 
+    def get(self, session_id):
+        for s in self.s.values():
+            if s.session_id == session_id:
+                return s
+        return None
+
 
 class _Idem:
     def claim(self, key, payload_hash, ttl_s=86400):
@@ -166,6 +172,72 @@ class SubscribeBootstrapTest(unittest.TestCase):
         self.assertFalse(svc.ensure_round(room).get("started"))
         self.assertEqual(svc.state(room, "p4").get("round_id"), live)
         self.assertTrue(svc.state(room, "p4").get("isSpectator"))
+
+
+class SubscribeAuthTest(unittest.TestCase):
+    """The launch token must authenticate the socket, whichever field it is in.
+
+    Regression, seen live: the launch redirect appends `?session=gst_...` and the
+    player page forwards that value in its subscribe frame's `session` field.
+    `Hub.resolve_session` only redeemed tokens from `session_token`, so it fell
+    through to the session store, found no session with that id, and answered
+    "Unknown or expired session". The socket itself was open, so the HUD
+    reported "live", but no seat was claimed, no snapshot was delivered and no
+    round was ever started -- the field report was "Waiting for players" with a
+    null balance on a table that looked connected.
+    """
+
+    class _Tok:
+        def __init__(self):
+            self.minted = {}
+
+        def mint(self, session_id, claims, ttl_s):
+            token = "gst_" + session_id.replace("sess-", "")
+            self.minted[token] = session_id
+            return {"token": token}
+
+        def get(self, token):
+            sid = self.minted.get(token)
+            return {"session_id": sid} if sid else None
+
+    def _hub(self):
+        from games.teen_patti_pro.ws import Hub
+        svc = _service()
+        room = "teen-patti-low"
+        svc.sessions.create("player_1", room, "teen-patti")
+        hub = Hub(svc, tokens=self._Tok())
+        token = hub.tokens.mint("sess-player_1", {}, 900)["token"]
+        return hub, token, room
+
+    def test_launch_token_in_session_field_authenticates(self):
+        hub, token, _room = self._hub()
+        sess, player = hub.resolve_session({"action": "subscribe",
+                                            "session": token})
+        self.assertIsNotNone(sess, "launch token rejected in the session field")
+        self.assertEqual(player, "player_1")
+
+    def test_launch_token_in_session_token_field_still_works(self):
+        hub, token, _room = self._hub()
+        sess, player = hub.resolve_session({"action": "subscribe",
+                                            "session_token": token})
+        self.assertIsNotNone(sess)
+        self.assertEqual(player, "player_1")
+
+    def test_plain_session_id_still_authenticates(self):
+        hub, _token, _room = self._hub()
+        sess, player = hub.resolve_session({"action": "subscribe",
+                                            "session": "sess-player_1"})
+        self.assertIsNotNone(sess, "plain session id stopped working")
+        self.assertEqual(player, "player_1")
+
+    def test_unknown_and_garbage_are_still_refused(self):
+        hub, _token, _room = self._hub()
+        for payload in ({}, {"session": ""}, {"session": "gst_nope"},
+                        {"session": "../../etc/passwd"},
+                        {"session": "gst_"}, {"session_token": None}):
+            sess, player = hub.resolve_session(payload)
+            self.assertIsNone(sess, f"accepted junk payload {payload}")
+            self.assertEqual(player, "")
 
 
 class RoundBootstrapTest(unittest.TestCase):
