@@ -134,13 +134,16 @@ class SingleToolbarTest(unittest.TestCase):
     def test_layout_uses_a_single_grid_not_independent_h_anchors(self):
         """Felt, seats and action bar must share one band grid."""
         js = (CLIENT / "game.js").read_text(encoding="utf-8")
-        i = js.index("function layout()")
-        fn = js[i:js.index("\n  function rr(", i)]
-        for band in ("header", "seats", "cards", "centre", "pot", "action"):
-            self.assertIn(f"{band}:", fn, f"layout() is missing the {band} band")
-        self.assertIn("const band = {", fn)
+        i = js.index("function palaceLayout()")
+        fn = js[i:js.index("function layout() { return palaceLayout(); }", i)]
+        # Palace band grid, in the reference's top-to-bottom order.
+        for band in ("toolbar", "roundbar", "timer", "cards", "total",
+                     "chairs", "panels", "bottom"):
+            self.assertIn(f"{band}:", fn,
+                          f"palaceLayout() is missing the {band} band")
+        self.assertIn("const band = {}, y = {};", fn)
         self.assertNotIn("H * 0.4", fn,
-                         "layout() must not anchor bands to viewport height")
+                         "palaceLayout() must not anchor bands to viewport height")
 
 
 class MasterAssetPathTest(unittest.TestCase):

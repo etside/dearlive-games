@@ -286,10 +286,12 @@ def handle(conn: socket.socket, hub: Hub):
                     with hub.lock:
                         others = [c for c, _p in hub.rooms.get(room, set())
                                   if c is not conn]
+                    # Include balance in peer snapshots too
+                    peer_state = hub.svc.state(room, player)
                     for other in others:
                         _send_frame(other, json.dumps({
                             "kind": "event",
-                            "data": hub.svc.state(room, player)}))
+                            "data": peer_state}))
                 except Exception:
                     log.exception("teen_patti_peer_snapshot_failed room=%s", room)
     except OSError:

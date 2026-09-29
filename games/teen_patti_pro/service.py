@@ -143,11 +143,20 @@ class TeenPattiService:
     def claim_seat(self, room_id: str, player_id: str, seat: str = "auto") -> dict:
         """Atomically claim a seat. Maps engine conflicts onto ServiceError."""
         room = self._room(room_id)
+        was_empty = len(room.members) == 0
         try:
             out = room.claim_seat(player_id, seat)
         except LifecycleError as exc:
             raise ServiceError(E.E_CONFLICT, str(exc))
         out["seatOccupancy"] = room._occupancy(player_id)["seatOccupancy"]
+        # Bootstrap a round on first seat claim if no round is active
+        if was_empty and len(room.members) > 0:
+            try:
+                round_result = self.ensure_round(room_id)
+                out["round_started"] = round_result.get("started", False)
+                out["round_id"] = round_result.get("round_id", "")
+            except Exception:
+                pass
         return out
 
     # ---- rounds ----
@@ -600,7 +609,12 @@ class TeenPattiService:
 
     # ---- views ----
     def state(self, room_id: str, player_id: str) -> dict:
-        return self._room(room_id).snapshot(player_id, self._now())
+        snap = self._room(room_id).snapshot(player_id, self._now())
+        # Always include wallet balance so the client never shows "BAL —"
+        balance = self.wallet.get_balance(player_id)
+        snap["balance"] = balance.available
+        snap["currency"] = balance.currency
+        return snap
 
     def reconnect(self, session_id: str, last_seen_seq: int) -> dict:
         sess = self.sessions.get(session_id)
@@ -608,6 +622,10 @@ class TeenPattiService:
             raise ServiceError(E.E_AUTH, "Unknown session")
         self.sessions.touch(session_id)
         room = self._room(sess.room_id)
-        return {"snapshot": room.snapshot(sess.player_id, self._now()),
+        snap = room.snapshot(sess.player_id, self._now())
+        balance = self.wallet.get_balance(sess.player_id)
+        snap["balance"] = balance.available
+        snap["currency"] = balance.currency
+        return {"snapshot": snap,
                 "missed_events": room.events_since(last_seen_seq, sess.player_id),
                 "session_id": session_id}

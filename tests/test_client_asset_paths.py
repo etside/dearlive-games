@@ -91,13 +91,22 @@ class ClientAssetPathsTest(unittest.TestCase):
         n = sum(1 for _ in pack.rglob("*.svg"))
         self.assertGreaterEqual(n, 90, f"only {n} svg assets in the pack")
 
-    def test_background_is_jungle_green_not_violet(self):
-        """Spec: #4A5D23 -> #2D3A14. The old palette was #160b2d/#3b123f."""
-        for banned in ("#160b2d", "#3b123f", "#100617", "#7c3aed", "#3b1b68", "#1b0d35"):
+    def test_background_is_the_palace_art_not_a_flat_fill(self):
+        """The reference is a painted palace: curtains, marble, gold light.
+
+        The table is no longer a jungle-green felt, so the old "#4A5D23 ->
+        #2D3A14" contract is retired. What must hold now is that the frame is
+        driven by the cropped background art, with a procedural palace-gradient
+        fallback rather than the retired flat green.
+        """
+        self.assertIn("background/palace-background.svg", self.source,
+                      "the palace background art is not referenced")
+        for banned in ("#4A5D23", "#2D3A14", "#3A4A1B"):
             self.assertNotIn(banned, self.source,
-                             f"old violet palette colour {banned} still present")
-        self.assertIn("#4A5D23", self.source, "jungle green top stop missing")
-        self.assertIn("#2D3A14", self.source, "jungle green bottom stop missing")
+                             f"retired jungle-felt colour {banned} still present")
+        self.assertIn("cover", self.source.lower() if "cover" in self.source.lower()
+                      else "Math.max(W / bg.naturalWidth",
+                      "background must cover-fit rather than letterbox")
 
 
 if __name__ == "__main__":

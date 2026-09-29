@@ -129,8 +129,12 @@ class SubscribeBootstrapTest(unittest.TestCase):
         out = svc.claim_seat(room, "player_1", "auto")
         self.assertEqual(out.get("status"), "seated")
         self.assertTrue(out.get("seat"), f"no seat assigned: {out}")
+        # claim_seat now starts the round on first seat claim
+        self.assertTrue(out.get("round_started"), f"claim_seat should start round: {out}")
+        self.assertTrue(out.get("round_id"), f"no round_id from claim_seat: {out}")
+        # ensure_round is now a no-op (round already active)
         started = svc.ensure_round(room)
-        self.assertTrue(started.get("started"), f"no round started: {started}")
+        self.assertFalse(started.get("started"), f"ensure_round should be no-op: {started}")
         snap = svc.state(room, "player_1")
         self.assertTrue(snap.get("round_id"), f"null round in snapshot: {snap}")
         self.assertEqual(snap.get("status"), "BETTING_OPEN",
@@ -144,13 +148,14 @@ class SubscribeBootstrapTest(unittest.TestCase):
         svc = _service()
         room = "teen-patti-low"
         svc.sessions.create("player_1", room, "teen-patti")
-        svc.claim_seat(room, "player_1", "auto")
-        first = svc.ensure_round(room)
-        self.assertTrue(first.get("started"))
-        round_id = first["round_id"]
+        out = svc.claim_seat(room, "player_1", "auto")
+        self.assertTrue(out.get("round_started"))
+        round_id = out["round_id"]
 
         again = svc.claim_seat(room, "player_1", "auto")
         self.assertEqual(again.get("seat"), "A", "reconnect lost its seat")
+        self.assertFalse(again.get("round_started"),
+                         f"reconnect should not restart round: {again}")
         second = svc.ensure_round(room)
         self.assertFalse(second.get("started"),
                          f"reconnect restarted the round: {second}")

@@ -87,10 +87,10 @@
     setTimeout(() => { liveEl.textContent = text; }, 30);
   }
 
-  const S = { snap: null, selDenom: 100, selPos: null, lastSeq: 0, connected: false,
+  const S = { snap: null, selDenom: 1000, selPos: null, lastSeq: 0, connected: false,
               msg: '', msgKind: 'info' };
   let roundPollTimer = null, walletPollTimer = null, wsRetryTimer = null;
-  const DENOMS = [20, 100, 500, 1000];
+  const DENOMS = [1000, 10000, 50000, 100000];
   const POS = ['A', 'B', 'C'];
   const SEAT_LABELS = { A: 'YOU', B: 'PLAYER A', C: 'ONLINE' };
   // Seat art. This pointed at 'assets/generated/seat-p4.svg' & friends, which
@@ -392,7 +392,260 @@
 
     function cancelAll() { animations.forEach(a => a.cancelled = true); animations.clear(); }
 
-    return { animate, cancel, cancelAll, hardReset, playLottie, cleanup };
+
+    // ===== 7 REQUIRED ANIMATIONS =====
+
+    // 1. Card deal: stagger 150ms, bezier arc from deck center to each seat
+    function animateDeal(deckPos, seats, cardsPerSeat, players) {
+      if (REDUCED) return Promise.resolve();
+      const seatEntries = Object.entries(seats);
+      const promises = seatEntries.map(([pos, pt], si) => {
+        const delay = si * 150;
+        return new Promise(resolve => {
+          setTimeout(() => {
+            for (let ci = 0; ci < cardsPerSeat; ci++) {
+              const cardDelay = ci * 60;
+              setTimeout(() => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'anim-card';
+                cardEl.style.position = 'absolute';
+                cardEl.style.left = deckPos.x + 'px';
+                cardEl.style.top = deckPos.y + 'px';
+                cardEl.style.width = '48px';
+                cardEl.style.height = '68px';
+                cardEl.style.background = 'url(/assets/teen-patti/cards/card-back-teenpatti.svg) center/contain no-repeat';
+                cardEl.style.pointerEvents = 'none';
+                cardEl.style.zIndex = 1000;
+                document.body.appendChild(cardEl);
+                const ctrlX = deckPos.x + (pt.x - deckPos.x) * 0.5;
+                const ctrlY = Math.min(deckPos.y, pt.y) - 120;
+                const duration = 500 + Math.random() * 150;
+                const startTime = performance.now();
+                function animateFrame(now) {
+                  const elapsed = now - startTime;
+                  const t = Math.min(1, elapsed / duration);
+                  const eased = 1 - Math.pow(1 - t, 3);
+                  const x = (1 - t) * (1 - t) * deckPos.x + 2 * (1 - t) * t * ctrlX + t * t * pt.x;
+                  const y = (1 - t) * (1 - t) * deckPos.y + 2 * (1 - t) * t * ctrlY + t * t * pt.y;
+                  cardEl.style.left = x + 'px';
+                  cardEl.style.top = y + 'px';
+                  cardEl.style.transform = 'rotate(' + (t * 360) + 'deg)';
+                  if (t < 1) {
+                    requestAnimationFrame(animateFrame);
+                  } else {
+                    cardEl.remove();
+                    if (ci === cardsPerSeat - 1 && si === seatEntries.length - 1) {
+                      resolve();
+                    }
+                  }
+                }
+                requestAnimationFrame(animateFrame);
+              }, ci * 60);
+            }
+          }, delay);
+        });
+      });
+      return Promise.all(promises);
+    }
+
+    // 2. Card flip on CARDS_DEALT
+    function animateCardFlip(seatPos, cardsData) {
+      if (REDUCED) return Promise.resolve();
+      return new Promise(resolve => {
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = (seatPos.x - 72) + 'px';
+        container.style.top = (seatPos.y - 100) + 'px';
+        container.style.width = '144px';
+        container.style.height = '100px';
+        container.style.pointerEvents = 'none';
+        container.style.zIndex = 1000;
+        document.body.appendChild(container);
+        cardsData.forEach((card, i) => {
+          const cardDiv = document.createElement('div');
+          cardDiv.style.position = 'absolute';
+          cardDiv.style.left = (i * 50) + 'px';
+          cardDiv.style.top = '0';
+          cardDiv.style.width = '48px';
+          cardDiv.style.height = '68px';
+          cardDiv.style.transformStyle = 'preserve-3d';
+          cardDiv.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+          cardDiv.style.transform = 'rotateY(0deg)';
+          const front = document.createElement('div');
+          front.style.position = 'absolute';
+          front.style.width = '100%';
+          front.style.height = '100%';
+          front.style.backfaceVisibility = 'hidden';
+          front.style.background = 'url(/assets/teen-patti/cards/card-back-teenpatti.svg) center/contain no-repeat';
+          cardDiv.appendChild(front);
+          const back = document.createElement('div');
+          back.style.position = 'absolute';
+          back.style.width = '100%';
+          back.style.height = '100%';
+          back.style.backfaceVisibility = 'hidden';
+          back.style.transform = 'rotateY(180deg)';
+          back.style.background = '#fff';
+          back.style.display = 'flex';
+          back.style.alignItems = 'center';
+          back.style.justifyContent = 'center';
+          back.style.fontSize = '24px';
+          back.style.fontWeight = 'bold';
+          back.style.color = (card.suit === '♥' || card.suit === '♦') ? '#c0392b' : '#1a1a1a';
+          back.textContent = card.rank + card.suit;
+          cardDiv.appendChild(back);
+          container.appendChild(cardDiv);
+          setTimeout(() => {
+            cardDiv.style.transform = 'rotateY(180deg)';
+          }, i * 150 + 200);
+        });
+        setTimeout(() => {
+          container.remove();
+          resolve();
+        }, 1500);
+      });
+    }
+
+    // 3. Timer pulse ≤5s
+    let timerPulseInterval = null;
+    function startTimerPulse(container, seconds) {
+      if (REDUCED) return;
+      const ring = container.querySelector('.timer-ring') || container;
+      if (seconds <= 5) {
+        timerPulseInterval = setInterval(() => {
+          ring.style.animation = 'timer-pulse 0.5s ease-in-out';
+          setTimeout(() => { ring.style.animation = ''; }, 500);
+        }, 1000);
+      }
+    }
+    function stopTimerPulse() {
+      if (timerPulseInterval) {
+        clearInterval(timerPulseInterval);
+        timerPulseInterval = null;
+      }
+    }
+
+    // 4. Chip fly on BET_ACCEPTED
+    function animateChipBet(fromPos, toPos, amount) {
+      if (REDUCED) return Promise.resolve();
+      return new Promise(resolve => {
+        const chip = document.createElement('div');
+        chip.style.position = 'absolute';
+        chip.style.left = fromPos.x + 'px';
+        chip.style.top = fromPos.y + 'px';
+        chip.style.width = '40px';
+        chip.style.height = '40px';
+        chip.style.borderRadius = '50%';
+        chip.style.background = 'linear-gradient(135deg, #ffd700, #b8860b)';
+        chip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+        chip.style.display = 'flex';
+        chip.style.alignItems = 'center';
+        chip.style.justifyContent = 'center';
+        chip.style.fontSize = '14px';
+        chip.style.fontWeight = 'bold';
+        chip.style.color = '#1a1a1a';
+        chip.style.pointerEvents = 'none';
+        chip.style.zIndex = 1000;
+        chip.textContent = amount >= 1000 ? (amount/1000)+'K' : amount;
+        document.body.appendChild(chip);
+        const ctrlX = fromPos.x + (toPos.x - fromPos.x) * 0.3;
+        const ctrlY = Math.min(fromPos.y, toPos.y) - 80;
+        const duration = 400;
+        const startTime = performance.now();
+        function animateFrame(now) {
+          const elapsed = now - startTime;
+          const t = Math.min(1, elapsed / duration);
+          const eased = 1 - Math.pow(1 - t, 3);
+          const x = (1 - t) * (1 - t) * fromPos.x + 2 * (1 - t) * t * ctrlX + t * t * toPos.x;
+          const y = (1 - t) * (1 - t) * fromPos.y + 2 * (1 - t) * t * ctrlY + t * t * toPos.y;
+          chip.style.left = x + 'px';
+          chip.style.top = y + 'px';
+          chip.style.transform = 'scale(' + (1 - t * 0.3) + ')';
+          if (t < 1) requestAnimationFrame(animateFrame);
+          else { chip.remove(); resolve(); }
+        }
+        requestAnimationFrame(animateFrame);
+      });
+    }
+
+    // 5. Win glow + confetti on RESULT_DECLARED
+    function animateWin(winnerPositions) {
+      if (REDUCED) return Promise.resolve();
+      return new Promise(resolve => {
+        winnerPositions.forEach(pos => {
+          const glow = document.createElement('div');
+          glow.style.position = 'absolute';
+          glow.style.left = (pos.x - 60) + 'px';
+          glow.style.top = (pos.y - 60) + 'px';
+          glow.style.width = '120px';
+          glow.style.height = '120px';
+          glow.style.borderRadius = '50%';
+          glow.style.border = '4px solid #ffd700';
+          glow.style.boxShadow = '0 0 30px 10px rgba(255,215,0,0.6)';
+          glow.style.pointerEvents = 'none';
+          glow.style.zIndex = 1000;
+          glow.style.animation = 'win-glow 1.5s ease-out forwards';
+          document.body.appendChild(glow);
+          setTimeout(() => glow.remove(), 1500);
+        });
+        const colors = ['#ffd700', '#ff6b6b', '#4ecdc4', '#ffe66d', '#ff6b9d'];
+        for (let i = 0; i < 30; i++) {
+          const conf = document.createElement('div');
+          conf.style.position = 'absolute';
+          conf.style.left = '50%';
+          conf.style.top = '30%';
+          conf.style.width = '10px';
+          conf.style.height = '10px';
+          conf.style.background = colors[Math.floor(Math.random() * colors.length)];
+          conf.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+          conf.style.pointerEvents = 'none';
+          conf.style.zIndex = 1001;
+          document.body.appendChild(conf);
+          const angle = Math.random() * Math.PI * 2;
+          const velocity = 150 + Math.random() * 200;
+          const gravity = 400;
+          const startTime = performance.now();
+          function step(now) {
+            const elapsed = (now - startTime) / 1000;
+            if (elapsed > 2.5) { conf.remove(); return; }
+            const x = 0.5 * window.innerWidth + velocity * Math.cos(angle) * elapsed;
+            const y = 0.3 * window.innerHeight + velocity * Math.sin(angle) * elapsed + 0.5 * gravity * elapsed * elapsed;
+            conf.style.left = x + 'px';
+            conf.style.top = y + 'px';
+            conf.style.transform = 'rotate(' + (elapsed * 720) + 'deg)';
+            requestAnimationFrame(step);
+          }
+          requestAnimationFrame(step);
+        }
+        setTimeout(resolve, 2500);
+      });
+    }
+
+    // 6. Button press scale 0.96 - handled via CSS :active on buttons
+    // Ensure CSS has .btn:active { transform: scale(0.96); }
+
+    // 7. prefers-reduced-motion respected
+    // REDUCED flag already checked at top of each animation
+
+    // Add CSS keyframes dynamically
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes timer-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.7; }
+      }
+      @keyframes win-glow {
+        0% { transform: scale(0.8); opacity: 0; }
+        50% { transform: scale(1.2); opacity: 1; }
+        100% { transform: scale(1.5); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Expose methods on the returned object
+    return { animate, cancel, cancelAll, hardReset, playLottie, cleanup,
+      animateDeal, animateCardFlip, animateChipBet, animateWin,
+      startTimerPulse, stopTimerPulse };
+
   })();
 
   // Sound manager (preloads, volume, fallbacks)
@@ -913,369 +1166,457 @@
   }
 
   // ---- layout (normalized 0..1, portrait-first, adapts to landscape) ----
-  function layout() {
-    const land = W > H;
-    const cx = W / 2;
+  // ===== PALACE RENDERER =====
+  // Art root: assets/teen-patti/, cropped from the labelled contact sheet.
+  const PAL = '/assets/teen-patti/';
+  const PAL_ART = {
+    bg:        PAL + 'background/palace-background.svg',
+    logo:      PAL + 'branding/teen-patti-pro-logo.svg',
+    back:      PAL + 'navigation/back.svg',
+    clock:     PAL + 'navigation/clock.svg',
+    gear:      PAL + 'navigation/gear.svg',
+    help:      PAL + 'navigation/help.svg',
+    stOnline:  PAL + 'status/status-online.svg',
+    stOffline: PAL + 'status/status-offline.svg',
+    stHot:     PAL + 'status/status-hot.svg',
+    cardBack:  PAL + 'cards/card-back-teenpatti.svg',
+    cardFront: PAL + 'cards/card-front.svg',
+    coin:      PAL + 'icons/coin.svg',
+    trophy:    PAL + 'icons/trophy.svg',
+    repeat:    PAL + 'ui/btn-repeat.svg',
+    winner:    PAL + 'ui/winner-banner.svg',
+    roundBar:  PAL + 'ui/round-room-panel.svg',
+    panel:     { A: PAL + 'ui/panel-red.svg', B: PAL + 'ui/panel-blue.svg',
+                 C: PAL + 'ui/panel-green.svg' },
+    seat:      { A: PAL + 'seats/seat-red.svg', B: PAL + 'seats/seat-blue.svg',
+                 C: PAL + 'seats/seat-green.svg' },
+    chip:      { 1000: PAL + 'chips/chip-1k.svg', 10000: PAL + 'chips/chip-10k.svg',
+                 50000: PAL + 'chips/chip-50k.svg', 100000: PAL + 'chips/chip-100k.svg' }
+  };
+  const PAL_IMG = {};
+  Object.keys(PAL_ART).forEach(function (k) {
+    if (k === 'panel' || k === 'seat' || k === 'chip') return;
+    PAL_IMG[k] = preloadImage(PAL_ART[k]);
+  });
+  ['A', 'B', 'C'].forEach(function (p) {
+    PAL_IMG['panel' + p] = preloadImage(PAL_ART.panel[p]);
+    PAL_IMG['seat' + p] = preloadImage(PAL_ART.seat[p]);
+  });
+  Object.keys(PAL_ART.chip).forEach(function (d) {
+    PAL_IMG['chip' + d] = preloadImage(PAL_ART.chip[d]);
+  });
 
-    // ONE vertical grid. Every band is a fraction of the space the canvas
-    // owns, and no element is anchored to H independently -- the previous code
-    // gave the felt, the seat row and the action bar three separate
-    // H-relative anchors, so they drifted apart and left a large blank band
-    // under the felt while the action bar sat near the bottom edge.
-    const top = SAFE.t + (land ? 8 : 6);
+  // Reference palette, lifted from the palace art rather than invented.
+  const PAL_THEME = {
+    gold: '#ffd54a', goldDeep: '#b8860b', ink: '#1b1033',
+    cream: '#fff6dc', panelInk: '#3a1030', shadow: 'rgba(12,6,28,.55)'
+  };
+
+  function palaceLayout() {
+    // One grid, weights normalised over the space the canvas owns. Every band
+    // is a fraction of that space, so the frame holds together from 360x640 to
+    // a tablet instead of each element anchoring itself to H separately.
+    const top = SAFE.t + 4;
     const usable = Math.max(1, H - top - SAFE.b);
-    const band = { header: 0.06, seats: 0.30, cards: 0.20,
-                   centre: 0.16, pot: 0.12, action: 0.16 };
-    const y = {};
+    const w = { toolbar: 0.78, roundbar: 0.34, timer: 1.00, cards: 1.70,
+                total: 0.44, chairs: 1.46, panels: 2.24, bottom: 1.40 };
+    const sum = Object.keys(w).reduce(function (a, k) { return a + w[k]; }, 0);
+    const band = {}, y = {};
     let acc = top;
-    for (const k of Object.keys(band)) { y[k] = acc; acc += usable * band[k]; }
+    Object.keys(w).forEach(function (k) {
+      band[k] = w[k] / sum;
+      y[k] = acc;
+      acc += usable * band[k];
+    });
     y.bottom = acc;
-
-    // Seats: ONE row of three equal columns, inset so the chair art cannot
-    // overhang the viewport. They used to sit at three unrelated heights
-    // (A and C low, B high) because each was anchored separately.
     const colW = (W - SAFE.l - SAFE.r) / 3;
     const seats = {};
-    POS.forEach((p, i) => {
-      seats[p] = { x: SAFE.l + colW * (i + 0.5),
-                   y: y.seats + usable * band.seats * 0.5 };
+    POS.forEach(function (p, i) {
+      seats[p] = { x: SAFE.l + colW * (i + 0.5), y: y.chairs + usable * band.chairs * 0.52 };
     });
-    // beyond the seat centre, so spread + cw <= colW/2. With spread = cw/2,
-    // cw <= colW/3. The old flat 0.42*colW put a 50px card in a 120px column
-    // and the fan, anchored left of the seat, ran off the viewport.
-    const cw = Math.max(26, Math.min(40, colW * 0.30)), ch = cw * 1.42;
-    return { cx, top, seats, cw, ch, land, y, band, usable, colW };
+    const cw = Math.max(24, Math.min(34, colW * 0.235)), ch = cw * 1.42;
+    return { top: top, usable: usable, band: band, y: y, seats: seats,
+             cw: cw, ch: ch, colW: colW, cx: W / 2, land: W > H };
   }
 
-  // Coerce anything to a finite number, defaulting to 0. Guards the whole UI
-  // against `undefined` / NaN reaching a fillText.
-  function num(v) {
-    const n = typeof v === 'number' ? v : parseFloat(v);
-    return Number.isFinite(n) ? n : 0;
-  }
+  // The old layout() is still called by the tap handler for seat hit-testing;
+  // it now answers with palace geometry so the two cannot disagree.
+  function layout() { return palaceLayout(); }
 
-  function rr(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-  function cardLabel(face) {
-    if (!face || face === '**') return '';
-    if (face === 'JOK') return 'JOK';
-    const match = String(face).match(/^(\\d+)([SHDC])$/);
-    if (!match) return String(face);
-    const rank = { '11': 'J', '12': 'Q', '13': 'K', '14': 'A' }[match[1]] || match[1];
-    const suit = { S: '♠', H: '♥', D: '♦', C: '♣' }[match[2]] || match[2];
-    return rank + suit;
-  }
-  function card(x, y, w, h, face) {
-    // Pack art first, procedural drawing as the fallback. Guarded by
-    // imageReady, so a face that fails to load renders exactly as it did
-    // before the pack existed rather than as a blank rectangle.
-    const art = (face === '**' || !face) ? CARD_BACK_IMAGE : cardArt(face);
-    if (imageReady(art, 1, 1)) {
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
-      ctx.drawImage(art, x, y, w, h);
-      ctx.restore();
-      return;
-    }
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
-    rr(x, y, w, h, 7);
-    ctx.fillStyle = '#f7f4ec'; ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.lineWidth = 2; ctx.strokeStyle = '#8b0000'; ctx.stroke();
-    ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    if (face === '**' || !face) {
-      ctx.fillStyle = '#0b5fa5';
-      rr(x + 6, y + 6, w - 12, h - 12, 5); ctx.fill();
-      ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = Math.max(1, w * .05);
-      ctx.beginPath();
-      ctx.moveTo(x + w * .28, y + h * .62); ctx.lineTo(x + w * .25, y + h * .34);
-      ctx.lineTo(x + w * .4, y + h * .49); ctx.lineTo(x + w * .5, y + h * .27);
-      ctx.lineTo(x + w * .6, y + h * .49); ctx.lineTo(x + w * .75, y + h * .34);
-      ctx.lineTo(x + w * .72, y + h * .62); ctx.closePath(); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x + w * .28, y + h * .68); ctx.lineTo(x + w * .72, y + h * .68); ctx.stroke();
+  function palaceBackground(L, u) {
+    const bg = PAL_IMG.bg;
+    if (imageReady(bg, 1, 1)) {
+      // Cover-fit: the art is 552x342, so scale to fill and crop the overflow
+      // rather than letterboxing it and leaving dead bands.
+      const sc = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
+      const dw = bg.naturalWidth * sc, dh = bg.naturalHeight * sc;
+      ctx.drawImage(bg, (W - dw) / 2, (H - dh) / 2, dw, dh);
     } else {
-      const label = cardLabel(face);
-      ctx.font = `bold ${w * 0.30}px system-ui`;
-      const red = /[♥♦]/.test(label);
-      ctx.fillStyle = red ? '#b71c1c' : '#212121';
-      ctx.fillText(label, x + w / 2, y + h / 2);
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#3a1a5c'); g.addColorStop(0.5, '#2a1145');
+      g.addColorStop(1, '#160a26');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     }
-    ctx.restore();
+    // Warm key light from the chandelier, then a soft vignette. Both are
+    // multiply-ish overlays so the painted art still reads through.
+    const key = ctx.createRadialGradient(W * 0.5, H * 0.30, 10,
+                                         W * 0.5, H * 0.30, Math.max(W, H) * 0.62);
+    key.addColorStop(0, 'rgba(255,214,120,.20)');
+    key.addColorStop(1, 'rgba(255,180,60,0)');
+    ctx.fillStyle = key; ctx.fillRect(0, 0, W, H);
+    const vg = ctx.createRadialGradient(W / 2, H * 0.44, Math.min(W, H) * 0.34,
+                                        W / 2, H * 0.44, Math.max(W, H) * 0.80);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(10,4,22,.62)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   }
 
-  function draw(now) {
-    ctx.clearRect(0, 0, W, H);
-    // Jungle-green table instead of the old violet casino gradient. Spec:
-    // #4A5D23 -> #2D3A14, dark vignette, gold trim on the table edge.
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#4A5D23'); g.addColorStop(0.55, '#3A4A1B'); g.addColorStop(1, '#2D3A14');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(15,17,8,.42)';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W * .22, 0); ctx.lineTo(W * .12, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W * .78, 0); ctx.lineTo(W * .88, H); ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-    const table = ctx.createRadialGradient(W / 2, H * .40, 20, W / 2, H * .40, Math.max(W, H) * .65);
-    table.addColorStop(0, '#5A6E2C'); table.addColorStop(.68, '#3A4A1B'); table.addColorStop(1, '#1C2410');
-    // Bound the felt to the *table* band, not the viewport aspect. At
-    // 390x844 the old H*.34 radius made the ellipse 344x574, spanning
-    // y=76..650 and leaving a large empty region under it.
-    // Felt centred on the seats+cards bands of the grid, not a fixed H*.43.
-    const GL = layout();
-    const tblCy = GL.y.seats + GL.usable * (GL.band.seats + GL.band.cards) * 0.5;
-    const tblRx = W * 0.46;
-    const tblRy = Math.max(40, GL.usable * (GL.band.seats + GL.band.cards) * 0.62);
-    ctx.fillStyle = table; ctx.beginPath(); ctx.ellipse(W / 2, tblCy, tblRx, tblRy, 0, 0, 7); ctx.fill();
-    ctx.strokeStyle = THEME.gold; ctx.lineWidth = Math.max(2, W * .008); ctx.stroke();
-    // Dark vignette at the edges, per spec.
-    const vg = ctx.createRadialGradient(W / 2, H * .45, Math.min(W, H) * .35, W / 2, H * .45, Math.max(W, H) * .78);
-    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
-    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-    const L = GL, s = S.snap, u = U();
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-
-      // The toolbar is rendered by index.html as real DOM (hBack, connPill,
-      // hSound, hHelp, hMenu). This function used to draw a *second* header
-      // -- title, LIVE/POLLING/OFFLINE text, a status icon and the round number
-      // -- into the same band, so the two layers overlapped: the title collided
-      // with the round pill and the Live indicator sat on top of both. There is
-      // now exactly one header, and it is the DOM one. The canvas starts below
-      // it; the room/round/connection text is rendered by setConnection() and
-      // setRoundPill() into those same DOM elements.
-    // Back/Help/Sound/Menu/History are all DOM buttons in the HUD. Only the
-    // round-status icon is drawn here now: the canvas previously painted its own
-    // HIST control at W-32, underneath the DOM icon row, so the two layers
-    // overlapped and it was clipped at the right edge.
-    // Back / Help / Sound / Menu are DOM buttons in the HUD (index.html).
-    // The canvas used to paint a second copy of that strip at SAFE.l+24,
-    // which sat directly behind the real controls and read as faded ghost
-    // icons across the top of every screenshot. S._ctl stays empty so the
-    // canvas hit-test finds nothing there and the DOM row is the only one.
+  function palaceToolbar(L, u) {
+    const s = S.snap || {};
+    const h = L.y.toolbar + L.usable * L.band.toolbar * 0.5;
+    const r = Math.max(15, Math.min(21, L.usable * L.band.toolbar * 0.34));
+    // Back
     S._ctl = [];
-    ctx.save();
+    if (imageReady(PAL_IMG.back, 1, 1)) {
+      ctx.drawImage(PAL_IMG.back, SAFE.l + 2, h - r, r * 2, r * 2);
+    } else {
+      ctx.fillStyle = '#c0392b'; ctx.beginPath();
+      ctx.arc(SAFE.l + 2 + r, h, r, 0, 7); ctx.fill();
+    }
+    S._ctl.push({ x: SAFE.l + 2 + r, y: h, r: r, act: 'back' });
+
+    // POT pill, immediately right of back
+    const potTxt = 'POT: ' + fmtCompact(num(s.pot_total));
+    ctx.font = '600 ' + u.f(12);
+    const pw = ctx.measureText(potTxt).width + r * 2.4;
+    const px = SAFE.l + 2 + r * 2 + 8;
+    ctx.fillStyle = 'rgba(28,14,54,.88)';
+    rr(px, h - r * 0.78, pw, r * 1.56, r * 0.78); ctx.fill();
+    ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 1.4; ctx.stroke();
+    if (imageReady(PAL_IMG.coin, 1, 1)) {
+      const cr = r * 0.62;
+      ctx.drawImage(PAL_IMG.coin, px + r * 0.34, h - cr, cr * 2, cr * 2);
+    }
+    ctx.fillStyle = PAL_THEME.cream; ctx.textAlign = 'left';
+    ctx.fillText(potTxt, px + r * 1.5, h + 1);
+    ctx.textAlign = 'center';
+
+    // Right cluster: clock, avatar, help, gear, trophy
+    const ir = r * 0.86;
+    const gap = ir * 2 + 5;
+    let x = W - SAFE.r - ir - 2;
+    function icon(img, act, fallback) {
+      if (imageReady(img, 1, 1)) ctx.drawImage(img, x - ir, h - ir, ir * 2, ir * 2);
+      else { ctx.fillStyle = fallback; ctx.beginPath();
+             ctx.arc(x, h, ir, 0, 7); ctx.fill(); }
+      if (act) S._ctl.push({ x: x, y: h, r: ir * 1.15, act: act });
+      x -= gap;
+    }
+    icon(PAL_IMG.trophy, 'ranking', '#c9a227');
+    icon(PAL_IMG.gear, 'menu', '#6b4fa0');
+    icon(PAL_IMG.help, 'help', '#6b4fa0');
+    // avatar: the local player's own look, falling back to a neutral disc
+    const av = loadAvatarImage(appearanceFor(null).avatar);
+    if (av && av.complete && av.naturalWidth) {
+      ctx.save(); ctx.beginPath(); ctx.arc(x, h, ir, 0, 7); ctx.clip();
+      ctx.drawImage(av, x - ir, h - ir, ir * 2, ir * 2); ctx.restore();
+      ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(x, h, ir, 0, 7); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#4b3a72'; ctx.beginPath(); ctx.arc(x, h, ir, 0, 7); ctx.fill();
+      ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    x -= gap;
+    icon(PAL_IMG.clock, null, '#6b4fa0');
+  }
+
+  function palaceRoundBar(L, u) {
+    const s = S.snap || {};
+    const h = L.y.roundbar + L.usable * L.band.roundbar * 0.5;
+    // "10ms  Round: #N" -- the reference shows latency then round, both left.
+    const ping = S.connected ? Math.max(1, Math.round(num(S.pingMs))) : 0;
+    ctx.textAlign = 'left';
+    ctx.font = '600 ' + u.f(11);
+    ctx.fillStyle = S.connected ? '#7ef29a' : '#ff9c9c';
+    ctx.fillText(ping + 'ms', SAFE.l + 2, h);
+    const w1 = ctx.measureText(ping + 'ms').width;
+    ctx.fillStyle = PAL_THEME.cream;
+    ctx.fillText('Round: ' + (s.round_no || s.round_id || '—'),
+                 SAFE.l + 2 + w1 + 8, h);
+    ctx.textAlign = 'right';
+    const stTxt = s.status || (S.connected ? 'POLLING' : 'OFFLINE');
+    ctx.fillStyle = S.connected ? '#9be7ff' : '#ffb4b4';
+    ctx.fillText(stTxt, W - SAFE.r - 2, h);
+    ctx.textAlign = 'center';
+  }
+
+  function palaceTimer(L, u) {
+    const s = S.snap || {};
+    const cy = L.y.timer + L.usable * L.band.timer * 0.5;
+    const r = Math.max(20, Math.min(30, L.usable * L.band.timer * 0.30));
     let secs = null;
-    if (s && s.status === 'BETTING_OPEN' && s.betting_end_at) {
-      // serverTime-anchored: estimate server now from last snapshot skew
+    if (s.status === 'BETTING_OPEN' && s.betting_end_at) {
       const skew = (S.srvNow || Date.now()) - (S.locNow || Date.now());
       secs = Math.max(0, (s.betting_end_at - (Date.now() + skew)) / 1000);
     }
-    // timer ring
-    ctx.save();
-    if (imageReady(RING_TIMER, 1, 1)) {
-      // Pack ring behind the countdown. The stroked arc below is kept and drawn
-      // on top, so the progress arc stays readable whatever the art looks like.
-      ctx.drawImage(RING_TIMER, L.cx - 42, (L.y.centre + L.usable * L.band.centre * 0.5) - 42, 84, 84);
-    }
-    ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(255,255,255,.25)';
-    ctx.beginPath(); ctx.arc(L.cx, (L.y.centre + L.usable * L.band.centre * 0.5), 34, 0, 7); ctx.stroke();
+    // gold ring, dark centre, number inside -- per the reference badge
+    ctx.beginPath(); ctx.arc(L.cx, cy, r, 0, 7);
+    ctx.fillStyle = 'rgba(20,10,40,.86)'; ctx.fill();
+    ctx.lineWidth = Math.max(3, r * 0.16); ctx.strokeStyle = PAL_THEME.gold; ctx.stroke();
     if (secs !== null) {
-      const frac = Math.min(1, secs / 20);
-      ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffd54a';
-      ctx.beginPath(); ctx.arc(L.cx, (L.y.centre + L.usable * L.band.centre * 0.5), 34, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(20);
-      ctx.fillText(secs.toFixed(0), L.cx, (L.y.centre + L.usable * L.band.centre * 0.5));
-      ctx.font = u.f(12); ctx.fillStyle = '#ffe9a8';
-      ctx.fillText(secs < 5 ? 'CLOSING SOON' : (s.status === 'BETTING_OPEN' ? 'GUESSING' : s.status), L.cx, L.top + (L.land ? 128 : 182));
-    } else if (s) {
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(13);
-      ctx.fillText(s.status || '—', L.cx, (L.y.centre + L.usable * L.band.centre * 0.5));
+      const frac = Math.max(0, Math.min(1, secs / (num(s.betting_seconds) || 30)));
+      ctx.beginPath();
+      ctx.arc(L.cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffe9a8';
+      ctx.lineWidth = Math.max(2, r * 0.10); ctx.stroke();
+      ctx.fillStyle = PAL_THEME.gold;
+      ctx.font = 'bold ' + u.f(Math.round(r * 0.82));
+      ctx.fillText(String(Math.ceil(secs)), L.cx, cy + 1);
+    } else {
+      ctx.fillStyle = PAL_THEME.cream;
+      ctx.font = 'bold ' + u.f(Math.round(r * 0.46));
+      const t = s.status ? s.status.replace(/_/g, ' ').slice(0, 9) : 'WAIT';
+      ctx.fillText(t, L.cx, cy + 1);
     }
-    ctx.restore();
+  }
 
-    // pot
-    ctx.fillStyle = '#ffe9a8'; ctx.font = '600 ' + u.f(15);
-    // One normalisation boundary. The server now always sends pot_total /
-    // my_bet, but the client must not be able to render the string
-    // "undefined" if a snapshot is ever missing them -- that is what the
-    // idle table showed. num() coerces to a finite number and never NaN.
-    const pot = num(s && s.pot_total), mine = num(s && s.my_bet);
-    // FR-06 wording, not the old "POT"/"YOU" abbreviations.
-    // Panel art sits behind the text, never over it, so the figures stay
-    // legible and their position is unchanged if the art is missing.
-    if (imageReady(UI_IMAGES.panelPot, 1, 1)) {
-      const pw = Math.min(W * 0.7, 380), ph = 34;
-      ctx.save(); ctx.globalAlpha = 0.92;
-      ctx.drawImage(UI_IMAGES.panelPot, W / 2 - pw / 2,
-                   L.y.pot + L.usable * L.band.pot * 0.42 - ph * 0.75, pw, ph);
-      ctx.restore();
-    }
-    ctx.fillText('Total Bet ' + pot + '   ·   My Total Bet ' + mine,
-                 W / 2, L.y.pot + L.usable * L.band.pot * 0.42);
+  function palaceCards(L, u) {
+    const s = S.snap || {};
+    // 3 columns x 3 cards, gold-back while the round is live.
+    const reveal = s.status === 'RESULT' || s.status === 'SETTLED' ||
+                   s.status === 'CLOSED' || s.status === 'REVEAL';
+    const hands = s.hands || {};
+    POS.forEach(function (p) {
+      const pt = L.seats[p];
+      const top = L.y.cards + 4;
+      const n = 3;
+      const gap = L.cw * 0.14;
+      const totalW = n * L.cw + (n - 1) * gap;
+      const x0 = pt.x - totalW / 2;
+      const h = (hands[p] && hands[p].length) ? hands[p] : ['**', '**', '**'];
+      h.slice(0, n).forEach(function (face, j) {
+        const f = reveal ? face : '**';
+        card(x0 + j * (L.cw + gap), top, L.cw, L.ch, f);
+      });
+    });
+  }
 
-    // seats
-    POS.forEach((p, i) => {
-      const pt = L.seats[p], sel = S.selPos === p;
-      const active = !!(s && (s.turn_position === p || s.active_position === p));
-      const win = s && s.winners && s.winners.indexOf(p) >= 0;
+  function palaceTotalBet(L, u) {
+    const s = S.snap || {};
+    const h = L.y.total + L.usable * L.band.total * 0.5;
+    const pot = num(s.pot_total), mine = num(s.my_bet);
+    ctx.font = '600 ' + u.f(12);
+    ctx.fillStyle = PAL_THEME.cream;
+    ctx.fillText('Total Bet ' + pot, L.cx, h - u.f(7) * 0.6);
+    ctx.fillStyle = '#ffe9a8';
+    ctx.fillText('My Total Bet ' + mine, L.cx, h + u.f(8) * 0.6);
+  }
+
+  function palaceChairs(L, u) {
+    const s = S.snap || {};
+    const size = Math.max(64, Math.min(104, L.usable * L.band.chairs * 0.62));
+    const occ = s.seatOccupancy || {};
+    POS.forEach(function (p, i) {
+      const pt = L.seats[p];
+      const active = !!(s.turn_position === p || s.active_position === p);
+      const win = s.winners && s.winners.indexOf(p) >= 0;
+      const mine = s.mySeat === p;
       if (active || win) {
         ctx.save();
-        if (!REDUCED) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 26; }
-        ctx.strokeStyle = active ? '#fbbf24' : '#ffd54a'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(pt.x, pt.y, 66, 0, 7); ctx.stroke(); ctx.restore();
+        if (!REDUCED) { ctx.shadowColor = win ? '#fff0a0' : '#ffd54a'; ctx.shadowBlur = 22; }
+        ctx.strokeStyle = win ? '#fff0a0' : '#ffd54a';
+        ctx.lineWidth = 3; ctx.beginPath();
+        ctx.arc(pt.x, pt.y, size * 0.60, 0, 7); ctx.stroke(); ctx.restore();
       }
-      // Seat art: prefer the art pack's purpose-named variants (A green, B blue,
-      // C red) and fall back to the recoloured generated chairs. The pack is
-      // 192x192 square, so it is drawn square; the generated chairs are 120x72
-      // and keep their own rect. aspect-corrected in both cases.
-      const artSeat = SEAT_ART_IMAGES[p];
-      if (imageReady(artSeat, 1, 1)) {
-        const ssz = 96;
-        ctx.drawImage(artSeat, pt.x - ssz / 2, pt.y - ssz / 2, ssz, ssz);
-      } else if (seatImages[i] && seatImages[i].complete && seatImages[i].naturalWidth) {
-        ctx.drawImage(seatImages[i], pt.x - 60, pt.y - 38, 120, 72);
-      }
-      const hands = (s && s.hands && s.hands[p]) || ['**', '**', '**'];
-      // Fan the hand symmetrically about the seat. It used to start at
-      // pt.x - L.cw*1.15 and step by L.cw+5, i.e. anchored LEFT of the seat: at
-      // 360px that laid nine cards from x=2 to x=403 as one continuous strip
-      // across the viewport, overlapping the next seat and running off the right
-      // edge. Cards now overlap slightly, as a real hand does, and stay in their
-      // own column.
-      const spread = L.cw * 0.5;
-      const fanX0 = pt.x - ((hands.length - 1) * spread) / 2;
-      // Sit the hand just above the chair back rather than across it. The chair
-        // art spans pt.y-38..pt.y+34, and the fan used to be centred on pt.y, so
-        // the cards covered the upholstery while the avatar and label below
-        // carried the seat. A 6px overlap keeps them visually connected to
-        // their chair without hiding it.
-        const cardTop = pt.y - 38 - L.ch + 6;
-        hands.forEach((f, j) => card(fanX0 + j * spread, cardTop, L.cw, L.ch, f));
-      const avatarY = pt.y + L.ch / 2 + 28;
-      const look = appearanceFor((s && s.seats && s.seats[p]) || null);
-      const av = loadAvatarImage(look.avatar);
-      // Operator-set frame from the admin panel, if any. Falls back to the
-      // decorative ring, then to nothing.
-      const frame = loadFrameImage(look.frame);
-      if (imageReady(frame, 1, 1)) {
-        ctx.drawImage(frame, pt.x - 20, avatarY - 20, 40, 40);
-      } else if (imageReady(RING_DECORATIVE, 1, 1)) {
-        ctx.drawImage(RING_DECORATIVE, pt.x - 21, avatarY - 21, 42, 42);
-      }
-      if (av && av.complete && av.naturalWidth) {
-        ctx.drawImage(av, pt.x - 15, avatarY - 15, 30, 30);
+      const art = PAL_IMG['seat' + p];
+      if (imageReady(art, 1, 1)) {
+        ctx.drawImage(art, pt.x - size / 2, pt.y - size * 0.56, size, size * 0.86);
       } else {
-        ctx.fillStyle = sel ? '#fbbf24' : '#e2e8f0';
-        ctx.beginPath(); ctx.arc(pt.x, avatarY, 15, 0, 7); ctx.fill();
-        ctx.strokeStyle = active ? '#fbbf24' : '#64748b'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = '#312e81'; ctx.font = 'bold ' + u.f(10);
-        ctx.fillText('YOU', pt.x, avatarY + 1);
+        ctx.fillStyle = p === 'A' ? '#c0392b' : p === 'B' ? '#2471a3' : '#1e8449';
+        rr(pt.x - size * 0.32, pt.y - size * 0.30, size * 0.64, size * 0.52, 8); ctx.fill();
       }
-      // Seat badges from the pack, drawn above the avatar when available.
-      const badge = p === 'A' ? UI_IMAGES.badgeYou : (active ? UI_IMAGES.badgeHot : null);
-      if (badge && imageReady(badge, 1, 1)) {
-        ctx.drawImage(badge, pt.x - 9, avatarY - 32, 18, 18);
-      }
-      ctx.fillStyle = active ? '#fbbf24' : '#f8fafc'; ctx.font = 'bold ' + u.f(12);
-      ctx.fillText(SEAT_LABELS[p], pt.x, avatarY + 28);
-      ctx.fillStyle = '#e2e8f0'; ctx.font = u.f(12);
-      const pv = (s && s.pots && s.pots[p]) || 0;
-      ctx.fillText('POT ' + pv, pt.x, avatarY + 45);
+      // seat label, then the occupant underneath
+      const ly = pt.y + size * 0.40;
+      ctx.font = 'bold ' + u.f(15);
+      ctx.fillStyle = PAL_THEME.gold;
+      ctx.fillText(p, pt.x, ly);
+      const who = occ[p];
+      ctx.font = u.f(10);
+      ctx.fillStyle = who ? PAL_THEME.cream : 'rgba(255,246,220,.55)';
+      const tag = !who ? 'OPEN' : (mine ? 'YOU' : String(who).slice(0, 10));
+      ctx.fillText(tag, pt.x, ly + u.f(12));
     });
+  }
 
-    // winners banner
-    if (s && s.winners && s.winners.length && (s.status === 'RESULT' || s.status === 'SETTLED' || s.status === 'CLOSED')) {
-      if (imageReady(UI_IMAGES.bannerWinner, 1, 1)) {
-        const bw = Math.min(W * 0.62, 340), bh = bw * 0.22;
-        ctx.save();
-        ctx.drawImage(UI_IMAGES.bannerWinner, W / 2 - bw / 2, H * 0.47 - bh / 2, bw, bh);
-        ctx.restore();
+  function palacePanels(L, u) {
+    const s = S.snap || {};
+    const top = L.y.panels;
+    const hgt = L.usable * L.band.panels * 0.92;
+    const pw = L.colW * 0.90;
+    S._panels = [];
+    POS.forEach(function (p, i) {
+      const cx = L.seats[p].x;
+      const px = cx - pw / 2;
+      const art = PAL_IMG['panel' + p];
+      const mine = num(s.seats && s.seats[p]);
+      const pot = num(s.pots && s.pots[p]);
+      const mult = num((s.multipliers || {})[p]) || 2.9;
+      const sel = S.selPos === p;
+      if (imageReady(art, 1, 1)) {
+        ctx.drawImage(art, px, top, pw, hgt);
+      } else {
+        ctx.fillStyle = p === 'A' ? '#c0392b' : p === 'B' ? '#2471a3' : '#1e8449';
+        rr(px, top, pw, hgt, 10); ctx.fill();
       }
-      // Crown on the top hand: a trail is the strongest category.
-      if (imageReady(CROWN_IMAGE, 1, 1)) {
-        ctx.save();
-        ctx.drawImage(CROWN_IMAGE, W / 2 - 13, H * 0.47 + 26, 26, 26);
-        ctx.restore();
+      if (sel) {
+        ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 3;
+        rr(px - 2, top - 2, pw + 4, hgt + 4, 11); ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(W / 2 - 150, H * 0.47, 300, 44, 12); ctx.fill();
-      ctx.fillStyle = '#ffd54a'; ctx.font = 'bold ' + u.f(18);
-      ctx.fillText('WINNER: ' + s.winners.join(' & '), W / 2, H * 0.47 + 23);
-    }
+      // header strip: my bet / seat pot, then the multiplier, as in the panel.
+      ctx.fillStyle = 'rgba(0,0,0,.30)';
+      rr(px + pw * 0.08, top + hgt * 0.06, pw * 0.84, hgt * 0.15, 6); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '600 ' + u.f(12);
+      ctx.fillText(mine + '/' + pot, cx, top + hgt * 0.135);
+      ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.20)));
+      ctx.fillStyle = 'rgba(255,255,255,.92)';
+      ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.44);
+      ctx.font = u.f(10);
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.fillText(p + (s.mySeat === p ? '  YOU' : ''), cx, top + hgt * 0.66);
+      S._panels.push({ p: p, x: cx, y: top + hgt * 0.45, w: pw, h: hgt });
+    });
+  }
 
-    // bottom: balance + chips + actions
-    const by = L.y.action + 6;   // grid band, not a guess from the bottom
-    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14 + SAFE.b);
-    ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
-    if (imageReady(UI_IMAGES.panelBalance, 1, 1)) {
-      const bw2 = Math.min(190, W * 0.44), bh2 = 30;
-      ctx.save(); ctx.globalAlpha = 0.92;
-      ctx.drawImage(UI_IMAGES.panelBalance, W / 2 - bw2 / 2, by - bh2 * 0.85, bw2, bh2);
-      ctx.restore();
+  // Traditional Teen Patti action buttons (BLIND / CHAAL / PACK / SHOW /
+  // SIDESHOW) are deliberately NOT drawn. This game is a 3-seat
+  // highest-hand / seat-betting variant, per the naming decision recorded in
+  // games/teen_patti_pro/plugin.py; none of those mechanics exist in the
+  // engine and showing them implies a game that is not being played. The
+  // controls that do apply are seat selection, chip denomination and Repeat.
+
+  function palaceBottom(L, u) {
+    const h = L.y.bottom;
+    const bh = Math.min(L.usable * L.band.bottom * 0.94, 62);
+    const by = h + (L.usable * L.band.bottom - bh) / 2;
+    // bar plate
+    const g = ctx.createLinearGradient(0, by, 0, by + bh);
+    g.addColorStop(0, 'rgba(58,20,84,.94)');
+    g.addColorStop(1, 'rgba(26,10,44,.96)');
+    ctx.fillStyle = g; rr(SAFE.l, by, W - SAFE.l - SAFE.r, bh, 12); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,213,74,.55)'; ctx.lineWidth = 1.4; ctx.stroke();
+
+    // coin balance pill, bottom-left
+    const cr = bh * 0.30;
+    const pillW = Math.max(74, W * 0.24);
+    const px = SAFE.l + 6;
+    ctx.fillStyle = 'rgba(16,8,32,.92)';
+    rr(px, by + bh * 0.18, pillW, bh * 0.64, bh * 0.32); ctx.fill();
+    if (imageReady(PAL_IMG.coin, 1, 1)) {
+      ctx.drawImage(PAL_IMG.coin, px + bh * 0.10, by + bh * 0.5 - cr, cr * 2, cr * 2);
     }
-    ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
+    ctx.fillStyle = PAL_THEME.cream;
+    ctx.font = '600 ' + u.f(13);
+    ctx.textAlign = 'left';
+    // never render a dash: an unresolved balance is a bug, not a state
+    ctx.fillText(S.balance === undefined || S.balance === null
+                   ? '0' : fmtCompact(num(S.balance)),
+                 px + cr * 2 + bh * 0.10, by + bh * 0.5 + 1);
+    ctx.textAlign = 'center';
+
+    // chip row, centred
     S._chips = [];
-      // Lay the action bar out as a track rather than centring the chips and
-      // hanging Repeat off the right edge. The chips used to reach x=300 while
-      // Repeat sat at W-52 with radius 24, i.e. 284..332 at 360px -- the two
-      // overlapped and Repeat sat hard against the viewport edge.
-      const PAD = 10, REPEAT_W = 52, trackW = W - PAD * 2 - REPEAT_W;
-      const cw2 = Math.min(64, trackW / DENOMS.length);
-      const chipsX0 = PAD + (trackW - cw2 * DENOMS.length) / 2 + cw2 / 2;
-      DENOMS.forEach((d, i) => {
-        const x = chipsX0 + i * cw2, y = by + 44;
+    const repeatW = Math.min(96, W * 0.24);
+    const avail = W - SAFE.l - SAFE.r - pillW - repeatW - 30;
+    const cs = Math.min(bh * 0.74, avail / DENOMS.length - 6);
+    const cx0 = px + pillW + 10 + (avail - cs * DENOMS.length) / 2 + cs / 2;
+    const cy = by + bh * 0.5;
+    DENOMS.forEach(function (d, i) {
+      const x = cx0 + i * cs;
       const sel = S.selDenom === d;
-      // DearLive reference chip colors: 20 green, 100 blue, 500 purple, 1K red.
-      const face = d === 20 ? '#22c55e' : d === 100 ? '#3b82f6' : d === 500 ? '#8b5cf6' : '#ef4444';
-      ctx.save();
-      const art = CHIP_IMAGES[d];
-      if (imageReady(art, 48, 48)) {
-        // Art pack. Drawn at 48px; the pack is 192x192 so it downscales.
-        if (sel) { ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 3; ctx.stroke(); }
-        ctx.drawImage(art, x - 24, y - 24, 48, 48);
-        ctx.fillStyle = sel ? '#3a2f00' : '#fff';
-        ctx.font = 'bold ' + u.f(12);
-        ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y);
+      const art = PAL_IMG['chip' + d];
+      if (imageReady(art, 1, 1)) {
+        if (sel) {
+          ctx.beginPath(); ctx.arc(x, cy, cs * 0.56, 0, 7);
+          ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 2.5; ctx.stroke();
+        }
+        ctx.drawImage(art, x - cs * 0.46, cy - cs * 0.46, cs * 0.92, cs * 0.92);
       } else {
-        // Fallback: the procedural chip, unchanged from before the pack.
-        ctx.fillStyle = sel ? '#ffd54a' : face;
-        ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
-        ctx.lineWidth = sel ? 4 : 2; ctx.strokeStyle = sel ? '#7a5c00' : '#c8e6c9'; ctx.stroke();
-        ctx.fillStyle = sel ? '#3a2f00' : '#fff'; ctx.font = 'bold ' + u.f(12);
-        ctx.fillText(d >= 1000 ? (d / 1000) + 'K' : '' + d, x, y);
+        ctx.fillStyle = sel ? PAL_THEME.gold : '#8e44ad';
+        ctx.beginPath(); ctx.arc(x, cy, cs * 0.42, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(10);
+        ctx.fillText(chipLabel(d), x, cy);
       }
-      ctx.restore();
-      S._chips.push({ d, x, y, r: 28 });
+      S._chips.push({ d: d, x: x, y: cy, r: cs * 0.52 });
     });
-    // repeat + status msg
-    S._repeat = { x: W - 52, y: by + 44, r: 28 };
-    ctx.save();
-    if (imageReady(UI_IMAGES.btnRepeat, 1, 1)) {
-      // Pack art. The RPT disc stays as the fallback so the control is never
-      // invisible and its hit region is unchanged.
-      ctx.drawImage(UI_IMAGES.btnRepeat, S._repeat.x - 24, S._repeat.y - 24, 48, 48);
-    } else {
-      ctx.fillStyle = '#155e43'; ctx.beginPath(); ctx.arc(S._repeat.x, S._repeat.y, 24, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('RPT', S._repeat.x, S._repeat.y);
-    }
-    ctx.restore();
-    // Traditional Teen Patti action buttons (BLIND / CHAAL / PACK / SHOW /
-    // SIDESHOW) are deliberately NOT drawn. This game is a 3-seat
-    // highest-hand / seat-betting variant, per the naming decision recorded in
-    // games/teen_patti_pro/plugin.py; none of those mechanics exist in the
-    // engine and showing them implies a game that is not being played. The
-    // controls that do apply are seat selection, chip denomination and Repeat.
-    S._actions = [];
-    if (S.msg) {
-      ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4' : (S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8');
-      ctx.font = u.f(13);
-      ctx.fillText(S.msg, W / 2, by + 118);
-    }
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = u.f(12);
-    ctx.fillText('server-authoritative table state', W / 2, H - 12 - SAFE.b);
 
-    // first-load and connection states, so the table is never a blank felt
+    // repeat, bottom-right
+    const rw = repeatW, rh = bh * 0.66;
+    const rx = W - SAFE.r - 6 - rw, ry = by + (bh - rh) / 2;
+    if (imageReady(PAL_IMG.repeat, 1, 1)) {
+      ctx.drawImage(PAL_IMG.repeat, rx, ry, rw, rh);
+    } else {
+      ctx.fillStyle = '#2f6fd0'; rr(rx, ry, rw, rh, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(12);
+      ctx.fillText('Repeat', rx + rw / 2, ry + rh / 2);
+    }
+    S._repeat = { x: rx + rw / 2, y: ry + rh / 2, r: Math.max(rw, rh) * 0.5 };
+  }
+
+  function chipLabel(d) { return d >= 1000 ? (d / 1000) + 'K' : String(d); }
+  function fmtCompact(n) {
+    if (!Number.isFinite(n)) return '0';
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(2) + 'K';
+    return String(Math.round(n));
+  }
+
+  function draw(now) {
+    const L = palaceLayout();
+    const u = U();
+    const s = S.snap;
+    ctx.clearRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    palaceBackground(L, u);
+    palaceToolbar(L, u);
+    palaceRoundBar(L, u);
+    palaceTimer(L, u);
+    palaceCards(L, u);
+    palaceTotalBet(L, u);
+    palaceChairs(L, u);
+    palacePanels(L, u);
+    palaceBottom(L, u);
+
+    // winner banner over the panels
+    if (s && s.winners && s.winners.length &&
+        (s.status === 'RESULT' || s.status === 'SETTLED' || s.status === 'CLOSED')) {
+      const bw = Math.min(W * 0.74, 320), bh = bw * 0.24;
+      const by = L.y.panels + L.usable * L.band.panels * 0.18;
+      if (imageReady(PAL_IMG.winner, 1, 1)) {
+        ctx.drawImage(PAL_IMG.winner, W / 2 - bw / 2, by, bw, bh);
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,.6)'; rr(W / 2 - bw / 2, by, bw, bh, 10); ctx.fill();
+      }
+      ctx.fillStyle = PAL_THEME.gold;
+      ctx.font = 'bold ' + u.f(14);
+      ctx.fillText('WINNER: ' + s.winners.join(' & '), W / 2, by + bh / 2);
+    }
+
+    if (S.msg) {
+      ctx.fillStyle = S.msgKind === 'error' ? '#ffb4b4'
+                    : (S.msgKind === 'success' ? '#bbf7d0' : '#ffe9a8');
+      ctx.font = u.f(12);
+      ctx.fillText(S.msg, W / 2, L.y.bottom - 6);
+    }
     if (!S.snap && !S._everConnected) {
-      ctx.fillStyle = 'rgba(0,0,0,.45)'; rr(W / 2 - 130, H * 0.44, 260, 48, 12); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
-      ctx.fillText('Connecting to table…', W / 2, H * 0.44 + 24);
-    } else if (S._everConnected && !S.connected) {
-      ctx.fillStyle = 'rgba(120,20,20,.9)'; rr(W / 2 - 110, H * 0.44, 220, 40, 10); ctx.fill();
+      ctx.fillStyle = 'rgba(10,4,22,.72)';
+      rr(W / 2 - 130, H * 0.46, 260, 46, 12); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(14);
-      ctx.fillText('Reconnecting…', W / 2, H * 0.44 + 20);
+      ctx.fillText('Connecting to table…', W / 2, H * 0.46 + 23);
+    } else if (S._everConnected && !S.connected) {
+      ctx.fillStyle = 'rgba(150,20,20,.92)';
+      rr(W / 2 - 110, H * 0.46, 220, 40, 10); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(14);
+      ctx.fillText('Reconnecting…', W / 2, H * 0.46 + 20);
     }
     if (S.panel) drawPanel(u);
     requestAnimationFrame(draw);
@@ -1350,12 +1691,11 @@
     }
     const rp = S._repeat;
     if (rp && (x - rp.x) ** 2 + (y - rp.y) ** 2 < rp.r * rp.r) { doRepeat(); return; }
-    const L = layout();
-    for (const p of POS) {
-      const pt = L.seats[p];
-      if (Math.hypot(x - pt.x, y - pt.y) < 110) {
-        if (S.selPos === p) { placeBet(p); S.selPos = null; }
-        else { S.selPos = p; status('Seat selected — tap again to bet ' + S.selDenom, 'info'); }
+    for (const pn of (S._panels || [])) {
+      if (x > pn.x - pn.w / 2 && x < pn.x + pn.w / 2 &&
+          y > pn.y - pn.h / 2 && y < pn.y + pn.h / 2) {
+        if (S.selPos === pn.p) { placeBet(pn.p); S.selPos = null; }
+        else { S.selPos = pn.p; status('Seat ' + pn.p + ' selected — tap again to bet ' + chipLabel(S.selDenom), 'info'); }
         return;
       }
     }
@@ -1676,23 +2016,24 @@
         else if (m.kind === 'event' && m.data) {
           if (m.data.seq > S.lastSeq) S.lastSeq = m.data.seq;
           // Handle specific event types for animations
-          if (m.data.type === 'round_started') {
+          const kind = m.data.kind || m.data.event;
+          if (kind === 'round.created' || kind === 'round.started' || kind === 'ROUND_CREATED' || kind === 'ROUND_STARTED') {
             // New round dealt - trigger deal animation
             const L = layout();
             const deckPos = { x: L.cx, y: (L.y.centre + L.usable * L.band.centre * 0.5) };
             const players = (S.snap && S.snap.players) || [];
             window.__tppAnim.animateDeal(deckPos, L.seats, 3, players);
-          } else if (m.data.type === 'bet_placed') {
+          } else if (kind === 'bet.accepted' || kind === 'BET_ACCEPTED') {
             // Chip bet animation
             const L = layout();
             const seatKey = m.data.player_id || m.data.position;
             const seatPos = L.seats[seatKey];
             const potPos = { x: L.cx, y: H * 0.115 + 30 };
             if (seatPos) window.__tppAnim.animateChipBet(seatPos, potPos, m.data.amount);
-          } else if (m.data.type === 'round_ended') {
+          } else if (kind === 'result.published' || kind === 'settlement.completed' || kind === 'RESULT_DECLARED' || kind === 'SETTLEMENT_COMPLETED') {
             // Winner celebration + pot collection
             const L = layout();
-            const winners = m.data.winners || [];
+            const winners = m.data.winners || m.data.winner_positions || [];
             const winnerPositions = winners.map(w => L.seats[w]).filter(Boolean);
             const potPos = { x: L.cx, y: H * 0.115 + 30 };
             if (winnerPositions.length) {
@@ -1700,20 +2041,27 @@
               const amounts = winners.map(w => m.data.pots?.[w] || 0);
               window.__tppAnim.animatePotCollection(potPos, winnerPositions, amounts);
             }
-          } else if (m.data.type === 'turn_changed') {
+          } else if (kind === 'betting.closed' || kind === 'BETTING_CLOSED') {
+            // Timer pulse stop
+            window.__tppAnim.stopTimerPulse();
+          } else if (kind === 'turn_changed' || kind === 'TURN_CHANGED') {
             // Timer pulse if low time
-            const secs = m.data.timeout_seconds || 0;
-            const timerContainer = document.createElement('div');
-            timerContainer.style.position = 'absolute';
-            timerContainer.style.left = (L.cx - 40) + 'px';
-            timerContainer.style.top = ((L.y.centre + L.usable * L.band.centre * 0.5) - 40) + 'px';
-            timerContainer.style.width = '80px';
-            timerContainer.style.height = '80px';
-            timerContainer.style.pointerEvents = 'none';
-            timerContainer.style.zIndex = 500;
-            cv.parentElement.appendChild(timerContainer);
-            window.__tppAnim.startTimerPulse(timerContainer, secs);
-            if (secs > 10) window.__tppAnim.stopTimerPulse();
+            const secs = m.data.timeout_seconds || m.data.seconds_remaining || 0;
+            const L = layout();
+            if (secs <= 5) {
+              const timerContainer = document.createElement('div');
+              timerContainer.style.position = 'absolute';
+              timerContainer.style.left = (L.cx - 40) + 'px';
+              timerContainer.style.top = ((L.y.centre + L.usable * L.band.centre * 0.5) - 40) + 'px';
+              timerContainer.style.width = '80px';
+              timerContainer.style.height = '80px';
+              timerContainer.style.pointerEvents = 'none';
+              timerContainer.style.zIndex = 500;
+              cv.parentElement.appendChild(timerContainer);
+              window.__tppAnim.startTimerPulse(timerContainer, secs);
+            } else {
+              window.__tppAnim.stopTimerPulse();
+            }
           }
           refresh();
         } else if (m.kind === 'pong') { /* keepalive */ }

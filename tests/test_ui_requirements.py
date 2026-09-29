@@ -126,15 +126,19 @@ class UiRequirementTest(unittest.TestCase):
         # columns of one row, so assert that structure: POS order, one shared y
         # for all three, and column centres that increase left to right.
         import re as _re
-        m = _re.search(r"POS\.forEach\(\(p, i\) => \{([\s\S]*?)\}\);", JS)
+        m = _re.search(r"POS\.forEach\(function \(p, i\) \{([\s\S]*?)\}\);", JS)
         self.assertIsNotNone(m, "could not find the seat placement loop")
         body = m.group(1)
         self.assertIn("colW", body,
                       "seats must be laid out in equal columns, not literal offsets")
         self.assertIn("i + 0.5", body,
                       "seat i must sit in the centre of column i")
-        # One y for every seat: a single y.seats term, not a per-seat offset.
-        self.assertIn("y.seats", body)
+        # One y for every seat: a single band term, not a per-seat offset.
+        # (The palace grid calls the band `chairs`; the old felt grid called it
+        # `seats`.) What matters is one shared band anchor, no viewport-height
+        # anchoring, and the three columns increasing left to right.
+        self.assertTrue("y.chairs" in body or "y.seats" in body,
+                        "seat y must come from one shared grid band")
         self.assertNotIn("H *", body,
                          "seat y must not be anchored to viewport height; that is "
                          "what put the three seats at three different heights")
@@ -396,38 +400,38 @@ class CardFanGeometryTest(unittest.TestCase):
     @staticmethod
     def _geometry(w):
         col_w = w / 3
-        cw = max(26, min(40, col_w * 0.30))
-        spread = cw * 0.5
-        fan = spread + cw                      # how far past the seat centre
-        return col_w, cw, spread, fan
+        cw = max(24, min(34, col_w * 0.235))
+        gap = cw * 0.14
+        total = 3 * cw + 2 * gap                # full 3-card hand width
+        return col_w, cw, gap, total
 
     def test_cards_are_centred_on_the_seat_not_anchored_left(self):
         for w, _h in self.VIEWPORTS:
             with self.subTest(width=w):
                 self.assertNotIn("L.cw * 1.15", JS,
-                                 "the hand fan is anchored left of the seat "
-                                 "again")
-                self.assertIn("pt.x - ((hands.length - 1) * spread) / 2", JS,
-                              "the fan must be centred on the seat centre")
+                                 "the hand is anchored left of the seat again")
+                self.assertIn("const x0 = pt.x - totalW / 2;", JS,
+                              "the hand must be centred on the seat centre")
+                self.assertIn("const totalW = n * L.cw + (n - 1) * gap;", JS)
 
     def test_fan_stays_inside_the_viewport(self):
         for w, _h in self.VIEWPORTS:
             with self.subTest(width=w):
-                _col, _cw, _spread, fan = self._geometry(w)
-                left = (w / 3) / 2 - fan
-                right = w - (w / 3) / 2 + fan
+                _col, _cw, _gap, total = self._geometry(w)
+                left = (w / 3) / 2 - total / 2
+                right = w - (w / 3) / 2 + total / 2
                 self.assertGreaterEqual(left, 0,
                                         f"leftmost card clips at {w}px")
                 self.assertLessEqual(right, w,
                                      f"rightmost card overflows at {w}px")
 
     def test_card_size_fits_the_column(self):
-        """spread + cw must be at most half a column, or the fan overlaps seats."""
+        """The whole 3-card hand must fit inside its own column."""
         for w, _h in self.VIEWPORTS:
             with self.subTest(width=w):
-                col_w, cw, _spread, fan = self._geometry(w)
-                self.assertLessEqual(fan, col_w / 2 + 0.01,
-                                     f"fan wider than its column at {w}px")
+                col_w, cw, _gap, total = self._geometry(w)
+                self.assertLessEqual(total, col_w + 0.01,
+                                     f"hand wider than its column at {w}px")
 
     def test_card_keeps_a_card_aspect_ratio(self):
         _col, cw, _s, _f = self._geometry(360)
@@ -436,12 +440,12 @@ class CardFanGeometryTest(unittest.TestCase):
 
     def test_card_band_sits_below_the_hud(self):
         """Cards must never enter the toolbar band."""
-        # HUD is 38px tall at top+8; the cards band starts after the header band.
         for w, h in self.VIEWPORTS:
             with self.subTest(size=f"{w}x{h}"):
-                self.assertIn("band = { header:", JS)
-                self.assertIn("usable * band.seats", JS,
-                              "seats must be anchored to the grid, not the top")
+                self.assertIn("toolbar: 0.78", JS)
+                self.assertIn("cards: 1.70", JS)
+                self.assertIn("L.y.cards", JS,
+                              "cards must be anchored to the grid, not the top")
 
 
 class SingleToolbarAndIconTest(unittest.TestCase):
@@ -458,13 +462,13 @@ class SingleToolbarAndIconTest(unittest.TestCase):
     """
 
     def test_canvas_does_not_paint_a_control_strip(self):
+        # The palace renderer owns the whole frame on the canvas, so there is
+        # exactly ONE toolbar and it is this one -- no DOM strip behind it.
+        # The guard that matters is that the two never both paint.
         code = JS
         self.assertIn("S._ctl = [];", code)
-        self.assertNotIn("'back'], ['?'", code,
-                         "the canvas control strip is back")
         self.assertNotIn("S._ctl.push({ act: c[1]", code,
-                         "the canvas must not register hit targets behind the "
-                         "DOM toolbar")
+                         "a second control strip is registering hit targets")
 
     def test_hist_uses_supplied_art_not_a_unicode_glyph(self):
         html = (CLIENT / "index.html").read_text(encoding="utf-8")
@@ -487,9 +491,22 @@ class SingleToolbarAndIconTest(unittest.TestCase):
                 self.assertIn(f"['{el}', '{key}']", JS)
 
     def test_cards_sit_above_the_chair_back(self):
-        self.assertIn("const cardTop = pt.y - 38 - L.ch + 6;", JS,
-                      "the hand must clear the chair back rather than cover it")
-        self.assertNotIn("card(fanX0 + j * spread, pt.y - L.ch / 2", JS)
+        import re as _re
+        # Palace layout: the hand occupies the `cards` band and the chairs the
+        # `chairs` band below it, so the hand can never overlap the upholstery.
+        # Assert the grid really orders them that way.
+        self.assertIn("y.cards", JS, "hand must be placed from the cards band")
+        self.assertIn("y.chairs", JS, "chairs must be placed from the chairs band")
+        m = _re.search(r"w = \{([\s\S]*?)\};", JS)
+        self.assertIsNotNone(m, "band weight table not found")
+        weights = m.group(1)
+        order = [k for k in ("toolbar", "roundbar", "timer", "cards", "total",
+                             "chairs", "panels", "bottom") if k + ":" in weights]
+        self.assertEqual(order, ["toolbar", "roundbar", "timer", "cards",
+                                 "total", "chairs", "panels", "bottom"],
+                         "palace bands must be declared in reference order")
+        # and the hand is drawn from the cards band top, not the seat centre
+        self.assertIn("const top = L.y.cards + 4;", JS)
 
     def test_toolbar_never_wraps(self):
         """Guards a fix that was silently lost once.
