@@ -1031,7 +1031,10 @@
       // now exactly one header, and it is the DOM one. The canvas starts below
       // it; the room/round/connection text is rendered by setConnection() and
       // setRoundPill() into those same DOM elements.
-    // top-left controls: Back | Help | Sound | Menu ; top-right: History
+    // Back/Help/Sound/Menu/History are all DOM buttons in the HUD. Only the
+    // round-status icon is drawn here now: the canvas previously painted its own
+    // HIST control at W-32, underneath the DOM icon row, so the two layers
+    // overlapped and it was clipped at the right edge.
     S._ctl = [];
     const ctl = [['‹', 'back'], ['?', 'help'], [S.sound ? '♪' : '✕', 'sound'], ['≡', 'menu']];
     const step = Math.min(46, (W * 0.52) / ctl.length);
@@ -1043,7 +1046,6 @@
       ctx.fillText(c[0], x, y + 1); ctx.restore();
       S._ctl.push({ act: c[1], x, y, r: 24 });
     });
-    const hx = W - SAFE.r - 32;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(hx - 26, 11 + SAFE.t * 0.4, 52, 32, 8); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(12); ctx.fillText('HIST', hx, 27 + SAFE.t * 0.4);
@@ -1060,21 +1062,21 @@
     if (imageReady(RING_TIMER, 1, 1)) {
       // Pack ring behind the countdown. The stroked arc below is kept and drawn
       // on top, so the progress arc stays readable whatever the art looks like.
-      ctx.drawImage(RING_TIMER, L.cx - 42, L.top + (L.land ? 96 : 150) - 42, 84, 84);
+      ctx.drawImage(RING_TIMER, L.cx - 42, (L.y.centre + L.usable * L.band.centre * 0.5) - 42, 84, 84);
     }
     ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(255,255,255,.25)';
-    ctx.beginPath(); ctx.arc(L.cx, L.top + (L.land ? 96 : 150), 34, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(L.cx, (L.y.centre + L.usable * L.band.centre * 0.5), 34, 0, 7); ctx.stroke();
     if (secs !== null) {
       const frac = Math.min(1, secs / 20);
       ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffd54a';
-      ctx.beginPath(); ctx.arc(L.cx, L.top + (L.land ? 96 : 150), 34, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(L.cx, (L.y.centre + L.usable * L.band.centre * 0.5), 34, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(20);
-      ctx.fillText(secs.toFixed(0), L.cx, L.top + (L.land ? 96 : 150));
+      ctx.fillText(secs.toFixed(0), L.cx, (L.y.centre + L.usable * L.band.centre * 0.5));
       ctx.font = u.f(12); ctx.fillStyle = '#ffe9a8';
       ctx.fillText(secs < 5 ? 'CLOSING SOON' : (s.status === 'BETTING_OPEN' ? 'GUESSING' : s.status), L.cx, L.top + (L.land ? 128 : 182));
     } else if (s) {
       ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(13);
-      ctx.fillText(s.status || '—', L.cx, L.top + (L.land ? 96 : 150));
+      ctx.fillText(s.status || '—', L.cx, (L.y.centre + L.usable * L.band.centre * 0.5));
     }
     ctx.restore();
 
@@ -1091,11 +1093,12 @@
     if (imageReady(UI_IMAGES.panelPot, 1, 1)) {
       const pw = Math.min(W * 0.7, 380), ph = 34;
       ctx.save(); ctx.globalAlpha = 0.92;
-      ctx.drawImage(UI_IMAGES.panelPot, W / 2 - pw / 2, H * 0.115 - ph * 0.75, pw, ph);
+      ctx.drawImage(UI_IMAGES.panelPot, W / 2 - pw / 2,
+                   L.y.pot + L.usable * L.band.pot * 0.42 - ph * 0.75, pw, ph);
       ctx.restore();
     }
     ctx.fillText('Total Bet ' + pot + '   ·   My Total Bet ' + mine,
-                 W / 2, H * 0.115);
+                 W / 2, L.y.pot + L.usable * L.band.pot * 0.42);
 
     // seats
     POS.forEach((p, i) => {
@@ -1173,7 +1176,7 @@
     }
 
     // bottom: balance + chips + actions
-    const by = H - Math.max(150, H * 0.20) - SAFE.b;
+    const by = L.y.action + 6;   // grid band, not a guess from the bottom
     ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, by - 14, W, H - by + 14 + SAFE.b);
     ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(15);
     if (imageReady(UI_IMAGES.panelBalance, 1, 1)) {
@@ -1184,9 +1187,15 @@
     }
     ctx.fillText('BAL ' + (S.balance !== undefined ? S.balance : '—'), W / 2, by + 4);
     S._chips = [];
-    const cw2 = Math.min(64, W / (DENOMS.length + 0.6));
-    DENOMS.forEach((d, i) => {
-      const x = W / 2 - (DENOMS.length - 1) * cw2 / 2 + i * cw2, y = by + 44;
+      // Lay the action bar out as a track rather than centring the chips and
+      // hanging Repeat off the right edge. The chips used to reach x=300 while
+      // Repeat sat at W-52 with radius 24, i.e. 284..332 at 360px -- the two
+      // overlapped and Repeat sat hard against the viewport edge.
+      const PAD = 10, REPEAT_W = 52, trackW = W - PAD * 2 - REPEAT_W;
+      const cw2 = Math.min(64, trackW / DENOMS.length);
+      const chipsX0 = PAD + (trackW - cw2 * DENOMS.length) / 2 + cw2 / 2;
+      DENOMS.forEach((d, i) => {
+        const x = chipsX0 + i * cw2, y = by + 44;
       const sel = S.selDenom === d;
       // DearLive reference chip colors: 20 green, 100 blue, 500 purple, 1K red.
       const face = d === 20 ? '#22c55e' : d === 100 ? '#3b82f6' : d === 500 ? '#8b5cf6' : '#ef4444';
@@ -1406,7 +1415,7 @@
       // Round reset: animate cards flying back to deck before new deal
       if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
         const L = layout();
-        const deckPos = { x: L.cx, y: L.top + (L.land ? 96 : 150) };
+        const deckPos = { x: L.cx, y: (L.y.centre + L.usable * L.band.centre * 0.5) };
         const players = (prev && prev.players) || [];
         await window.__tppAnim.animateRoundReset(L.seats, deckPos, players);
         
@@ -1474,7 +1483,7 @@
             tc.id = 'tpp-timer-pulse';
             tc.style.position = 'absolute';
             tc.style.left = (L.cx - 40) + 'px';
-            tc.style.top = (L.top + (L.land ? 96 : 150) - 40) + 'px';
+            tc.style.top = ((L.y.centre + L.usable * L.band.centre * 0.5) - 40) + 'px';
             tc.style.width = '80px';
             tc.style.height = '80px';
             tc.style.pointerEvents = 'none';
@@ -1560,6 +1569,7 @@
       if (window.history.length > 1) window.history.back();
       else window.location.href = './lobby.html';
     });
+      on('hHist', function () { openHistory(); });
     on('hSound', function () {
       toggleSound();
       const b = document.getElementById('hSound');
@@ -1633,7 +1643,7 @@
           if (m.data.type === 'round_started') {
             // New round dealt - trigger deal animation
             const L = layout();
-            const deckPos = { x: L.cx, y: L.top + (L.land ? 96 : 150) };
+            const deckPos = { x: L.cx, y: (L.y.centre + L.usable * L.band.centre * 0.5) };
             const players = (S.snap && S.snap.players) || [];
             window.__tppAnim.animateDeal(deckPos, L.seats, 3, players);
           } else if (m.data.type === 'bet_placed') {
@@ -1660,7 +1670,7 @@
             const timerContainer = document.createElement('div');
             timerContainer.style.position = 'absolute';
             timerContainer.style.left = (L.cx - 40) + 'px';
-            timerContainer.style.top = (L.top + (L.land ? 96 : 150) - 40) + 'px';
+            timerContainer.style.top = ((L.y.centre + L.usable * L.band.centre * 0.5) - 40) + 'px';
             timerContainer.style.width = '80px';
             timerContainer.style.height = '80px';
             timerContainer.style.pointerEvents = 'none';
