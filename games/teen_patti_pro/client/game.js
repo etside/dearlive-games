@@ -194,6 +194,17 @@
     veilBtn: document.getElementById('veilBtn')
   };
 
+  // The room shown in the HUD must be the one the SERVER resolved, not the
+  // one in the query string. ROOM comes from ?room=, which any client can
+  // set: a session for table teen-patti-high opened with
+  // ?room=BOGUS rendered "Room: BOGUS" while every request correctly went
+  // to the authenticated room. The snapshot carries the real room_id.
+  let AUTH_ROOM = '';
+  function noteAuthoritativeRoom(snap) {
+    if (snap && snap.room_id) AUTH_ROOM = String(snap.room_id);
+  }
+  function roomLabel() { return AUTH_ROOM || ROOM; }
+
   function setRoundPill(roundNo, room) {
     if (hud.roundNo) hud.roundNo.textContent = roundNo ? ('#' + roundNo) : '--';
     if (hud.room) hud.room.textContent = room ? String(room).slice(0, 12) : '';
@@ -1416,7 +1427,8 @@
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
       refreshAppearances(S.snap);
-      setRoundPill(S.snap && S.snap.round_no, ROOM);
+      noteAuthoritativeRoom(S.snap);
+      setRoundPill(S.snap && S.snap.round_no, roomLabel());
       markLocalSeat((S.snap && S.snap.seats) ? 'A' : null);
       setVeilForState(S.snap);
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
@@ -1643,7 +1655,8 @@
         if (m.kind === 'snapshot' && m.data) {
           S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now();
           refreshAppearances(m.data);
-          setRoundPill(m.data.round_no, ROOM);
+          noteAuthoritativeRoom(m.data);
+          setRoundPill(m.data.round_no, roomLabel());
           setVeil(null);
         }
         else if (m.kind === 'event' && m.data) {

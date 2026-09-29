@@ -221,3 +221,36 @@ class TimerPulsePlaceholderTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertTrue((root / "assets/games/teen-patti-pro/avatars"
                          / "timer-ring.svg").is_file())
+
+
+class AuthoritativeRoomDisplayTest(unittest.TestCase):
+    """The HUD must show the room the server resolved, not ?room=.
+
+    ROOM is `q.get('room')`, which any client controls. A session issued for
+    table `teen-patti-high` opened with `?room=BOGUS-ROOM-X` had every request
+    correctly routed to the authenticated room -- session_room() ignores the
+    query string -- but the pill rendered "Room: BOGUS-ROOM-X", displaying an
+    untrusted value as though it were authoritative. Confirmed across six
+    concurrent clients.
+    """
+    def test_pill_uses_the_snapshot_room(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        self.assertIn("function roomLabel()", js)
+        self.assertIn("AUTH_ROOM || ROOM", js)
+        self.assertIn("function noteAuthoritativeRoom(snap)", js)
+        # the two data-driven call sites must go through roomLabel()
+        self.assertNotIn("setRoundPill(S.snap && S.snap.round_no, ROOM);", js)
+        self.assertNotIn("setRoundPill(m.data.round_no, ROOM);", js)
+
+    def test_authoritative_room_comes_from_room_id(self):
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        i = js.index("function noteAuthoritativeRoom(snap)")
+        self.assertIn("snap.room_id", js[i:i + 200],
+                      "the authoritative room is snapshot.room_id, which the "
+                      "server sets from the session")
+
+    def test_room_query_param_is_still_only_a_fallback(self):
+        """It must never become authoritative, only a last-resort label."""
+        js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        i = js.index("function roomLabel()")
+        self.assertIn("AUTH_ROOM || ROOM", js[i:i + 120])
