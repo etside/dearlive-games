@@ -166,15 +166,19 @@ class PackFallbackTest(unittest.TestCase):
         self.assertIn("naturalWidth", JS)
 
     def test_chip_fallback_is_the_procedural_chip(self):
-        block = JS.split("const art = CHIP_IMAGES[d]")[1][:900]
+        # Palace renderer uses PAL_IMG['chip' + d] for chip assets
+        block = JS.split("const art = PAL_IMG['chip' + d]")[1][:900]
         self.assertIn("} else {", block, "chip needs an else branch")
-        self.assertIn("ctx.arc(x, y, 24, 0, 7)", block,
+        self.assertIn("ctx.arc(x, cy, cs * 0.42, 0, 7)", block,
                       "fallback must draw the original procedural chip")
 
     def test_seat_fallback_keeps_the_generated_chairs(self):
-        self.assertIn("} else if (seatImages[i]", JS)
-        self.assertIn("pt.x - 60, pt.y - 38, 120, 72", JS,
-                      "the generated-chair rect must survive as the fallback")
+        # Palace renderer uses PAL_IMG['seat' + p] for seat assets
+        block = JS.split("const art = PAL_IMG['seat' + p]")[1][:900]
+        self.assertIn("} else {", block, "seat needs an else branch for fallback")
+        # Procedural fallback draws rounded rect for chair
+        self.assertIn("rr(pt.x - size * 0.32, pt.y - size * 0.30, size * 0.64, size * 0.52, 8)", block,
+                      "procedural chair fallback must survive")
 
     def test_status_fallback_keeps_the_coloured_dot(self):
         self.assertIn("hud.dot.style.backgroundImage = ''", JS)

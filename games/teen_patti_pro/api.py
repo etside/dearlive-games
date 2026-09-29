@@ -207,6 +207,48 @@ class Handler(BaseHTTPRequestHandler):
             type(self).admin_store = store
         return store
 
+    @classmethod
+    def _load_latest_rules(cls):
+        """Load the latest stored rules and apply them to the service config.
+
+        Called once at boot and once a minute by the sweeper. Applying to
+        `svc.config` (not to live Room objects) is what gives the
+        apply-to-next-round semantics for free: a room picks the config up when
+        its next round starts, so a round in flight keeps the snapshot it began
+        with. Swallows every failure on purpose -- an unreachable admin database
+        must never stop the game from booting or kill the sweeper thread.
+        """
+        try:
+            store = cls.admin_store
+            if store is None:
+                from integrations.admin_db import build_admin_store
+                store = build_admin_store()
+                cls.admin_store = store
+            data = store.get_game_rules("teen-patti-pro")
+            rules = (data or {}).get("rules") or {}
+            if not rules:
+                return False
+            from games.teen_patti_pro.config import TeenPattiConfig
+            import dataclasses
+            known = {f.name for f in dataclasses.fields(TeenPattiConfig)}
+            kwargs = {}
+            for key, value in rules.items():
+                if key not in known or key in ("version", "confirmed", "tbc"):
+                    continue
+                # JSON gives lists where the config wants tuples.
+                if isinstance(value, list):
+                    value = tuple(value)
+                kwargs[key] = value
+            kwargs["confirmed"] = bool((data or {}).get("confirmed", False))
+            tbc = (data or {}).get("tbc")
+            if tbc:
+                kwargs["tbc"] = tuple(tbc)
+            cls.svc.config = TeenPattiConfig(**kwargs)
+            return True
+        except Exception:
+            return False
+
+
     # -- deep-control plumbing -------------------------------------------
     #
     # Every admin read funnels through _admin_read and every write through

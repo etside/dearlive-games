@@ -32,6 +32,7 @@ UNSUPPORTED_PROVIDER_EVENTS = (
 )
 
 from common.wire_events import ws_name  # noqa: E402  (needs PROVIDER_EVENTS above)
+from games.teen_patti_pro.bot_manager import create_bot_manager
 import argparse
 import base64
 import hashlib
@@ -112,6 +113,8 @@ class Hub:
         self.tokens = tokens
         self.lock = threading.Lock()
         self.rooms = {}  # room_id -> set[(conn, player_id)]
+        # Bot manager for demo mode
+        self.bot_manager = create_bot_manager(svc) if svc else None
 
     def resolve_session(self, payload: dict):
         """Return (session, player_id) from a session id or provider token.
@@ -276,6 +279,10 @@ def handle(conn: socket.socket, hub: Hub):
                                  "round_id=%s", room, out.get("round_id"))
                 except Exception:
                     log.exception("teen_patti_ensure_round_failed room=%s", room)
+
+                # Notify bot manager of real player join (demo mode only)
+                if hub.bot_manager:
+                    hub.bot_manager.on_player_join(room, player, is_real=True)
                 _send_frame(conn, json.dumps({
                     "kind": "snapshot",
                     "data": hub.svc.state(room, player)}))
