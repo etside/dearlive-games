@@ -350,7 +350,28 @@ def h_create_session(ctx: ProviderContext, req: Request) -> Tuple[int, dict]:
             raise ProviderError(E.E_VALIDATION,
                                 f"table {table.table_id} is not {currency}")
     else:
-        table = select_table(catalog, binding.resolve(ctx), bet_amount, currency)
+        # Deterministic default table for the shareable game URL.
+        #
+        # select_table() consolidates seats and picks by occupancy. With no
+        # bet_amount every bet-tier table is eligible, so two groups opening the
+        # same shareable URL could land on different tables -- observed a 4- and
+        # 5-player run on teen-patti-high and a 6-player run on teen-patti-low.
+        # A shareable URL must resolve to one table.
+        #
+        # An explicit table_id from a signed operator request still wins, and a
+        # known bet amount still picks the correct stake tier.
+        configured = os.environ.get("TEEN_PATTI_DEFAULT_TABLE", "").strip()
+        if configured and bet_amount is None:
+            table = catalog.require(configured)
+            if table is None:
+                raise ProviderError(
+                    E.E_VALIDATION,
+                    f"TEEN_PATTI_DEFAULT_TABLE={configured} is not a known table", 400)
+            if table.currency != currency:
+                raise ProviderError(E.E_VALIDATION,
+                                    f"table {table.table_id} is not {currency}")
+        else:
+            table = select_table(catalog, binding.resolve(ctx), bet_amount, currency)
     if bet_amount is not None and not (table.min_bet <= bet_amount <= table.max_bet):
         raise ProviderError(
             E.E_VALIDATION,

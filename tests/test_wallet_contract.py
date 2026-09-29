@@ -303,3 +303,40 @@ class ApiLoggerTest(unittest.TestCase):
                       if "log.exception(" in l or "log.warning(" in l), None)
         self.assertIsNotNone(first, "the guard logs nothing")
         self.assertLess(defined, first, "`log` is used before it is defined")
+
+
+class DeterministicShareableTableTest(unittest.TestCase):
+    """The shareable URL must resolve to one table, not a load-chosen one.
+
+    Found with six concurrent clients: a 4- and 5-player run landed on
+    teen-patti-high while a 6-player run landed on teen-patti-low.
+    select_table() consolidates seats and picks by occupancy, so with no
+    bet_amount -- which is the case at session creation -- every bet-tier table
+    is eligible and the result depends on who is already seated. Two groups
+    opening the same shareable URL must land on the same table.
+    """
+    def test_default_table_env_is_honoured(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "provider/router.py").read_text(encoding="utf-8")
+        self.assertIn('TEEN_PATTI_DEFAULT_TABLE', src)
+        i = src.index("configured = os.environ.get(\"TEEN_PATTI_DEFAULT_TABLE\"")
+        block = src[i:i + 1400]
+        # it must short-circuit the occupancy-based selector
+        self.assertIn("catalog.require(configured)", block)
+        self.assertIn("else:", block)
+        self.assertIn("select_table(catalog, binding.resolve(ctx), bet_amount",
+                      block,
+                      "the occupancy-based selector must remain the fallback "
+                      "for an explicit bet amount")
+        # an explicit signed table_id still wins
+        j = src.index("requested_table = str(body.get")
+        self.assertLess(j, i, "an explicit table_id must be resolved first")
+
+    def test_configured_table_is_validated(self):
+        src = (Path(__file__).resolve().parents[1]
+               / "provider/router.py").read_text(encoding="utf-8")
+        i = src.index("configured = os.environ.get(\"TEEN_PATTI_DEFAULT_TABLE\"")
+        block = src[i:i + 1400]
+        self.assertIn("is not a known table", block,
+                      "a misconfigured default must fail loudly, not silently "
+                      "fall back to an arbitrary table")
