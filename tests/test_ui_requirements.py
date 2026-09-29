@@ -504,3 +504,34 @@ class SingleToolbarAndIconTest(unittest.TestCase):
                          "the HUD must not wrap its control groups")
         self.assertIn(".hud-left{flex:0 1 auto;overflow:hidden}", html)
         self.assertIn(".hud-right{flex:0 0 auto;margin-left:auto}", html)
+
+    def test_history_control_matches_its_asset_aspect(self):
+        """btn-history.svg is a 256x64 pill, not a square icon.
+
+        The buttons are 38x38 square slots painted with background-size:contain.
+        A 4:1 pill forced into that slot scaled down to an unreadable smudge that
+        read as a tofu box. The history control now has its own pill slot, and
+        the other icons are all genuinely square.
+        """
+        import re as _re
+        root = Path(__file__).resolve().parents[1]
+        ui = root / "assets/games/teen-patti-pro/ui"
+        hist = (ui / "btn-history.svg").read_text(encoding="utf-8")
+        vb = _re.search(r'viewBox="0 0 (\d+) (\d+)"', hist)
+        self.assertIsNotNone(vb)
+        w, h = int(vb.group(1)), int(vb.group(2))
+        self.assertGreater(w / h, 2.0,
+                           "btn-history should be a wide pill; if this changed, "
+                           "the .pillbtn slot must be revisited")
+        for square in ("btn-help", "btn-settings", "btn-back"):
+            with self.subTest(asset=square):
+                vb2 = _re.search(r'viewBox="0 0 (\d+) (\d+)"',
+                                 (ui / f"{square}.svg").read_text(encoding="utf-8"))
+                self.assertIsNotNone(vb2)
+                self.assertAlmostEqual(int(vb2.group(1)) / int(vb2.group(2)),
+                                       1.0, places=1,
+                                       msg=f"{square} should be a square icon")
+        html = (CLIENT / "index.html").read_text(encoding="utf-8")
+        self.assertIn('class="pillbtn" id="hHist"', html,
+                      "history must use the pill slot its asset needs")
+        self.assertIn(".pillbtn{", html)

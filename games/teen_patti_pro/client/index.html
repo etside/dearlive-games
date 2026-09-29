@@ -46,6 +46,16 @@
     .hud-left,.hud-right{display:flex;gap:6px;align-items:center;min-width:0}
     .hud-left{flex:0 1 auto;overflow:hidden}
     .hud-right{flex:0 0 auto;margin-left:auto}
+    /* btn-history.svg is a 256x64 pill, not a 192x192 square icon like
+       btn-help / btn-settings. Forcing it into the square iconbtn slot with
+       background-size:contain squashed it into an unreadable box. It gets its
+       own slot at the asset's natural aspect instead. */
+    .pillbtn{height:38px;padding:0 12px;border-radius:999px;cursor:pointer;
+      background:rgba(8,12,24,.82);border:1px solid rgba(255,255,255,.16);
+      color:#e8eefc;font:600 .78rem/1 inherit;white-space:nowrap;
+      background-size:contain;background-repeat:no-repeat;
+      background-position:center}
+    .pillbtn:focus-visible{outline:3px solid var(--dl-cyan);outline-offset:2px}
   .iconbtn{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
     background:rgba(8,12,24,.82);border:1px solid rgba(255,255,255,.16);
     color:#e8eefc;font-size:1.05rem;cursor:pointer;padding:0;
@@ -145,7 +155,7 @@
       <span class="latency" id="latency" data-state="ok" aria-live="off"></span>
     </span>
     <button type="button" class="iconbtn" id="hSound" aria-label="Toggle sound" aria-pressed="true">&#9835;</button>
-    <button type="button" class="iconbtn" id="hHist" aria-label="History"></button>
+    <button type="button" class="pillbtn" id="hHist" aria-label="History"></button>
     <button type="button" class="iconbtn" id="hHelp" aria-label="How to play">?</button>
     <button type="button" class="iconbtn" id="hMenu" aria-label="Menu">&#9776;</button>
   </div>
