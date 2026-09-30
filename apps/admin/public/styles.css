@@ -93,3 +93,16 @@ tbody tr:hover{background:var(--surface-2)}
 .toast.ok{border-color:var(--ok)}
 .toast.bad{border-color:var(--bad)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+
+/* ---- rooms + sessions generator ------------------------------------- */
+.field{display:grid;gap:4px;margin-bottom:10px;font-size:.85rem;color:var(--muted)}
+.field input{padding:9px 10px;border-radius:8px;border:1px solid var(--line);
+  background:#0b1530;color:var(--text);font-size:.95rem;width:100%;max-width:420px}
+.field input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.form{display:grid;gap:10px;justify-items:start}
+.form textarea{width:100%;max-width:520px;padding:9px 10px;border-radius:8px;
+  border:1px solid var(--line);background:#0b1530;color:var(--text);
+  font-family:ui-monospace,Menlo,monospace;font-size:.85rem}
+.row-actions{display:inline-flex;gap:6px;flex-wrap:wrap}
+td.actions{white-space:nowrap}
+.load{margin-top:4px}

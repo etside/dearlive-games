@@ -2143,8 +2143,15 @@ audit_entity="game", audit_entity_id=m.group(1),
                             else 0
                     except Exception:
                         members = 0
+                    # join_url is built here rather than in the console: the
+                    # public base is a server concern, and a client that
+                    # assembled the URL from the room id would silently
+                    # produce a link to the wrong host.
                     rooms.append({**meta, "active": room_id in self.svc.rooms,
-                                  "players_count": members})
+                                  "players_count": members,
+                                  "join_url": self._public_base()
+                                  + "/teen-patti-pro?operator=demo&room="
+                                  + urllib.parse.quote(room_id, safe="")})
                 return self.ok({"rooms": rooms})
             if path == "/api/v1/admin/sessions":
                 denied = self.require_role("auditor")
@@ -2169,9 +2176,16 @@ audit_entity="game", audit_entity_id=m.group(1),
                         continue
                     if want_active in ("false", "0", "no") and live:
                         continue
+                    # play_url only while the token still resolves. Handing
+                    # out a link that is already dead is worse than showing
+                    # none, so a revoked session carries the URL as null.
+                    play_url = (self._public_base()
+                                + "/api/v1/provider/launch/" + e["token"]
+                                ) if live and e.get("token") else None
                     out.append({"session_id": sid,
                                 "player_id": e.get("player_id"),
                                 "room": e.get("room"),
+                                "play_url": play_url,
                                 "expires_at": e.get("expires_at"),
                                 "expires_at_ms": e.get("expires_at_ms"),
                                 "status": "active" if live else "revoked",

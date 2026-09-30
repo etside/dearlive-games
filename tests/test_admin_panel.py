@@ -57,11 +57,19 @@ class PanelSourceTest(unittest.TestCase):
         for name, word in SRS_SECTIONS.items():
             self.assertIn(word, low, f"section {name} has no '{word}' anywhere")
 
-    def test_exactly_nine_sections_plus_scheduled(self):
-        # Scheduled is a tenth, added because the SRS asks for date-and-time
-        # config changes. Anything beyond that is scope the package did not get.
+    def test_exactly_the_expected_sections(self):
+        # Ten were built for the SRS: nine plus Scheduled, which the SRS asks
+        # for by name. Rooms and Sessions are an eleventh and a twelfth, added
+        # because the admin room and session endpoints existed with nothing in
+        # the console able to reach them -- an operator had to mint a playable
+        # link with curl. Listed explicitly so a section cannot be added or
+        # dropped without this being an intentional edit.
+        expected = {"dashboard", "risk", "players", "packages", "rules",
+                    "toggle", "audit", "reports", "settings", "scheduled",
+                    "rooms", "sessions"}
         registered = set(re.findall(r"SECTIONS\.(\w+)\s*=", self.js))
-        self.assertEqual(len(registered), 10, sorted(registered))
+        self.assertEqual(registered, expected,
+                         sorted(registered ^ expected))
 
     def test_every_section_is_registered_as_a_route(self):
         registered = set(re.findall(r"SECTIONS\.(\w+)\s*=", self.js))

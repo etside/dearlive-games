@@ -114,12 +114,52 @@
       return h("tr", null, cols.map(function (c) {
         var v = typeof c === "function" ? c(row) : row[c];
         if (v === null || v === undefined) v = "—";
+        // A cell may be a DOM node, so a column can hold a button. String(v)
+        // on a node is "[object HTMLButtonElement]", which is how action
+        // columns used to render as literal that text.
+        if (v instanceof Node) return h("td", { class: "actions" }, v);
         return h("td", { class: typeof v === "number" ? "mono" : null,
                          text: String(v) });
       }));
     });
     return h("div", { class: "tablewrap" },
              h("table", null, [h("thead", null, [head]), h("tbody", null, body)]));
+  }
+
+  /* Clipboard with a visible confirmation. navigator.clipboard is unavailable
+   * on http:// and in older WebViews, so there is a textarea fallback rather
+   * than a button that silently does nothing. */
+  function copyText(value, button) {
+    var original = button ? button.textContent : null;
+    function done(ok) {
+      if (!button) return;
+      button.textContent = ok ? "Copied" : "Copy failed";
+      setTimeout(function () { button.textContent = original; }, 1400);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(value).then(function () { done(true); },
+                                                 function () { done(false); });
+      return;
+    }
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = value;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      done(document.execCommand("copy"));
+      document.body.removeChild(ta);
+    } catch (e) {
+      done(false);
+    }
+  }
+
+  function copyButton(value, label) {
+    var btn = h("button", { class: "ghost", text: label || "Copy" });
+    btn.addEventListener("click", function () { copyText(value, btn); });
+    return btn;
   }
 
   function kpi(label, value) {
@@ -737,6 +777,228 @@
         h("button", { class: "primary", text: "Continue", onclick: go })
       ])
     ]));
+  }
+
+
+  /* ------------------------------------------------------------ rooms ----
+   * A room is a table an operator opens and hands out links to. The join URL
+   * is minted here and is the thing people actually share, so it is a
+   * first-class column with a copy button rather than something to read off a
+   * JSON blob.
+   */
+  SECTIONS.rooms = {
+    label: "Rooms",
+    build: function (mount) {
+      var refresh = function () {
+        mount.node.innerHTML = "";
+        mount.node.appendChild(h("div", { class: "card" }, [
+          h("h3", { text: "Create a room" }),
+          varField("name", "Room name", "e.g. high-stakes"),
+          varField("currency", "Currency", "COIN"),
+          varField("chip_denoms", "Chip denominations",
+                   "1000, 10000, 50000, 100000"),
+          varField("betting_duration_sec", "Betting window (seconds)", "30"),
+          h("button", { text: "Create room", onclick: function (ev) {
+            var name = ev.target.form.elements.name.value.trim();
+            if (!name) { toast("A room needs a name.", "bad"); return; }
+            var denoms = ev.target.form.elements.chip_denoms.value
+              .split(",").map(function (x) { return parseInt(x, 10); })
+              .filter(function (n) { return n > 0; });
+            request("POST", "/admin/rooms", {
+              name: name,
+              currency: ev.target.form.elements.currency.value.trim() || "COIN",
+              chip_denoms: denoms.length ? denoms : undefined,
+              betting_duration_sec: parseInt(
+                ev.target.form.elements.betting_duration_sec.value, 10) || 30
+            }).then(function () { refresh(); })
+              .catch(function (e) { toast(e.message, "bad"); });
+          } })
+        ]));
+        mount.node.appendChild(h("div", { class: "card" }, [
+          h("h3", { text: "Rooms" }),
+          h("p", { class: "sub", text:
+            "Live state. Rooms reset when the service restarts; a link minted "
+            + "for a room that no longer exists will not seat anyone." }),
+          h("div", { class: "load" }, loadRooms(refresh))
+        ]));
+      };
+      refresh();
+    }
+  };
+
+  function varField(name, label, placeholder) {
+    return h("label", { class: "field" }, [
+      h("span", { text: label }),
+      h("input", { name: name, placeholder: placeholder || "", required: false })
+    ]);
+  }
+
+  function loadRooms(refresh) {
+    return request("GET", "/admin/rooms").then(function (d) {
+      var rooms = d.rooms || [];
+      return table(
+        ["name", "room_id", "active", "created", ""],
+        rooms.map(function (r) {
+          return {
+            name: r.name,
+            room_id: r.room_id,
+            active: r.players_count,
+            created: when(r.created_at),
+            _r: r
+          };
+        }).map(function (row) {
+          var del = h("button", { class: "ghost", text: "Delete" });
+          del.addEventListener("click", function () {
+            if (!window.confirm("Delete room " + row.room_id + "?")) return;
+            request("DELETE", "/admin/rooms/" + encodeURIComponent(row.room_id))
+              .then(refresh)
+              .catch(function (e) { toast(e.message, "bad"); });
+          });
+          var actions = h("span", { class: "row-actions" }, [del]);
+          if (row._r.join_url) actions.appendChild(
+            copyButton(row._r.join_url, "Copy join URL"));
+          return h("tr", null, [
+            h("td", { text: String(row.name) }),
+            h("td", { class: "mono", text: String(row.room_id) }),
+            h("td", { class: "mono", text: String(row.active) }),
+            h("td", { text: row.created }),
+            h("td", { class: "actions" }, actions)
+          ]);
+        }),
+        "No rooms yet. Create one to get started.");
+    });
+  }
+
+  /* --------------------------------------------------------- sessions ----
+   * Session links are how a player is admitted to a table. The URL is the
+   * deliverable, so it is shown in full with a copy button, alongside when it
+   * stops working -- a link nobody can date is a support ticket later.
+   */
+  SECTIONS.sessions = {
+    label: "Sessions",
+    build: function (mount) {
+      var refresh = function () {
+        mount.node.innerHTML = "";
+        mount.node.appendChild(h("div", { class: "card" }, [
+          h("h3", { text: "Mint a session link" }),
+          varField("player_id", "Player id", "e.g. test_player_1"),
+          varField("room", "Room", "teen-patti-low"),
+          h("button", { text: "Generate URL", onclick: function (ev) {
+            var f = ev.target.form.elements;
+            var pid = f.player_id.value.trim();
+            if (!pid) { toast("A player id is required.", "bad"); return; }
+            request("POST", "/admin/sessions/mint",
+                    { player_id: pid, room: f.room.value.trim() || undefined })
+              .then(function (d) {
+                toast("Minted for " + d.player_id + " — expires "
+                      + when(d.expires_at), "ok");
+                refresh();
+              })
+              .catch(function (e) { toast(e.message, "bad"); });
+          } })
+        ]));
+        mount.node.appendChild(h("div", { class: "card" }, [
+          h("h3", { text: "Bulk mint" }),
+          h("p", { class: "sub", text:
+            "One player id per line, up to 100. The CSV downloads with a "
+            + "play_url per row. Minting is rate limited to 100 per hour." }),
+          bulkForm(refresh)
+        ]));
+        mount.node.appendChild(h("div", { class: "card" }, [
+          h("h3", { text: "Active sessions" }),
+          h("div", { class: "load" }, loadSessions(refresh))
+        ]));
+      };
+      refresh();
+    }
+  };
+
+  function bulkForm(refresh) {
+    var area = h("textarea", { name: "player_ids", rows: "5",
+      placeholder: "player_one\nplayer_two\nplayer_three" });
+    var room = h("input", { name: "room", placeholder: "teen-patti-low" });
+    var run = h("button", { text: "Mint all" });
+    run.addEventListener("click", function () {
+      var ids = area.value.split("\n").map(function (x) { return x.trim(); })
+        .filter(Boolean);
+      if (!ids.length) { run.textContent = "Enter at least one player id"; return; }
+      if (ids.length > 100) { run.textContent = "Maximum 100 per call"; return; }
+      run.disabled = true;
+      run.textContent = "Minting…";
+      request("POST", "/admin/sessions/bulk",
+              { player_ids: ids, room: room.value.trim() || undefined })
+        .then(function (d) {
+          var rows = d.sessions || [];
+          downloadCsv(rows);
+          if (d.errors && d.errors.length) {
+            run.textContent = rows.length + " minted, "
+              + d.errors.length + " failed";
+          } else {
+            run.textContent = rows.length + " minted — CSV downloaded";
+          }
+          refresh();
+        })
+        .catch(function (e) { run.textContent = e.message; })
+        .then(function () {
+          setTimeout(function () { run.disabled = false; }, 1500);
+        });
+    });
+    return h("form", { class: "form", onsubmit: function (e) { e.preventDefault(); } }, [
+      area, room, run
+    ]);
+  }
+
+  function downloadCsv(rows) {
+    // RFC 4180 quoting: a player id with a comma or a quote in it would
+    // otherwise produce a CSV that silently shifts every later column.
+    var esc = function (v) {
+      var s = String(v === null || v === undefined ? "" : v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    var lines = ["player_id,room,play_url,expires_at"].concat(
+      rows.map(function (r) {
+        return [r.player_id, r.room, r.play_url, r.expires_at].map(esc).join(",");
+      }));
+    var blob = new Blob([lines.join("\r\n") + "\r\n"],
+                        { type: "text/csv;charset=utf-8" });
+    var a = h("a", { href: URL.createObjectURL(blob),
+                     download: "teen-patti-sessions.csv" });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function loadSessions(refresh) {
+    return request("GET", "/admin/sessions").then(function (d) {
+      var rows = d.sessions || [];
+      return table(
+        ["player_id", "room", "created", "expires", ""],
+        rows.map(function (r) {
+          return h("tr", null, [
+            h("td", { class: "mono", text: String(r.player_id) }),
+            h("td", { class: "mono", text: String(r.room) }),
+            h("td", { text: when(r.created_at) }),
+            h("td", { text: when(r.expires_at) }),
+            h("td", { class: "actions" }, sessionActions(r, refresh))
+          ]);
+        }),
+        "No active sessions.");
+    });
+  }
+
+  function sessionActions(r, refresh) {
+    var wrap = h("span", { class: "row-actions" });
+    if (r.play_url) wrap.appendChild(copyButton(r.play_url, "Copy play URL"));
+    var revoke = h("button", { class: "ghost", text: "Revoke" });
+    revoke.addEventListener("click", function () {
+      request("DELETE", "/admin/sessions/"
+              + encodeURIComponent(r.session_id))
+        .then(refresh)
+        .catch(function (e) { revoke.textContent = e.message; });
+    });
+    wrap.appendChild(revoke);
+    return wrap;
   }
 
   function current() {
