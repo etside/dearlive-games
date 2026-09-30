@@ -306,24 +306,6 @@
     setVeil(null);
   }
 
-  // ---- loading clip -------------------------------------------------
-  // Dismissed as soon as the first snapshot lands, in either direction: a
-  // snapshot over the websocket or one over the polling fallback. It is
-  // removed rather than left on a transparent overlay, because a stuck
-  // preloader over a playable table is the worst possible failure.
-  const _boot = document.getElementById('tpp-boot');
-  const _bootVideo = document.getElementById('tpp-boot-video');
-  let _bootGone = false;
-  function dismissBoot() {
-    if (_bootGone || !_boot) return;
-    _bootGone = true;
-    // Autoplay is refused unless muted+playsinline, which is set in the markup,
-    // but a WebView can still reject it. Never let that block the table.
-    try { if (_bootVideo) { _bootVideo.pause(); _bootVideo.removeAttribute('src'); } } catch (e) {}
-    _boot.classList.add('is-out');
-    setTimeout(function () { if (_boot && _boot.parentNode) _boot.parentNode.removeChild(_boot); }, 320);
-  }
-
   // ---- event_id idempotency ------------------------------------------
   // The server stamps every event with a uuid. A socket that drops mid-round
   // redelivers on resubscribe, and a snapshot refetch can race an in-flight
@@ -2320,7 +2302,6 @@
     try {
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
-      dismissBoot();
       syncClock(S.snap && S.snap.serverTime);
       if (setDenoms(S.snap && S.snap.denoms)) refresh();
       refreshAppearances(S.snap);
@@ -2575,7 +2556,6 @@
         const m = JSON.parse(ev.data);
         if (m.kind === 'snapshot' && m.data) {
           S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now();
-          dismissBoot();
           syncClock(S.snap && S.snap.serverTime);
           if (setDenoms(S.snap && S.snap.denoms)) refresh();
           refreshAppearances(m.data);

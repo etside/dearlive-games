@@ -147,66 +147,6 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class LoadingClipTest(unittest.TestCase):
-    """The reference "blank to full" clip is a preloader, not a decoration.
-
-    It covers the canvas until the first snapshot lands, and is removed then --
-    on the websocket path AND on the polling fallback, because a table that
-    fell back to polling has a snapshot too and would otherwise be stuck behind
-    a preloader it can never satisfy.
-    """
-    def setUp(self):
-        root = os.path.join(ROOT, "games", "teen_patti_pro", "client")
-        with open(os.path.join(root, "index.html"), encoding="utf-8") as fh:
-            self.html = fh.read()
-        with open(os.path.join(root, "game.js"), encoding="utf-8") as fh:
-            self.js = fh.read()
-
-    def test_the_clip_ships_with_the_game(self):
-        p = os.path.join(ROOT, "assets", "teen-patti", "loading-blank-to-full.mp4")
-        self.assertTrue(os.path.isfile(p), "the loading clip is missing")
-        self.assertGreater(os.path.getsize(p), 10_000, "the clip is truncated")
-
-    def test_autoplay_is_possible(self):
-        # iOS and most WebViews refuse autoplay unless muted + playsinline.
-        # Without both, the preloader shows a black frame forever.
-        self.assertIn("muted", self.html)
-        self.assertIn("playsinline", self.html)
-        self.assertIn("autoplay", self.html)
-
-    def test_it_is_removed_not_just_faded(self):
-        self.assertIn("removeChild(_boot)", self.js,
-                      "a preloader left in the DOM can cover a playable table")
-        self.assertIn("dismissBoot", self.js)
-
-    def test_both_snapshot_paths_dismiss_it(self):
-        # Exactly two call sites: the websocket snapshot and the polling
-        # snapshot. Asserting three was wrong -- `function dismissBoot()` is a
-        # declaration, not a call, and a third call site would mean a third
-        # path had grown one.
-        self.assertEqual(self.js.count("dismissBoot();"), 2,
-                         "expected one call in the ws path and one in the "
-                         "polling path")
-        # And they must sit in the two different snapshot handlers.
-        # Tolerant of the statements in between: the ws handler sets srvNow and
-        # locNow between the assignment and the dismissal, so a [^;]* pattern
-        # cannot span them.
-        self.assertRegex(self.js, r"S\.snap = m\.data;[\s\S]{0,160}?dismissBoot\(\);",
-                         "the websocket snapshot must dismiss the preloader")
-        self.assertRegex(self.js, r"rounds/current[\s\S]{0,200}?dismissBoot\(\);",
-                         "the polling snapshot must dismiss the preloader")
-
-    def test_reduced_motion_replaces_the_clip(self):
-        self.assertIn("prefers-reduced-motion", self.html,
-                      "a looping clip must be replaced under reduced motion")
-
-    def test_it_sits_above_the_canvas(self):
-        import re
-        m = re.search(r"\.tpp-boot\{[^}]*z-index:(\d+)", self.html)
-        self.assertIsNotNone(m, "no preloader z-index")
-        self.assertGreaterEqual(int(m.group(1)), 8,
-                                "the preloader must sit above the canvas and the veil")
-
 
 class ClientEventIdempotencyTest(unittest.TestCase):
     """An effect must be keyed on event_id, not on arrival."""
@@ -241,38 +181,3 @@ class ClientEventIdempotencyTest(unittest.TestCase):
                       "an unbounded set is a slow memory leak in a long session")
 
 
-class AssetHandlerServesTheClipTest(unittest.TestCase):
-    """The handler's suffix allowlist has to include what we actually ship.
-
-    The clip was committed, present on disk, referenced by the shell, and still
-    returned 404 -- the allowlist held .svg/.png/.webp/.jpg/.jpeg/.json and no
-    video type. That presents as a missing asset, and the symptom is a preloader
-    stuck on a black frame rather than any error.
-    """
-    def setUp(self):
-        with open(os.path.join(ROOT, "games", "teen_patti_pro", "api.py"),
-                  encoding="utf-8") as fh:
-            self.api = fh.read()
-
-    def test_video_suffixes_are_allowed(self):
-        import re
-        m = re.search(r"ASSET_SUFFIXES = \((.*?)\)", self.api, re.S)
-        self.assertIsNotNone(m, "ASSET_SUFFIXES not found")
-        for ext in (".mp4", ".webm"):
-            self.assertIn(ext, m.group(1), "%s is not served" % ext)
-
-    def test_video_suffixes_have_a_mime_type(self):
-        import re
-        m = re.search(r"ASSET_MIME = \{(.*?)\}", self.api, re.S)
-        self.assertIsNotNone(m, "ASSET_MIME not found")
-        for mime in ("video/mp4", "video/webm"):
-            self.assertIn(mime, m.group(1), "%s has no mime mapping" % mime)
-
-    def test_the_allowlist_still_refuses_arbitrary_types(self):
-        """Adding video must not turn the handler into a file server."""
-        import re
-        m = re.search(r"ASSET_SUFFIXES = \((.*?)\)", self.api, re.S)
-        allowed = m.group(1)
-        for bad in (".py", ".sh", ".env", ".sql", ".pem", ".key"):
-            self.assertNotIn(bad, allowed,
-                             "%s must never be servable" % bad)

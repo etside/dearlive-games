@@ -252,8 +252,9 @@ class UiRequirementTest(unittest.TestCase):
         self.assertIn("spin", region, "HUD spinner not covered")
         self.assertIn("animation:none", region,
                       "connection blink must be disabled, not just slowed")
-        self.assertIn(".tpp-boot", "".join(blocks),
-                      "the loading clip must be covered by reduced motion")
+        # The preloader that briefly needed covering here was removed again --
+        # a 1536x1024 clip cover-fit into a portrait phone dominates the view.
+        # No video ships, so there is nothing left to neutralise.
         for name in ("@keyframes spin", "@keyframes blink"):
             self.assertIn(name, HTML, f"{name} missing")
 

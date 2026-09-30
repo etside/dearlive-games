@@ -98,16 +98,6 @@
   .latency{font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
   .latency[data-state="bad"]{color:#f87171}
   .latency[data-state="warn"]{color:var(--dl-accent)}
-  /* Preloader: the reference "blank to full" clip, over the canvas.
-   * Shown only while the first snapshot is outstanding, and removed outright
-   * once one arrives -- it is never left on top of a playable table. */
-  .tpp-boot{position:fixed;inset:0;z-index:9;display:grid;place-items:center;
-    background:#160a26;transition:opacity .28s ease-out}
-  .tpp-boot[hidden]{display:none}
-  .tpp-boot video{width:100%;height:100%;object-fit:cover;display:block}
-  .tpp-boot.is-out{opacity:0;pointer-events:none}
-@keyframes tpp-boot-spin{to{transform:rotate(360deg)}}
-
   /* UI-12: loading and empty. Shown over the canvas, never instead of it. */
   .veil{position:fixed;inset:0;z-index:8;display:none;place-items:center;
     background:rgba(5,9,20,.86);padding:24px;text-align:center}
@@ -121,13 +111,6 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){
     .veil .spin{animation-duration:3s}
-    /* The loading clip is motion, so under reduced motion it is replaced by a
-       plain spinner rather than merely slowed -- a 5s looping clip is exactly
-       what the preference is asking to be spared. */
-    .tpp-boot video{display:none}
-    .tpp-boot::after{content:"";width:56px;height:56px;border-radius:50%;
-      border:4px solid rgba(255,213,74,.28);border-top-color:#ffd54a;
-      animation:tpp-boot-spin 1.1s linear infinite}
     .pill[data-conn="connecting"] .dot{animation:none}
       white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
     /* The room/round pill is the only elastic element in the bar; the icon
@@ -326,10 +309,5 @@
     window.addEventListener('keydown', function () { document.body.classList.add('kb'); }, { once: true });
   });
 </script>
-<div class="tpp-boot" id="tpp-boot">
-  <video id="tpp-boot-video" src="/assets/teen-patti/loading-blank-to-full.mp4"
-         muted playsinline autoplay loop preload="auto"
-         aria-label="Loading Teen Patti Pro"></video>
-</div>
 </body>
 </html>
