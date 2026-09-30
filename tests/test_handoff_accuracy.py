@@ -105,11 +105,18 @@ class HandoffCommandClaimsTest(unittest.TestCase):
 
     def test_migration_numbering_is_described_accurately(self):
         up = sorted((ROOT / "db/migrations").glob("*.up.sql"))
-        # 001 is a single file; 002-007 have .up/.down pairs. Six up-files,
-        # numbered to 007.
-        self.assertEqual(len(up), 6)
-        self.assertTrue(any(p.name.startswith("007") for p in up))
-        self.assertIn("001-007", HANDOFF)
+        # 001 is a single file; 002-008 have .up/.down pairs. Seven up-files,
+        # numbered to 008. Every .up.sql must have a matching .down.sql, or
+        # the handoff cannot honestly say so.
+        self.assertEqual(len(up), 7, "expected 001 plus 002-008")
+        self.assertTrue(any(p.name.startswith("008") for p in up))
+        for p in up:
+            if p.name.startswith("001"):
+                continue
+            down = p.with_name(p.name.replace(".up.sql", ".down.sql"))
+            self.assertTrue(down.is_file(),
+                            "missing down migration for %s" % p.name)
+        self.assertIn("001-008", HANDOFF)
         self.assertIn(".up.sql", HANDOFF,
                       "the up/down file layout should be stated")
 

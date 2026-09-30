@@ -8,7 +8,7 @@ database. Before this, admin reads were served from in-process state
 hardcoded zeros, so there was nothing to make real.
 
 Four specification tables mapped onto tables that already exist
-(``coin_package``, ``game_configuration``, ``audit_log``), and this module
+(``token_package``, ``game_configuration``, ``audit_log``), and this module
 covers the four that did not: ``profit_risk_config``, ``player_override``,
 ``vip_tier`` and ``withdrawal_request``. It also provides version history and
 rollback on top of the already-versioned ``game_configuration`` table, so
@@ -138,7 +138,7 @@ class AdminStore:
     # -- dashboard --
     def dashboard_kpis(self) -> Dict[str, Any]: ...
 
-    # -- token packages (coin_package) --
+    # -- token packages (token_package) --
     def list_packages(self, active_only: bool = False) -> List[Dict[str, Any]]: ...
     def get_package(self, package_id: str) -> Optional[Dict[str, Any]]: ...
     def create_package(self, **kw) -> Dict[str, Any]: ...
@@ -262,13 +262,21 @@ class PostgresAdminStore(AdminStore):
         if conn is not None and hasattr(conn, "rollback"):
             conn.rollback()
 
-    # -- token packages (coin_package) --
+    # -- token packages (token_package) --
     #
     # "Delete" is a soft archive (is_active = FALSE) rather than a row removal.
     # A package may already have been bought, and the wallet_transaction rows
     # from that purchase must not be left pointing at a package that no longer
     # exists.
 
+    # The pricing catalogue's real table. This used to be `coin_package`, which
+    # does not exist on any deployed database: 007 created the spec-named
+    # `token_package`, and every query here was failing against it. A view would
+    # not work either, because this name is written as well as read, and a view
+    # is not insertable. `token_package` already carries every column below
+    # under the same name, so the identifier is redirected rather than the data
+    # copied -- there is now one catalogue, and admin edits the real rows.
+    _PKG_TABLE = "token_package"
     _PKG_COLS = ("package_id", "name", "coins", "price_minor", "currency",
                  "bonus_percent", "bonus_coins", "is_active", "sort_order",
                  "tags", "created_at", "updated_at")
@@ -276,7 +284,7 @@ class PostgresAdminStore(AdminStore):
     def list_packages(self, active_only: bool = False) -> List[Dict[str, Any]]:
         cur = self._cursor_factory()
         try:
-            sql = "SELECT " + ", ".join(self._PKG_COLS) + " FROM coin_package "
+            sql = "SELECT " + ", ".join(self._PKG_COLS) + " FROM " + self._PKG_TABLE + " "
             if active_only:
                 sql += "WHERE is_active "
             sql += "ORDER BY sort_order, package_id"
@@ -297,7 +305,7 @@ class PostgresAdminStore(AdminStore):
         cur = self._cursor_factory()
         try:
             cur.execute("SELECT " + ", ".join(self._PKG_COLS) +
-                        " FROM coin_package WHERE package_id = %s", (package_id,))
+                        " FROM " + self._PKG_TABLE + " WHERE package_id = %s", (package_id,))
             r = cur.fetchone()
             return self._pkg_row(r) if r else None
         finally:
@@ -307,7 +315,7 @@ class PostgresAdminStore(AdminStore):
         cur = self._cursor_factory()
         try:
             cur.execute(
-                "INSERT INTO coin_package (package_id, name, coins, price_minor, "
+                "INSERT INTO " + self._PKG_TABLE + " (package_id, name, coins, price_minor, "
                 "currency, bonus_percent, bonus_coins, is_active, sort_order, tags) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING " +
                 ", ".join(self._PKG_COLS),
@@ -342,7 +350,7 @@ class PostgresAdminStore(AdminStore):
         params.append(package_id)
         cur = self._cursor_factory()
         try:
-            cur.execute("UPDATE coin_package SET " + ", ".join(sets) +
+            cur.execute("UPDATE " + self._PKG_TABLE + " SET " + ", ".join(sets) +
                         ", updated_at = NOW() WHERE package_id = %s RETURNING " +
                         ", ".join(self._PKG_COLS), tuple(params))
             r = cur.fetchone()
@@ -359,7 +367,7 @@ class PostgresAdminStore(AdminStore):
     def archive_package(self, package_id: str) -> bool:
         cur = self._cursor_factory()
         try:
-            cur.execute("UPDATE coin_package SET is_active = FALSE, "
+            cur.execute("UPDATE " + self._PKG_TABLE + " SET is_active = FALSE, "
                         "updated_at = NOW() WHERE package_id = %s "
                         "AND is_active", (package_id,))
             changed = cur.rowcount

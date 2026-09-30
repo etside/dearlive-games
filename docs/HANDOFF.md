@@ -129,9 +129,16 @@ anything.
    export DATABASE_URL='postgresql://...'
    bash scripts/apply-migration.sh
    ```
-   Migrations are numbered 001-007 and applied in order. They are additive and
-   idempotent, so re-running is safe. 001 is a single file; 002-007 each have
+   Migrations are numbered 001-008 and applied in order. They are additive and
+   idempotent, so re-running is safe. 001 is a single file; 002-008 each have
    `.up.sql` and `.down.sql`.
+
+   008 is the exception to "additive": it adds read-compat views
+   (`rounds`, `bets`, `settlements`) over the `game_*` ledger tables, because
+   the admin queries were written against names no deployed database had. The
+   views read the ledger directly rather than copying it, so the dashboard
+   cannot drift from the settlement record. It also adds `version`,
+   `confirmed` and `tbc` to `game_configuration` for the rules endpoints.
 
 4. Fill `.env` with the variables above. See `.env.example` for the full list.
 
