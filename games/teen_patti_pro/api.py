@@ -1866,8 +1866,17 @@ audit_entity="game", audit_entity_id=m.group(1),
                 except AdminStoreUnavailable as exc:
                     return self.send(503, E.err(str(exc), E.E_INTERNAL))
                 except Exception as exc:
+                    # UndefinedColumn / UndefinedTable with no detail is
+                    # undiagnosable from the response: the operator sees only
+                    # the exception class. Log the driver's message, which
+                    # names the table and column, and include it in the reply
+                    # so the console can show something actionable. This is a
+                    # read-only admin path, so there is nothing secret in it.
+                    log.exception("admin dashboard_kpis failed")
                     return self.send(502, E.err(
-                        f"admin dashboard query failed: {type(exc).__name__}",
+                        "admin dashboard query failed: "
+                        f"{type(exc).__name__}: "
+                        f"{str(getattr(exc, 'diag', None) and exc.diag.message_primary or exc)}",
                         E.E_INTERNAL))
                 # Settlement health is live engine state, not a database fact:
                 # a round stuck in SETTLED_PENDING exists only in memory until it
