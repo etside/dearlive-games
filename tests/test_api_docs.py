@@ -1,4 +1,5 @@
 """GET /api-docs serves the player integration docs page."""
+import os
 import re
 import sys
 import threading
@@ -197,3 +198,65 @@ class IntegrationGuidesTest(unittest.TestCase):
         # button.copy is position:absolute. A static wrapper anchors it to the
         # page, so the button lands nowhere near the code it copies.
         self.assertRegex(self.HTML, r"\.code\{position:relative")
+
+
+class DocsMatchTheWireTest(unittest.TestCase):
+    """The documented events must be exactly the emitted events.
+
+    The events table once listed round.opened, round.updated and round.closed,
+    of which the server emits none: an integration listening for those names
+    hears nothing, forever, with no error to explain why. Conversely, real
+    events that are not documented (bet.accepted, betting.opened,
+    result.declared) leave an integrator guessing at the contract.
+
+    So this asserts both directions against common/webhooks.py, which is the
+    allowlist: every allowlisted event must appear in the docs, and every
+    dotted event name the docs claim must be allowlisted.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ast as _ast
+        with open(str(Path(__file__).resolve().parents[1] / "common" / "webhooks.py"), encoding="utf-8") as fh:
+            tree = _ast.parse(fh.read())
+        ev = next(n for n in _ast.walk(tree)
+                  if isinstance(n, _ast.Assign)
+                  and getattr(n.targets[0], "id", "") == "EVENTS")
+        cls.allowlist = set(_ast.literal_eval(ev.value))
+        with open(str(Path(__file__).resolve().parents[1] / "apps" / "player" / "public" / "api-docs.html"),
+                  encoding="utf-8") as fh:
+            cls.docs = fh.read()
+
+    def test_every_allowlisted_event_is_documented(self):
+        import re
+        documented = set(re.findall(r"<code>([a-z][a-z0-9_.]+)</code>", self.docs))
+        missing = {e for e in self.allowlist if e not in documented}
+        self.assertEqual(missing, set(),
+                         "emitted but undocumented events: %s" % sorted(missing))
+
+    def test_no_documented_event_name_is_fictional(self):
+        """A documented name that is not on the wire is the worse failure.
+
+        Scoped to the WebSocket section, because that is where event names
+        live: elsewhere in the doc a dotted lowercase token is a field path
+        like `data.code`, not an event. The deliberate callouts that say
+        `round.opened` and friends were removed are matched by name and
+        excluded, since their whole point is to warn an integrator off them.
+        """
+        import re
+        sec = re.search(r'<section id="ws">(.*?)</section>', self.docs, re.S)
+        self.assertIsNotNone(sec, "no WebSocket section in the docs")
+        body = sec.group(1)
+        body = re.sub(r"\(No <code>round\.opened</code> exists.*?\)", "", body)
+        documented = set(re.findall(r"<code>([a-z][a-z0-9_.]+)</code>", body))
+        fictional = {d for d in documented
+                     if "." in d
+                     and d not in self.allowlist
+                     and d not in ("error",)
+                     and not d.startswith("data.")
+                     # The doc explicitly warns these three off; that warning
+                     # is the whole point of naming them.
+                     and d not in ("round.opened", "round.updated",
+                                   "round.closed")}
+        self.assertEqual(fictional, set(),
+                         "documented but never emitted: %s" % sorted(fictional))

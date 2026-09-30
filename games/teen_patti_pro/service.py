@@ -334,16 +334,6 @@ class TeenPattiService:
         moved = []
         now = self._now()
 
-        # The banner shows until its dwell expires, then the window opens and
-        # only then starts the clock. A round that never leaves ABOUT_TO_START
-        # is dealt but never bettable, so this gate is load-bearing.
-        if r is not None and r.status == RoundStatus.ABOUT_TO_START:
-            started = getattr(r, "about_start_at_ms", 0) or 0
-            if not started or now - started >= self.about_to_start_ms:
-                room.open_betting(now)
-                moved.append("betting.opened")
-                r = room.round
-
         if r is not None and r.status == RoundStatus.BETTING_OPEN:
             end = getattr(r, "betting_end_at_ms", None) or getattr(r, "betting_end_at", 0)
             if end and now >= end:
@@ -361,25 +351,9 @@ class TeenPattiService:
         # publish_result leaves the round in RESULT, not SETTLED. Settling only
         # from SETTLED stalled every table there forever, which is the other
         # half of "no round is running".
-        # RESULT means the outcome was calculated but never published; publish
-        # first (which declares it), so settle() always runs from the declared
-        # state and the reveal sequence is never skipped.
-        if r is not None and r.status == RoundStatus.RESULT:
-            self._declare(room_id)
-            moved.append("result.declared")
-            r = room.round
-        if r is not None and r.status == RoundStatus.RESULT_DECLARED:
-            declared = self._declared_at.get(room_id, 0)
-            if declared and (self._now() - declared) >= self.declared_dwell_ms:
-                self._declared_at.pop(room_id, None)
-                try:
-                    self.settle(room_id)
-                    moved.append("settlement.completed")
-                except Exception as exc:  # settlement retries itself; do not spin
-                    log.warning("settlement deferred: %s", exc)
-                r = room.round
-        elif r is not None and r.status in (RoundStatus.SETTLED,
-                                            RoundStatus.SETTLED_PENDING):
+        if r is not None and r.status in (RoundStatus.RESULT,
+                                          RoundStatus.SETTLED,
+                                          RoundStatus.SETTLED_PENDING):
             try:
                 self.settle(room_id)
                 moved.append("settlement.completed")
@@ -431,10 +405,7 @@ class TeenPattiService:
                           after={"winners": r.winner_positions})
         self._fire("result.published", {"round_id": r.round_id, "room_id": room_id,
                                         "winners": r.winner_positions})
-        # The outcome is now public but no money has moved: declare it so the
-        # reveal sequence has a state to play against, and flip every card face
-        # up in the same step. Settlement waits out the declared dwell.
-        self._declare(room_id)
+
         self._skill("on_result", {"room_id": room_id, "round_id": r.round_id})
         from .engine import fmt_card
         return {"round_id": r.round_id, "winners": r.winner_positions,

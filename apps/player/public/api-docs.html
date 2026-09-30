@@ -339,21 +339,35 @@ curl -X POST https://api.ura-dhura.com/api/v1/sessions \
   the server answers <code>{"kind":"pong"}</code>. Snapshots arrive as
   <code>{"kind":"snapshot","data":{…}}</code>; errors as <code>{"kind":"error","data":{"code":…}}</code>.</p>
   <div class="note"><strong>Naming.</strong> The wire protocol uses the dotted SRS §8 names below,
-  not SCREAMING_CASE. Map them 1:1 when bridging to another convention.</div>
+  not SCREAMING_CASE. Map them 1:1 when bridging to another convention. This table is
+  generated from the server's own emit sites and its webhook allowlist -- there are
+  20 names, no more, and an unlisted <code>kind</code> never arrives.</div>
   <table>
     <tr><th>Wire event (<code>kind</code>)</th><th>Meaning</th></tr>
-    <tr><td><code>round.created</code></td><td>ROUND_CREATED — a new round object exists.</td></tr>
-    <tr><td><code>round.opened</code></td><td>ROUND_OPENED / GUESSING_STARTED — betting is live; countdown runs to <code>betting_end_at</code>.</td></tr>
-    <tr><td><code>round.updated</code></td><td>State refresh — covers bet accepted (BET_ACCEPTED), cards dealt (CARDS_DEALT) and general updates. Bet rejections arrive as <code>error</code>, not here.</td></tr>
-    <tr><td><code>betting.closed</code></td><td>BETTING_CLOSED — no further bets accepted.</td></tr>
-    <tr><td><code>result.processing</code></td><td>Result is being evaluated server-side.</td></tr>
-    <tr><td><code>result.declared</code></td><td>RESULT_DECLARED — winners and hands included (faces hidden until this event).</td></tr>
+    <tr><td><code>game.session.created</code></td><td>A session was minted.</td></tr>
+    <tr><td><code>player.joined</code> / <code>player.left</code></td><td>Membership changed. The engine keeps the seat by player identity, so a rejoin is a no-op for seating.</td></tr>
+    <tr><td><code>round.created</code></td><td>A new round object exists, in <code>ABOUT_TO_START</code>.</td></tr>
+    <tr><td><code>round.started</code></td><td>The round's timer and seed are set. (No <code>round.opened</code> exists -- that name was wrong in this table and has been removed.)</td></tr>
+    <tr><td><code>betting.opened</code></td><td>The window is live; countdown runs to <code>betting_end_at</code>. Emitted when <code>ABOUT_TO_START</code> ends.</td></tr>
+    <tr><td><code>bet.accepted</code></td><td>A bet was accepted with <code>bet_id</code>, <code>position</code> and <code>amount</code>. This is what the chip-flight animation is keyed on.</td></tr>
+    <tr><td><code>bet.rejected</code></td><td>A bet was refused. synchronous rejections also arrive as <code>error</code>.</td></tr>
+    <tr><td><code>betting.closed</code></td><td>BETTING_CLOSED -- no further bets accepted.</td></tr>
+    <tr><td><code>result.processing</code></td><td>The result is being evaluated server-side.</td></tr>
+    <tr><td><code>result.published</code></td><td>The outcome was calculated, with winners and full hands.</td></tr>
+    <tr><td><code>result.declared</code></td><td>RESULT_DECLARED -- the published outcome, now held while the reveal plays. Every remaining card is face-up from this event on.</td></tr>
     <tr><td><code>settlement.started</code></td><td>Settlement began.</td></tr>
-    <tr><td><code>settlement.completed</code></td><td>SETTLEMENT_COMPLETED — balances updated exactly once (idempotent).</td></tr>
-    <tr><td><code>balance.updated</code></td><td>Player balance changed; re-read the authoritative value.</td></tr>
-    <tr><td><code>round.closed</code></td><td>ROUND_CLOSED — the round is immutable; the next <code>round.created</code> starts a new round id.</td></tr>
+    <tr><td><code>settlement.completed</code></td><td>Money moved: <code>pot</code>, <code>rake</code> and <code>carry_out</code> included, exactly once per <code>bet_id</code>. This is the only event that may move a balance.</td></tr>
+    <tr><td><code>settlement.pending</code> / <code>settlement.failed</code></td><td>Settlement-retry path. <code>pending</code> is retryable; <code>failed</code> should alert. Neither is normal gameplay.</td></tr>
+    <tr><td><code>balance.updated</code></td><td>A balance changed; re-read the authoritative value from the wallet.</td></tr>
+    <tr><td><code>session.completed</code></td><td>A session ended.</td></tr>
+    <tr><td><code>round.cancelled</code></td><td>A round was cancelled.</td></tr>
     <tr><td><code>error</code></td><td>Failure with <code>data.code</code> (e.g. <code>UNAUTHENTICATED</code>, <code>BET_REJECTED</code>).</td></tr>
   </table>
+  <p>There is no <code>round.closed</code> event and no <code>round.updated</code> event.
+  Both names appeared in an earlier version of this table and neither is emitted: a
+  round ends when its status reaches <code>CLOSED</code>, and state changes arrive as
+  the specific events above. If your integration listens for either of those two names,
+  nothing will ever arrive.</p>
 </section>
 
 <section id="integration">

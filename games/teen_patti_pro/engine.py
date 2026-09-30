@@ -375,12 +375,9 @@ class Room:
             if self.round is not None and self.round.status not in (RoundStatus.SETTLED, RoundStatus.CLOSED):
                 raise LifecycleError("Previous round still active")
             self._round_no += 1
-            # Born in ABOUT_TO_START, not BETTING_OPEN. The betting deadline
-            # does not start until the window actually opens, so the ~1s banner
-            # and the deal animation are presentation, never lost betting time.
             r = Round(round_id=f"{self.room_id}-r{self._round_no}",
                       round_no=self._round_no, created_at_ms=now_ms,
-                      betting_end_at_ms=0,
+                      betting_end_at_ms=now_ms + self.config.guess_ms,
                       about_start_at_ms=now_ms,
                       seed_hex=seed_hex or secrets.token_hex(16),
                        carry_in=self.carry_over,
@@ -389,9 +386,9 @@ class Room:
             deck = shuffle_deck(r.seed_hex, self.config.jokers)
             r.deck_commit = deck_commitment(deck)
             r.hands = {p: deck[i * 3:(i + 1) * 3] for i, p in enumerate(self.config.seats)}
-            r.revealed = {p: [True, False, False] for p in self.config.seats}
-            transition(r.status, RoundStatus.ABOUT_TO_START)
-            r.status = RoundStatus.ABOUT_TO_START
+            r.revealed = {p: [False, False, False] for p in self.config.seats}
+            transition(r.status, RoundStatus.BETTING_OPEN)
+            r.status = RoundStatus.BETTING_OPEN
             r.emit("round.started", {"round_id": r.round_id,
                                      "betting_end_at": r.betting_end_at_ms}, now_ms)
             self.round = r
