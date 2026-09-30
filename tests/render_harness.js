@@ -41,7 +41,10 @@ const snapshot = snapshotArg
 const calls = [];
 let current = 'none';
 function makeCtx() {
-  const rec = (name) => (...a) => { calls.push(current + '.' + name); };
+  const rec = (name) => (...a) => {
+    calls.push(current + '.' + name);
+    if (name === 'fillText' && global.__TEXT__) global.__TEXT__.push(String(a[0]));
+  };
   return new Proxy({
     canvas: { width: 390, height: 844 },
     measureText: (t) => ({ width: String(t).length * 6 }),
