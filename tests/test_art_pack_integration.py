@@ -106,6 +106,10 @@ def _orphan_paths():
     referenced |= {"avatars/avatar-placeholder.svg",
                    "avatars/avatar-frame-navy.svg"}
     referenced |= set(BUILD_TIME_INPUTS)
+    # game-toolbar-frame.svg is drawn: palaceToolbar() paints it behind the
+    # controls. It shipped with the panel/button replacements and had no
+    # consumer until then -- which is exactly what this test exists to catch.
+    #
     # Two directories hold art that is deliberately not drawn:
     #   extracted/  unpacked source the crops were made from
     #   cardsets/   alternative card sets, staged and documented but not

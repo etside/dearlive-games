@@ -41,6 +41,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (data.success && data.data?.games) {
           setGames(data.data.games);
         }
+      }
       } catch (error) {
         console.error('Failed to fetch games:', error);
       } finally {

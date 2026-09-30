@@ -1269,6 +1269,7 @@
     trophy:    PAL + 'icons/trophy.svg',
     repeat:    PAL + 'ui/btn-repeat.svg',
     winner:    PAL + 'ui/winner-banner.svg',
+    toolbarFrame: ART_BASE + 'ui/game-toolbar-frame.svg',
     roundBar:  PAL + 'ui/round-room-panel.svg',
     panel:     { A: PAL + 'ui/panel-red.svg', B: PAL + 'ui/panel-blue.svg',
                  C: PAL + 'ui/panel-green.svg' },
@@ -1350,7 +1351,10 @@
     // column, leaving ~21px between groups against a 5px gap inside one. 0.21
     // per card gives a 0.75-wide group and a 0.25 * colW gutter -- roughly
     // 32px at 390px wide, five times the gap inside a hand.
-    const cw = Math.max(24, Math.min(colW * 0.21, 52)), ch = cw * 1.42;
+    // 1.42 is the aspect of the old box, not of the art. The crops are ~110x186
+    // (1.69), so every card was being squashed vertically by 16%. 1.70 is the
+    // art's own ratio; drawContain then absorbs the remaining per-card variance.
+    const cw = Math.max(24, Math.min(colW * 0.21, 52)), ch = cw * 1.70;
     // The pot/deck anchor. Animation code asks for `L.y.centre` /
     // `L.band.centre` (the old layout's centre band), which this grid does not
     // define, so those reads were undefined and every deck/pot position came
@@ -1401,6 +1405,13 @@
 
   function palaceToolbar(L, u) {
     const s = S.snap || {};
+    // Toolbar plate, drawn first so every control sits on top of it. This asset
+    // shipped with the panel and button replacements and had no consumer, which
+    // is what the orphan-asset test is for.
+    if (imageReady(PAL_IMG.toolbarFrame, 1, 1)) {
+      drawContain(PAL_IMG.toolbarFrame, SAFE.l, L.y.toolbar,
+                  W - SAFE.l - SAFE.r, L.usable * L.band.toolbar);
+    }
     const h = L.y.toolbar + L.usable * L.band.toolbar * 0.5;
     const r = Math.max(15, Math.min(21, L.usable * L.band.toolbar * 0.34));
     // Back
@@ -1846,7 +1857,7 @@
     const art = up ? cardArt(face) : CARD_BACK_IMAGE;
     ctx.save();
     if (imageReady(art, 1, 1)) {
-      ctx.drawImage(art, x, y, w, h);
+      drawContain(art, x, y, w, h);
     } else if (up && imageReady(PAL_IMG.cardFront, 1, 1)) {
       // The crop has not decoded yet: the generic face plus the label is a
       // far better placeholder than an empty slot.
@@ -1900,6 +1911,22 @@
   // real art appearing underneath a second later. A placeholder has to be
   // quieter than the thing it stands in for, so this is a faint wash and a
   // hairline, never a colour that competes with the table.
+  // Draw an image inside a box without distorting it.
+  //
+  // The card crops are not all the same shape: the 52 faces measure 107-115 x
+  // 184-196 (aspect 0.569-0.622) and the back is 119x179 (0.665). Drawing them
+  // all into a fixed box stretched every face by ~16% and the back by ~4%, so
+  // the cards looked wide and squat and the back did not line up with the face
+  // it turns into. Fitting by the smaller scale preserves each asset's own
+  // aspect; the leftover is a couple of pixels, not a visible margin.
+  function drawContain(img, x, y, w, h) {
+    var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if (!iw || !ih) { ctx.drawImage(img, x, y, w, h); return; }
+    var sc = Math.min(w / iw, h / ih);
+    var dw = iw * sc, dh = ih * sc;
+    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  }
+
   function placeholder(x, y, w, h, r) {
     ctx.save();
     rr(x, y, w, h, r === undefined ? Math.max(2, w * 0.08) : r);

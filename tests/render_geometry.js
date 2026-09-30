@@ -30,7 +30,18 @@ const sb={console,document,innerWidth:390,innerHeight:844,devicePixelRatio:3,
   performance:{now:()=>Date.now()},requestAnimationFrame:f=>{if(frames.length<2)frames.push(f);return 1;},
   cancelAnimationFrame(){},setTimeout:(f,ms)=>{if(ms<=50)frames.push(f);return 1;},clearTimeout(){},
   setInterval:()=>1,clearInterval(){},matchMedia:()=>({matches:false,addEventListener(){}}),
-  addEventListener(){},Image:function(){return{complete:true,naturalWidth:64,naturalHeight:64,set src(v){}};},
+  addEventListener(){},
+  // Real intrinsic sizes per asset. A blanket 64x64 made every contain-fit
+  // collapse to a square, so aspect assertions could never fail usefully.
+  Image:function(){var o={complete:true,naturalWidth:64,naturalHeight:64,set src(v){
+    var n=String(v||'');var d=/card-.*\\.png$/.test(n)&&!/back/.test(n)?[110,186]
+      :/card-back/.test(n)?[119,179]
+      :/panel-(red|blue|green)/.test(n)?[388,122]
+      :/chip-/.test(n)?[96,96]
+      :/seat-/.test(n)?[256,222]
+      :/background/.test(n)?[552,342]
+      :/toolbar-frame/.test(n)?[780,92]:[64,64];
+    o.naturalWidth=d[0];o.naturalHeight=d[1];}};return o;},
   WebSocket:function(){this.close=()=>{}},Blob:function(){},URL:{createObjectURL:()=>'b',revokeObjectURL(){}},
   fetch:()=>Promise.resolve({ok:true,json:()=>Promise.resolve({success:true,data:JSON.parse(fs.readFileSync('/tmp/live_snap.json','utf8'))})}),
   URLSearchParams:class{constructor(s){this.s=s}get(){return null}},

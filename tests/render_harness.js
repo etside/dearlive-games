@@ -111,6 +111,21 @@ nodes['tpp-canvas'] = (() => {
 // ---- window / timers ------------------------------------------------------
 let frames = 0;
 const rafQueue = [];
+// Real intrinsic sizes, so aspect-sensitive code behaves as it does in a
+// browser. The stub used to report every image as 64x64, which made any
+// contain-fit collapse to a square and quietly invalidates every geometry
+// assertion that depends on an asset's real shape.
+function assetSize(src) {
+  var n = String(src || '');
+  if (/card-.*\.png$/.test(n) && !/back/.test(n)) return [110, 186]; // 52 faces
+  if (/card-back/.test(n)) return [119, 179];
+  if (/panel-(red|blue|green)/.test(n)) return [388, 122];
+  if (/chip-/.test(n)) return [96, 96];
+  if (/seat-/.test(n)) return [256, 222];
+  if (/background/.test(n)) return [552, 342];
+  if (/toolbar-frame/.test(n)) return [780, 92];
+  return [64, 64];
+}
 const sandbox = {
   console,
   document,
@@ -136,7 +151,12 @@ const sandbox = {
   Image: function () {
     return {
       complete: true, naturalWidth: 64, naturalHeight: 64, width: 64, height: 64,
-      set src(v) { this._src = v; },
+      set src(v) {
+        this._src = v;
+        var d = assetSize(v);
+        this.naturalWidth = this.width = d[0];
+        this.naturalHeight = this.height = d[1];
+      },
     };
   },
   WebSocket: function () { this.close = () => {}; },

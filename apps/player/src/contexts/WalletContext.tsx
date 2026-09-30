@@ -28,6 +28,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setBalance(data.data.available);
           setCurrency(data.data.currency);
         }
+      }
       } catch (error) {
         console.error('Failed to fetch balance:', error);
       }

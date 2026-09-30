@@ -156,7 +156,7 @@ class HandoffNumbersTest(unittest.TestCase):
                 if p.is_file() and p.suffix in (".svg", ".png")
                 and not set(p.relative_to(base).parts)
                 & {"extracted", "cardsets"}]
-        self.assertEqual(len(pack), 93)
+        self.assertEqual(len(pack), 94)
         self.assertIn("93 / 93", HANDOFF)
 
     def test_known_limitations_are_stated_honestly(self):

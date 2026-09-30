@@ -583,7 +583,7 @@ class SingleToolbarAndIconTest(unittest.TestCase):
                       "history needs a fixed slot, never a shrinking one")
 
     def test_history_control_matches_its_asset_aspect(self):
-        """btn-history.svg is a 256x64 pill, not a square icon.
+        """btn-history.svg is a square icon, matching its slot.
 
         The buttons are 38x38 square slots painted with background-size:contain.
         A 4:1 pill forced into that slot scaled down to an unreadable smudge that
@@ -597,9 +597,14 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         vb = _re.search(r'viewBox="0 0 (\d+) (\d+)"', hist)
         self.assertIsNotNone(vb)
         w, h = int(vb.group(1)), int(vb.group(2))
-        self.assertGreater(w / h, 2.0,
-                           "btn-history should be a wide pill; if this changed, "
-                           "the .pillbtn slot must be revisited")
+        # btn-history.svg was replaced with a 192x192 square icon, so the wide
+        # .pillbtn slot was wrong for it -- a 4:1 pill squeezed into a square
+        # slot (or vice versa) is what read as a tofu box. Both buttons are
+        # square icons now and share the .iconbtn slot. The test's own message
+        # asked for exactly this revisit.
+        self.assertAlmostEqual(w / h, 1.0, places=1,
+                               msg="btn-history should now be a square icon; "
+                                   "if it changed again, revisit its CSS slot")
         for square in ("btn-help", "btn-settings", "btn-back"):
             with self.subTest(asset=square):
                 vb2 = _re.search(r'viewBox="0 0 (\d+) (\d+)"',
@@ -609,9 +614,10 @@ class SingleToolbarAndIconTest(unittest.TestCase):
                                        1.0, places=1,
                                        msg=f"{square} should be a square icon")
         html = (CLIENT / "index.html").read_text(encoding="utf-8")
-        self.assertIn('class="pillbtn" id="hHist"', html,
-                      "history must use the pill slot its asset needs")
-        self.assertIn(".pillbtn{", html)
+        self.assertIn('class="iconbtn" id="hHist"', html,
+                      "history must use the square slot its new asset needs")
+        self.assertNotIn('class="pillbtn" id="hHist"', html,
+                         "no element may still use the retired pill slot")
 
 
 class BalanceFormatTest(unittest.TestCase):
