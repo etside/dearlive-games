@@ -1085,14 +1085,28 @@ class PostgresAdminStore(AdminStore):
         cur = self._cursor_factory()
         try:
             version = _next_version(game_id, payload.get("version"))
+            # game_configuration has two version columns and both are
+            # constrained: config_version is the deployed table's NOT NULL
+            # primary key half, and version is the label the rules UI and
+            # rollback address. They hold the same string here, so one value
+            # is written to both -- a row whose two version columns disagreed
+            # would be found by one query and not the other.
+            #
+            # created_by and is_active also have no usable default in every
+            # deployment (created_by defaults to '', and the caller knows who
+            # they are), so they are written explicitly.
             cur.execute(
-                "INSERT INTO game_configuration (game_id, version, confirmed, tbc, payload) "
-                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (game_id, version) DO UPDATE "
+                "INSERT INTO game_configuration "
+                "(game_id, version, config_version, confirmed, tbc, payload, "
+                " is_active, created_by) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (game_id, version) DO UPDATE "
                 "SET confirmed = EXCLUDED.confirmed, tbc = EXCLUDED.tbc, "
                 "payload = EXCLUDED.payload RETURNING game_id, version, confirmed, "
                 "tbc, payload, created_at",
-                (game_id, version, bool(confirmed), json.dumps(tbc or []),
-                 json.dumps(payload)))
+                (game_id, version, version, bool(confirmed),
+                 json.dumps(tbc or []), json.dumps(payload), True,
+                 str(payload.get("updated_by") or "")))
             r = cur.fetchone()
             self._commit(cur)
             return {"game_id": r[0], "version": r[1], "confirmed": bool(r[2]),
