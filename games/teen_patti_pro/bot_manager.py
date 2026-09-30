@@ -219,6 +219,13 @@ class BotManager:
         for room_id, bots in seated.items():
             for bot in bots:
                 try:
+                    log.warning("PROBE room=%s bot=%s round=%s status=%s armed=%s at=%s now=%s",
+                                room_id, bot.player_id[-4:],
+                                (self.service._room(room_id).round.round_id
+                                 if self.service._room(room_id).round else None),
+                                (self.service._room(room_id).round.status.value
+                                 if self.service._room(room_id).round else None),
+                                bot.bet_round_id, bot.bet_at_ms, now)
                     self._maybe_bet(room_id, bot, now)
                 except Exception:
                     log.exception("demo bot bet failed room=%s bot=%s",
