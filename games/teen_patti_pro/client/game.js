@@ -1316,8 +1316,15 @@
     // separate round/status row -- the reference carries round and room in the
     // toolbar pill, and a band for them pushed the whole table down while
     // saying nothing the pill did not.
-    const w = { toolbar: 0.92, timer: 0.95, cards: 1.45, total: 0.42,
-                chairs: 1.42, panels: 2.10, bottom: 1.10 };
+    // Weights measured off the placement reference
+    // (Ensure/file_0000000090ec81fa9c1d8544f9b8d43d.png): the cumulative band
+    // boundaries there are 11 / 24 / 41 / 45 / 71 / 91 / 100 % of the canvas.
+    // These weights sum to 8.36 and reproduce exactly those boundaries.
+    // The previous set gave 11 / 22 / 40 / 45 / 62 / 87 / 100, which put the
+    // chairs ~4% and the betting panels ~8% too high and left the chip bar 13%
+    // tall where the reference shows 9%.
+    const w = { toolbar: 0.92, timer: 1.09, cards: 1.42, total: 0.33,
+                chairs: 2.17, panels: 1.67, bottom: 0.76 };
     const sum = Object.keys(w).reduce(function (a, k) { return a + w[k]; }, 0);
     const band = {}, y = {};
     let acc = top;
@@ -1680,11 +1687,12 @@
       const px = drawL + i * (pw + gap);
       const cx = px + pw / 2;
       const art = PAL_IMG['panel' + p];
-      const occ = s.seatOccupancy || {};
-      const seated = !!occ[p];
-      // "0/0" in the reference: my stake on this seat over the seat's pot.
-      // This used to be `!!occ[p]`, a boolean, so the header read "true/0" or
-      // "false/0" -- a seat being occupied has nothing to do with a stake.
+      // Reference header: "0/0" -- my stake on this seat over the seat's pot,
+      // with the multiplier beneath. This used to be `!!occ[p]`, a boolean, so
+      // the header read "true/0" or "false/0": a seat being occupied has nothing
+      // to do with a stake. The boolean is now gone entirely rather than merely
+      // unused -- it was assigned once and never read, which is how it survived
+      // the fix that replaced its use.
       const myStake = num(S.myBets[p]);
       const pot = num(s.pots && s.pots[p]);
       const mult = num((s.multipliers || {})[p]) || 2.9;
@@ -1706,20 +1714,19 @@
         ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 3;
         rr(px - 2, top - 2, pw + 4, hgt + 4, 11); ctx.stroke();
       }
-      // Three labelled lines, and no "/" anywhere. "0/1000" was two numbers
-      // welded together with a slash and no indication of which was which, so
-      // the only way to read a panel was to know the order already.
+      // Reference format: "my stake / this seat's pot" over the multiplier,
+      // i.e. 0/0 and x2.9. That is what the diagram and the supplied panel art
+      // both show, so the earlier "POT: / You:" labelling was reverted here.
+      // The slash is safe now because both operands are always numbers --
+      // this header used to read "false/0" because it was a boolean.
       ctx.fillStyle = 'rgba(0,0,0,.30)';
-      rr(px + pw * 0.08, top + hgt * 0.05, pw * 0.84, hgt * 0.19, 6); ctx.fill();
+      rr(px + pw * 0.08, top + hgt * 0.06, pw * 0.84, hgt * 0.17, 6); ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold ' + u.f(13);
-      ctx.fillText('POT: ' + pot, cx, top + hgt * 0.145);
-      ctx.font = u.f(12);
-      ctx.fillStyle = 'rgba(255,255,255,.92)';
-      ctx.fillText('You: ' + myStake, cx, top + hgt * 0.315);
-      ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.20)));
+      ctx.font = 'bold ' + u.f(14);
+      ctx.fillText(myStake + '/' + pot, cx, top + hgt * 0.145);
+      ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.24)));
       ctx.fillStyle = 'rgba(255,255,255,.95)';
-      ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.58);
+      ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.52);
       S._panels.push({ p: p, x: cx, y: top + hgt * 0.45, w: pw, h: hgt });
     });
   }

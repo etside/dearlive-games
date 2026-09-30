@@ -187,14 +187,33 @@ class PanelAndBannerTest(unittest.TestCase):
         with open(CLIENT, encoding="utf-8") as fh:
             cls.js = fh.read()
 
-    def test_panels_use_three_labelled_lines_and_no_slash(self):
+    def test_panels_use_the_reference_stake_over_pot_header(self):
+        """Reference format: "0/0" over "x2.9".
+
+        The supplied panel art bakes exactly this, and the placement diagram
+        shows it, so the "POT: / You:" labelling was reverted. The slash is only
+        safe now because both operands are numbers -- this header once read
+        "false/0" because it was a boolean, which is why the value, not the
+        separator, is what the next test pins.
+        """
         body = _grab(r"function palacePanels\(L, u\) \{.*?\n  \}", self.js)
-        self.assertIn("'POT: '", body, "panel needs a labelled pot line")
-        self.assertIn("'You: '", body, "panel needs a labelled stake line")
-        self.assertIn("'x' + mult.toFixed(1)", body, "panel needs the multiplier")
-        self.assertNotIn("'/'", body,
-                         "no panel text may join two numbers with a slash")
-        self.assertNotIn("myStake + '/'", body)
+        # Strip comments: these assertions are about code, and the comments
+        # deliberately quote the old broken forms they replaced.
+        body = re.sub(r"//[^\n]*", "", body)
+        self.assertIn("myStake + '/' + pot", body,
+                      "the panel header must be my stake over that seat's pot")
+        self.assertIn("'x' + mult.toFixed(1)", body,
+                      "the panel needs the multiplier")
+        self.assertIn("num(S.myBets[p])", body,
+                      "the stake must come from the client's own per-seat bets")
+        self.assertNotIn("!!occ[p]", body,
+                         "a boolean here is what produced 'false/1000'")
+
+    def test_panel_numbers_are_coerced_not_printed_raw(self):
+        body = _grab(r"function palacePanels\(L, u\) \{.*?\n  \}", self.js)
+        self.assertIn("const myStake = num(", body)
+        self.assertIn("const pot = num(", body)
+        self.assertIn("const mult = num(", body)
 
     def test_the_floating_you_label_is_gone(self):
         body = _grab(r"function palacePanels\(L, u\) \{.*?\n  \}", self.js)

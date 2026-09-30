@@ -22,7 +22,7 @@ const nodes={};const document={readyState:'complete',documentElement:{style:{}},
   getElementById:id=>nodes[id]||(nodes[id]=el(id)),querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}};
 const cv=el('tpp-canvas','canvas');cv.getContext=()=>ctx;nodes['tpp-canvas']=cv;
 const frames=[];
-const sb={console,document,innerWidth:390,innerHeight:844,devicePixelRatio:3,
+const sb={console,document,innerWidth:Number(process.env.TPP_W||390),innerHeight:Number(process.env.TPP_H||844),devicePixelRatio:3,
   getComputedStyle:()=>({getPropertyValue:()=>''}),
   navigator:{userAgent:'node',onLine:true},
   location:{search:'?session=t&room=teen-patti-low',pathname:'/teen-patti-pro/',protocol:'http:',origin:'http://x',href:'http://x/'},
@@ -50,7 +50,9 @@ sb.window=sb;sb.globalThis=sb;sb.self=sb;
 const inject=src.replace(/\n\}\)\(\);\s*$/,'\n})();');
 vm.createContext(sb);vm.runInContext(inject,sb,{filename:'g.js'});
 for(let i=0;i<2&&frames.length;i++) frames.shift()(Date.now());
-const W=390,H=844;
+// Must match the sandbox canvas, or boxes that are inside are reported as
+// off-screen at any viewport other than the default.
+const W=Number(process.env.TPP_W||390),H=Number(process.env.TPP_H||844);
 // A box larger than the canvas that covers it is a cover-fit background, not
 // an off-screen element. Only flag boxes that genuinely fall outside.
 const off=boxes.filter(b=>!(b.w>=W&&b.h>=H) &&
