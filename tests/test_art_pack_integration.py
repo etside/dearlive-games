@@ -188,21 +188,30 @@ class PackFallbackTest(unittest.TestCase):
         self.assertIn("img.complete && img.naturalWidth > 0", JS)
         self.assertIn("naturalWidth", JS)
 
-    def test_chip_fallback_is_the_procedural_chip(self):
-        # The palace renderer resolves chips through chipImage(d), which is
-        # lazy so a denomination the server named after boot still has art.
+    def test_chip_fallback_is_legible_and_not_a_block(self):
+        # The fallback used to be a saturated purple disc: while the art was in
+        # flight a player saw a coloured block where a chip should be. It is
+        # now a muted placeholder that still shows the value.
         block = JS.split("const art = chipImage(d)")[1][:900]
         self.assertIn("} else {", block, "chip needs an else branch")
-        self.assertIn("ctx.arc(x, cy, cs * 0.42, 0, 7)", block,
-                      "fallback must draw the original procedural chip")
+        self.assertIn("placeholder(", block,
+                      "the chip fallback must be the muted placeholder")
+        self.assertIn("chipLabel(d)", block,
+                      "the chip value must stay readable without art")
+        self.assertNotIn("#8e44ad", block,
+                         "no saturated fill may stand in for missing art")
 
-    def test_seat_fallback_keeps_the_generated_chairs(self):
-        # Palace renderer uses PAL_IMG['seat' + p] for seat assets
+    def test_seat_fallback_is_muted_not_a_solid_chair_colour(self):
+        # The fallback used to paint a solid red / blue / green rectangle over
+        # the chair while its art was in flight. On a slow connection that is
+        # what reached the phone: a coloured block where a chair should be.
         block = JS.split("const art = PAL_IMG['seat' + p]")[1][:900]
         self.assertIn("} else {", block, "seat needs an else branch for fallback")
-        # Procedural fallback draws rounded rect for chair
-        self.assertIn("rr(pt.x - size * 0.32, pt.y - size * 0.30, size * 0.64, size * 0.52, 8)", block,
-                      "procedural chair fallback must survive")
+        self.assertIn("placeholder(", block,
+                      "the chair fallback must be the muted placeholder")
+        for saturated in ("#c0392b", "#2471a3", "#1e8449"):
+            self.assertNotIn(saturated, block,
+                             "a saturated fill must not stand in for the chair")
 
     def test_status_fallback_keeps_the_coloured_dot(self):
         self.assertIn("hud.dot.style.backgroundImage = ''", JS)

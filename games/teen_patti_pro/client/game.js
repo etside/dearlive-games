@@ -1398,8 +1398,7 @@
     if (imageReady(PAL_IMG.back, 1, 1)) {
       ctx.drawImage(PAL_IMG.back, SAFE.l + 2, h - r, r * 2, r * 2);
     } else {
-      ctx.fillStyle = '#c0392b'; ctx.beginPath();
-      ctx.arc(SAFE.l + 2 + r, h, r, 0, 7); ctx.fill();
+      placeholder(SAFE.l + 2, h - r, r * 2, r * 2, r);
     }
     S._ctl.push({ x: SAFE.l + 2 + r, y: h, r: r, act: 'back' });
 
@@ -1492,8 +1491,12 @@
     const r = Math.max(20, Math.min(30, L.usable * L.band.timer * 0.30));
     let secs = null;
     if (s.status === 'BETTING_OPEN' && s.betting_end_at) {
-      const skew = (S.srvNow || Date.now()) - (S.locNow || Date.now());
-      secs = Math.max(0, (s.betting_end_at - (Date.now() + skew)) / 1000);
+      // betting_end_at is server epoch millis. Comparing it against the
+      // phone's own clock is wrong by exactly however wrong that clock is --
+      // measured 1.5s here, and arbitrary on a device whose time has drifted.
+      // The offset is taken from serverTime in the snapshot, so the countdown
+      // is driven by the server's clock and stays monotonic within a round.
+      secs = Math.max(0, (s.betting_end_at - serverNow()) / 1000);
     }
     // gold ring, dark centre, number inside -- per the reference badge
     ctx.beginPath(); ctx.arc(L.cx, cy, r, 0, 7);
@@ -1580,8 +1583,7 @@
       if (imageReady(art, 1, 1)) {
         ctx.drawImage(art, pt.x - size / 2, pt.y - size * 0.56, size, size * 0.86);
       } else {
-        ctx.fillStyle = p === 'A' ? '#c0392b' : p === 'B' ? '#2471a3' : '#1e8449';
-        rr(pt.x - size * 0.32, pt.y - size * 0.30, size * 0.64, size * 0.52, 8); ctx.fill();
+        placeholder(pt.x - size * 0.32, pt.y - size * 0.30, size * 0.64, size * 0.52, 8);
       }
       // seat label, then the occupant underneath
       const ly = pt.y + size * 0.40;
@@ -1623,8 +1625,7 @@
       if (imageReady(art, 1, 1)) {
         ctx.drawImage(art, px, top, pw, hgt);
       } else {
-        ctx.fillStyle = p === 'A' ? '#c0392b' : p === 'B' ? '#2471a3' : '#1e8449';
-        rr(px, top, pw, hgt, 10); ctx.fill();
+        placeholder(px, top, pw, hgt, 10);
       }
       if (sel) {
         ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 3;
@@ -1707,9 +1708,11 @@
         }
         ctx.drawImage(art, x - cs * 0.46, cy - cs * 0.46, cs * 0.92, cs * 0.92);
       } else {
-        ctx.fillStyle = sel ? PAL_THEME.gold : '#8e44ad';
-        ctx.beginPath(); ctx.arc(x, cy, cs * 0.42, 0, 7); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold ' + u.f(10);
+        // The value is still readable, which is the point of a fallback:
+        // a chip with no art must not become an anonymous block.
+        placeholder(x - cs * 0.42, cy - cs * 0.42, cs * 0.84, cs * 0.84, cs * 0.42);
+        ctx.fillStyle = sel ? PAL_THEME.gold : PAL_THEME.cream;
+        ctx.font = 'bold ' + u.f(10);
         ctx.fillText(chipLabel(d), x, cy);
       }
       S._chips.push({ d: d, x: x, y: cy, r: cs * 0.52 });
@@ -1721,7 +1724,7 @@
     if (imageReady(PAL_IMG.repeat, 1, 1)) {
       ctx.drawImage(PAL_IMG.repeat, rx, ry, rw, rh);
     } else {
-      ctx.fillStyle = '#2f6fd0'; rr(rx, ry, rw, rh, 8); ctx.fill();
+      placeholder(rx, ry, rw, rh, 8);
       ctx.fillStyle = '#fff'; ctx.font = '600 ' + u.f(12);
       ctx.fillText('Repeat', rx + rw / 2, ry + rh / 2);
     }
@@ -1780,8 +1783,8 @@
       // No art: a legible card beats an invisible one. The face is a paper
       // rectangle; the back is the table's purple.
       rr(x, y, w, h, Math.max(2, w * 0.10));
-      ctx.fillStyle = up ? '#f7f4ec' : '#8e44ad';
-      ctx.fill();
+      if (!up) { placeholder(x, y, w, h, Math.max(2, w * 0.10)); }
+      else { ctx.fillStyle = '#f7f4ec'; ctx.fill(); }
       ctx.strokeStyle = up ? '#8b0000' : '#ffd54a';
       ctx.lineWidth = Math.max(1, w * 0.05);
       ctx.stroke();
@@ -1793,6 +1796,44 @@
       ctx.textAlign = 'center';
       ctx.fillText(String(face), x + w / 2, y + h * 0.58);
     }
+    ctx.restore();
+  }
+
+  // Now, on the server's clock.
+  //
+  // Every deadline the server issues is epoch millis on ITS clock. Deriving
+  // the offset from serverTime keeps the countdown honest without ever
+  // letting the client decide a time of its own.
+  let _clockOffset = 0;          // serverNow - Date.now(), milliseconds
+  function syncClock(serverTimeMs) {
+    if (typeof serverTimeMs === 'number' && isFinite(serverTimeMs)
+        && serverTimeMs > 1e12) {
+      const off = serverTimeMs - Date.now();
+      // Ignore an absurd offset rather than letting one bad frame pin the
+      // clock: a phone that has never had its time set is minutes out, and
+      // the round is still better judged by the server.
+      if (Math.abs(off) < 6 * 60 * 60 * 1000) _clockOffset = off;
+    }
+  }
+  function serverNow() { return Date.now() + _clockOffset; }
+
+  // Placeholder for art that has not loaded or failed to load.
+  //
+  // These used to be saturated fills -- a red back button, purple chips, a
+  // purple card back, solid red/blue/green chairs -- painted while the image
+  // was still in flight. On a slow connection that is what a player saw: a
+  // blue block over one seat and a pink block over another's cards, with the
+  // real art appearing underneath a second later. A placeholder has to be
+  // quieter than the thing it stands in for, so this is a faint wash and a
+  // hairline, never a colour that competes with the table.
+  function placeholder(x, y, w, h, r) {
+    ctx.save();
+    rr(x, y, w, h, r === undefined ? Math.max(2, w * 0.08) : r);
+    ctx.fillStyle = 'rgba(255,255,255,.07)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -2005,6 +2046,7 @@
     try {
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
+      syncClock(S.snap && S.snap.serverTime);
       if (setDenoms(S.snap && S.snap.denoms)) refresh();
       refreshAppearances(S.snap);
       noteAuthoritativeRoom(S.snap);
@@ -2254,6 +2296,7 @@
         const m = JSON.parse(ev.data);
         if (m.kind === 'snapshot' && m.data) {
           S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now();
+          syncClock(S.snap && S.snap.serverTime);
           if (setDenoms(S.snap && S.snap.denoms)) refresh();
           refreshAppearances(m.data);
           noteAuthoritativeRoom(m.data);

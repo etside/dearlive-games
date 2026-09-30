@@ -19,6 +19,7 @@ exists, rather than asserting that a line of source calls a particular function.
 import unittest
 from pathlib import Path
 
+from common.lifecycle import RoundStatus
 from games.teen_patti_pro.service import TeenPattiService
 
 
@@ -421,21 +422,68 @@ class RoundLifecyclePumpTest(unittest.TestCase):
 
     def test_round_id_changes_across_rounds(self):
         svc = self._seated()
+        # A settled round now stays on screen for result_dwell_ms before the
+        # next one is dealt, so the clock has to move for the pump to get
+        # there. Pumping in a tight loop tests nothing about the new contract.
+        svc.result_dwell_ms = 6_000
+        clock = [svc._now()]
+        svc._now = lambda: clock[0]
         first_id = svc._room("t").round.round_id
-        svc._room("t").round.betting_end_at_ms = svc._now() - 1000
+        svc._room("t").round.betting_end_at_ms = clock[0] - 1000
         seen = {first_id}
-        for _ in range(12):
+        for _ in range(40):
             out = svc.pump("t")
             r = svc._room("t").round
             if r:
                 seen.add(r.round_id)
             if "round.created" in out.get("moved", []):
                 break
+            clock[0] += 1000
         self.assertGreater(len(seen), 1,
                            f"a new round was never created; ids seen: {seen}")
         fresh = {i for i in seen if i != first_id}
         self.assertEqual(fresh, seen - {first_id})
         self.assertTrue(fresh, "the new round must carry a new id, never the old one")
+
+    def test_a_result_is_left_on_screen_before_the_next_round(self):
+        """The outcome has to be watchable.
+
+        Settling and dealing the next round in the same sweep tick meant a
+        client never observed a result state: the cards never turned over, the
+        winner never lit up and the result banner never appeared. The table
+        looked like it jumped straight from betting to the next round.
+        """
+        svc = self._seated(confirmed=True)
+        svc.result_dwell_ms = 6_000
+        clock = [svc._now()]
+        svc._now = lambda: clock[0]
+        svc._room("t").round.betting_end_at_ms = clock[0] - 1000
+        settled_id = None
+        dealt_early = None
+        for _ in range(40):
+            out = svc.pump("t")
+            r = svc._room("t").round
+            # settle() leaves the round CLOSED, not SETTLED; both mean "the
+            # outcome is on screen".
+            if (r and settled_id is None
+                    and r.status in (RoundStatus.SETTLED, RoundStatus.CLOSED)):
+                settled_id = r.round_id
+            if settled_id and r and r.round_id != settled_id:
+                dealt_early = clock[0]
+                break
+            # Still inside the dwell: the settled round must be left alone.
+            if settled_id:
+                self.assertNotIn("round.created", out.get("moved", []),
+                                 "a new round was dealt while the result was "
+                                 "still on screen")
+            clock[0] += 1000
+        self.assertIsNotNone(settled_id, "the round never settled")
+        self.assertIsNotNone(dealt_early, "the next round was never dealt")
+        # settled_id was recorded at clock[0] - 7000 by the time the new round
+        # was dealt, so the gap must be at least the dwell.
+        self.assertGreaterEqual(dealt_early - (clock[0] - 7000), 6000,
+                                "the next round must wait out the dwell "
+                                "before the result is replaced")
 
 
     def test_tbc_gate_defers_settlement_rather_than_breaking_the_table(self):

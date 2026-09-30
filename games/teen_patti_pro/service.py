@@ -24,6 +24,13 @@ from common.idempotency import (IdempotencyStore, MemoryIdempotencyStore,
 from common.lifecycle import (RoundStatus, SETTLE_MAX_ATTEMPTS, needs_settlement_retry)
 from common.session import TokenStore, MemoryTokenStore, SessionStore, MemorySessionStore, TokenError
 from common.wallet import WalletAdapter, MemoryWallet, InsufficientBalance, WalletError
+
+# How long a published result stays on screen before the next round is dealt.
+#
+# Long enough to read the winner and see the cards turned over, short enough
+# that a table does not feel stalled. Settling and dealing in the same tick
+# made every round's outcome invisible.
+RESULT_DWELL_MS = 6_000
 from common.settlement import SettlementStore, MemorySettlementStore
 from common.webhooks import build_event, MemoryDeliveryLog
 from .config import TeenPattiConfig, DEFAULT_CONFIG
@@ -76,6 +83,12 @@ class TeenPattiService:
         self.settlement_alerts: List[dict] = []  # never dropped: operator must see stranded pots
         self.HISTORY_CAP = 200
         self._settle_lock = threading.Lock()  # check-add-credit must be atomic
+        # When each room's result was published, so the sweep can leave it on
+        # screen before dealing the next round. See publish_result.
+        self._result_published_at: Dict[str, int] = {}
+        # Per-instance so a test can shorten the dwell rather than
+        # sleeping through it. The default is the shipped behaviour.
+        self.result_dwell_ms = RESULT_DWELL_MS
         self.skills = skills
         self._now = lambda: int(time.time() * 1000)
 
@@ -337,6 +350,17 @@ class TeenPattiService:
                 log.warning("settlement deferred: %s", exc)
             r = room.round
 
+        # Hold the settled round on screen for a moment before dealing again.
+        # The result is the only feedback a player gets that they won, and
+        # dealing the next round in the same tick that settled the last one
+        # means nobody ever sees it.
+        r = room.round
+        if r is not None and r.status in (RoundStatus.SETTLED, RoundStatus.CLOSED):
+            published = self._result_published_at.get(room_id, 0)
+            if published and (self._now() - published) < self.result_dwell_ms:
+                return {"room_id": room_id, "moved": moved}
+            self._result_published_at.pop(room_id, None)
+
         # Deal the next round only if the table is still occupied. ensure_round
         # refuses when it is not, so an abandoned table goes quiet rather than
         # dealing cards to nobody.
@@ -358,6 +382,14 @@ class TeenPattiService:
         self._fire("result.processing", {"round_id": room.round.round_id,
                                          "room_id": room_id})
         r = room.calculate_result(self._now())
+        # When this result went out. The sweep holds the round on screen for
+        # RESULT_DWELL_S before dealing the next one, so the outcome is
+        # actually watchable: without it, close_betting -> publish -> settle ->
+        # new round all happened inside one tick, and a client polling or
+        # listening never observed a result state at all. Face-up cards, the
+        # winner glow and the result banner therefore never appeared, and the
+        # table looked like it simply skipped from betting to the next round.
+        self._result_published_at[room_id] = self._now()
         self.audit.record("system", "result.publish", "round", r.round_id,
                           after={"winners": r.winner_positions})
         self._fire("result.published", {"round_id": r.round_id, "room_id": room_id,
