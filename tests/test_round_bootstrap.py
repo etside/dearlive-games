@@ -682,3 +682,89 @@ class SeatRouteBindingTest(unittest.TestCase):
                       "seat route must resolve the room from the session")
         self.assertIn("self.svc.claim_seat(room_id, pid, want)", block)
         self.assertIn('"seat must be auto, A, B or C"', block)
+
+
+class SnapshotRoundMarkerTest(unittest.TestCase):
+    """A live round must be detectable from the snapshot alone.
+
+    Regression, seen live on the VPS: the table was healthy -- round_id set,
+    status BETTING_OPEN, advancing r18 -> r19 on its own -- and the page still
+    showed "Waiting for players / No round is running at this table yet".
+
+    Why. `Room.snapshot()` only emits a `round` key in its *idle* branch; the
+    live branch omits it entirely. The client's `setVeilForState` gated on
+    `!snap.round`, which is therefore true for every playing table, so the veil
+    covered a working game. `round_id` is the authoritative marker, and the
+    client now gates on that. This asserts the server half of that contract:
+    a live snapshot carries a non-empty round_id, and the client does not gate
+    on the absent `round` key.
+    """
+
+    def _service(self):
+        svc = _service(confirmed=True)
+        svc.sessions.create("p1", "t", "teen-patti-pro")
+        svc.claim_seat("t", "p1", "auto")
+        svc.ensure_round("t")
+        return svc
+
+    def test_live_snapshot_carries_a_round_id(self):
+        snap = self._service().state("t", "p1")
+        self.assertTrue(snap.get("round_id"),
+                        "a live round must be identifiable by round_id")
+        self.assertNotEqual(snap.get("status"), "WAITING")
+
+    def test_idle_snapshot_is_distinguishable_from_live(self):
+        svc = _service(confirmed=True)
+        svc.sessions.create("p2", "t2", "teen-patti-pro")
+        idle = svc.state("t2", "p2")
+        self.assertFalse(idle.get("round_id"),
+                         "an idle table must report no round_id")
+        self.assertEqual(idle.get("status"), "WAITING")
+
+    def _veil_expr(self):
+        """The hasRound expression the client actually evaluates."""
+        import re
+        src = (Path(__file__).resolve().parents[1]
+               / "games/teen_patti_pro/client/game.js").read_text(encoding="utf-8")
+        i = src.index("function setVeilForState")
+        m = re.search(r"const hasRound = (.+);", src[i:i + 900])
+        self.assertIsNotNone(m, "setVeilForState must compute a hasRound flag")
+        return m.group(1)
+
+    def _veil_says_busy(self, snap):
+        """Run the client's own expression against a real snapshot, via node.
+
+        Evaluated rather than pattern-matched. A substring test passed while the
+        buggy `snap.round` was still in place, because the fixed expression also
+        contains the word "round". The only assertion worth having is the one
+        that runs the shipped expression against the shipped snapshot shape.
+        """
+        import json
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available to evaluate the client expression")
+        expr = self._veil_expr()
+        script = ("const snap = JSON.parse(process.argv[1]);"
+                  "const hasRound = %s;"
+                  "process.stdout.write(hasRound ? 'busy' : 'idle');" % expr)
+        out = subprocess.run([node, "-e", script, json.dumps(snap)],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0,
+                         "client expression failed to evaluate: " + out.stderr)
+        return out.stdout.strip() == "busy"
+
+    def test_live_snapshot_clears_the_waiting_veil(self):
+        snap = self._service().state("t", "p1")
+        self.assertNotIn("round", snap,
+                         "the live snapshot omits `round` entirely; that is the "
+                         "field the old client gated on")
+        self.assertTrue(self._veil_says_busy(snap),
+                        "a live BETTING_OPEN snapshot must clear the veil")
+
+    def test_idle_snapshot_still_shows_the_veil(self):
+        svc = _service(confirmed=True)
+        svc.sessions.create("p2", "t2", "teen-patti-pro")
+        self.assertFalse(self._veil_says_busy(svc.state("t2", "p2")),
+                         "an idle table must still show the waiting veil")

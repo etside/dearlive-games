@@ -268,11 +268,19 @@
   // An empty table is not an error and not still-loading: say which one it is,
   // because "Connecting" over a table with no players reads as a hang.
   function setVeilForState(snap) {
-    if (!snap || !snap.round) {
+    // Gate on the fields the snapshot actually carries. `round` is only
+    // present in the idle branch of the server payload and is omitted once a
+    // round is live, so testing `!snap.round` was true for every playing
+    // table: the veil said "Waiting for players / No round is running" over a
+    // healthy BETTING_OPEN round. round_id is the authoritative marker.
+    const hasRound = !!(snap && (snap.round_id || snap.round));
+    if (!hasRound) {
       setVeil('empty', 'Waiting for players',
         'No round is running at this table yet. The next one starts automatically.');
       return;
     }
+    // A round that exists but is not yet open for action still needs a door:
+    // the player must be able to see the table rather than a spinner.
     setVeil(null);
   }
 
