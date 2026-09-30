@@ -1551,6 +1551,16 @@ audit_entity="game", audit_entity_id=m.group(1),
                 try:
                     # Create session in the session store
                     sess = self.svc.sessions.create(player_id, room, "teen-patti-pro")
+                    # This is the ONLY place a room becomes eligible for demo
+                    # bots. Marking it here rather than switching on an
+                    # environment variable is what keeps a bot out of a real
+                    # provider session: the same process serves both, and a
+                    # global flag would have filled real tables too.
+                    try:
+                        from .bot_manager import mark_demo_room
+                        mark_demo_room(room)
+                    except Exception:
+                        log.exception("demo room marking failed room=%s", room)
                     # Mint a token for the session
                     if self.provider_tokens is not None:
                         record = self.provider_tokens.mint(sess.session_id, {
