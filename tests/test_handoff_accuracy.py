@@ -148,14 +148,12 @@ class HandoffNumbersTest(unittest.TestCase):
 
     def test_asset_count_is_current(self):
         # The card faces and the back are crops of a raster reference sheet and
-        # ship as PNGs; everything else is SVG. extracted/ is unpacked source,
-        # never drawn, so it is excluded. The runtime total is unchanged at 93
-        # because 52 SVGs became 52 PNGs.
+        # ship as PNGs; everything else is SVG. Nothing is excluded any more:
+        # the unwired source and alternative-set directories have been removed.
         base = ROOT / "assets/games/teen-patti-pro"
         pack = [p for p in base.rglob("*")
                 if p.is_file() and p.suffix in (".svg", ".png")
-                and not set(p.relative_to(base).parts)
-                & {"extracted", "cardsets"}]
+                ]
         self.assertEqual(len(pack), 94)
         self.assertIn("93 / 93", HANDOFF)
 

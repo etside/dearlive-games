@@ -110,15 +110,12 @@ def _orphan_paths():
     # controls. It shipped with the panel/button replacements and had no
     # consumer until then -- which is exactly what this test exists to catch.
     #
-    # Two directories hold art that is deliberately not drawn:
-    #   extracted/  unpacked source the crops were made from
-    #   cardsets/   alternative card sets, staged and documented but not
-    #               selected -- see cardsets/figma/PROVENANCE.md
-    # Neither is an orphan; both are recorded so the list cannot quietly grow
-    # into a dumping ground.
-    all_files = {p for p in all_files
-                 if not p.startswith("extracted/")
-                 and not p.startswith("cardsets/")}
+    # There is no longer an "unwired but intentional" bucket. The unpacked
+    # source under extracted/ and the staged alternative card sets under
+    # cardsets/ were both removed from the build: 196 files and 2.7MB of art
+    # that no served code referenced and no request could reach. Every file in
+    # the pack is now either drawn or a build-time input recorded below.
+    all_files = set(all_files)
     return sorted(all_files - referenced)
 
 

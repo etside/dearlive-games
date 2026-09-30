@@ -75,6 +75,7 @@
   <a href="#envelope">Response Envelope</a>
   <a href="#mint">Mint Session</a>
   <a href="#bet">Place Bet</a>
+  <a href="#events">Event contract</a>
   <a href="#ws">WebSocket Events</a>
   <a href="#integration">Integration</a>
   <a href="#support">Support</a>
@@ -155,7 +156,17 @@ https://api.ura-dhura.com/teen-patti-pro?demo_token=&lt;demo_token&gt;</code></p
     <tr><td><code>GET /api/v1/sessions/{id}</code></td><td>HMAC or token</td><td>Read a session.</td></tr>
     <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/seat</code></td><td>Bearer session</td><td>Claim a seat (<code>{"seat":"auto"|"A"|"B"|"C"}</code>). Room is resolved from the session, not the path. Full table → spectator.</td></tr>
     <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/bets</code></td><td>Bearer session + <code>Idempotency-Key</code></td><td>Place a bet (<code>{"position":"A"|"B"|"C","amount":100}</code>). Amount must be a configured denomination. Retrying the same key replays the original result — never a second debit.</td></tr>
-    <tr><td><code>GET /api/v1/games/teen-patti-pro/rounds/current?room={room}</code></td><td>Bearer session</td><td>Current round snapshot for the session's room.</td></tr>
+    <tr><td><code>GET /api/v1/games/teen-patti-pro/rounds/current?room={room}</code></td><td>Bearer session</td><td>Current round snapshot for the session's room. Carries <code>state_version</code> (bumps on every round state change) and <code>config_version</code>. A reconnecting client compares <code>state_version</code> with its own to decide whether it missed a transition; when there is no round the snapshot returns <code>state_version: 0</code> and <code>status: "WAITING"</code>.</td></tr>
+    <tr><td><code>GET /api/v1/games/teen-patti-pro/history?room={room}</code></td><td>Bearer session</td><td>The session's own bet history, newest last. Each entry carries <code>bet_id</code>, <code>position</code>, <code>amount</code>, <code>status</code>, <code>round_id</code>. Repeat Bet is built from this.</td></tr>
+    <tr><td><code>GET /api/v1/games/teen-patti-pro/rooms/{room}/wallet</code></td><td>Bearer session</td><td>Session wallet balance. This is the only authority for a displayed balance — never derive it client-side.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/reconnect</code></td><td>Bearer session</td><td>Re-bind a session to its seat after a socket drop. Returns the current snapshot; the client must not replay past animations on this call.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/rounds/start</code></td><td>operator</td><td>Deal a round. Refused when a round is still active.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/rounds/close</code></td><td>operator</td><td>Close betting early. Also happens automatically at the deadline; the pump is idempotent.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/rounds/result</code></td><td>operator</td><td>Calculate and publish the result. Emits <code>result.processing</code> then <code>result.published</code>.</td></tr>
+    <tr><td><code>POST /api/v1/games/teen-patti-pro/rooms/{room}/rounds/settle</code></td><td>operator</td><td>Settle the round. Idempotent per <code>bet_id</code>; emits <code>settlement.completed</code> carrying <code>pot</code>, <code>rake</code> and <code>carry_out</code>.</td></tr>
+    <tr><td><code>GET /assets/teen-patti/…</code></td><td>none</td><td>Runtime art. Card faces, backs, seats, panels, chips and the palace background. The card crops are PNGs named <code>card-{rank}-{suit}.png</code>.</td></tr>
+    <tr><td><code>GET /assets/games/teen-patti-pro/…</code></td><td>none</td><td>HUD art. Toolbar icons, status icons, avatar frames, per-card rank/suit marks, the chip ladder.</td></tr>
+    <tr><td><code>GET /teen-patti-pro/</code> and <code>GET /teen-patti-pro/game.js</code></td><td>none</td><td>Player client. <code>game.js</code> is served <code>no-store</code> and the shell stamps it with a <code>?v={content-hash}</code>, so a reload always fetches the current renderer.</td></tr>
     <tr><td><code>POST /api/v1/demo/sessions</code></td><td>operator token</td><td>Create a demo session (returns <code>demo_token</code>).</td></tr>
     <tr><td><code>wss://ws.ura-dhura.com/ws/game</code></td><td>session subscribe frame</td><td>Realtime channel (see below). Host is deployment-configured; use the <code>websocket_url</code> from the session response when present.</td></tr>
   </table>
@@ -218,6 +229,34 @@ curl -X POST https://api.ura-dhura.com/api/v1/sessions \
   room cannot bet into another table. Reusing an <code>Idempotency-Key</code> with the same payload
   replays the original acceptance; reusing it with a different payload is rejected as
   <code>DUPLICATE_REQUEST</code>.</p>
+</section>
+
+<section id="events">
+  <h2>Event contract</h2>
+  <p>Every event emitted on the socket carries an <code>event_id</code> (uuid4, unique per emit)
+  and the round's <code>state_version</code> (an integer that increments on every round state
+  change). An animation is idempotent if it is keyed on <code>event_id</code>: a redelivered
+  event over a reconnecting socket then cannot replay the effect. <code>seq</code> remains for
+  ordering but is not unique across a resubscribe replay, so it is not an idempotency key.</p>
+  <pre><button class="copy">Copy</button><code>{
+  "kind": "event",
+  "data": {
+    "seq": 7,
+    "event_id": "3f2c9a1b6d4e4f8a9b0c1d2e3f4a5b6c",
+    "state_version": 4,
+    "kind": "bet.accepted",
+    "serverTime": 1767528000000,
+    "round_id": "teen-patti-low-r4",
+    "player_id": "…",
+    "position": "A",
+    "amount": 100
+  }
+}</code></pre>
+  <p>Round lifecycle, in the order the server emits it:
+  <code>UPCOMING → BETTING_OPEN → BETTING_CLOSED → RESULT_PROCESSING → RESULT → SETTLED → CLOSED</code>.
+  <code>SETTLED_PENDING</code> and <code>SETTLE_FAILED</code> exist for the settlement-retry path and
+  are not normal gameplay states. A settled result is held for ~6s before the next round is
+  dealt, so the outcome is actually watchable.</p>
 </section>
 
 <section id="ws">
