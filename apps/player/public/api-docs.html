@@ -255,10 +255,23 @@ curl -X POST https://api.ura-dhura.com/api/v1/sessions \
   }
 }</code></pre>
   <p>Round lifecycle, in the order the server emits it:
-  <code>UPCOMING → BETTING_OPEN → BETTING_CLOSED → RESULT_PROCESSING → RESULT → SETTLED → CLOSED</code>.
+  <code>ABOUT_TO_START → BETTING_OPEN → BETTING_CLOSED → RESULT_PROCESSING → RESULT → RESULT_DECLARED → SETTLED → CLOSED</code>.
   <code>SETTLED_PENDING</code> and <code>SETTLE_FAILED</code> exist for the settlement-retry path and
-  are not normal gameplay states. A settled result is held for ~6s before the next round is
-  dealt, so the outcome is actually watchable.</p>
+  are not normal gameplay states.</p>
+  <p><code>ABOUT_TO_START</code> lasts about a second after a round is dealt. The betting
+  deadline does not start until the window opens, so it is presentation time, not lost
+  betting time -- and no bet is accepted there. <code>RESULT_DECLARED</code> is the published
+  outcome held about 2.2s while the reveal plays; money moves only at
+  <code>settlement.completed</code>. A settled result is then held about 6s before the next
+  round is dealt, so the outcome is actually watchable.</p>
+  <p><strong>Hands.</strong> During betting each seat's hand arrives as one revealed card
+  plus two backs, e.g. <code>{"A": ["3S", "**", "**"]}</code>. The other two turn
+  face-up at <code>result.declared</code> and stay up through settlement. A client must
+  draw exactly what the snapshot shows -- face-up art for a code, the back for
+  <code>"**"</code> -- and never decide visibility itself.</p>
+  <p><strong>Spectators.</strong> A session with no seat (<code>mySeat</code> empty, e.g. a
+  full table) receives the same snapshots and the same events, but may not bet: chips and
+  repeat are inert. Everything animates normally.</p>
 </section>
 
 <section id="layout">
