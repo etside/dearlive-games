@@ -5,6 +5,9 @@ drive it with a small fake DB-API cursor. That keeps the suite hermetic while
 still exercising the real SQL, the version/active invariants, and the
 fail-loudly behaviour when no database is configured.
 """
+import datetime as dt
+import decimal as dec
+import json
 import unittest
 
 from common.admin_store import (AdminStoreUnavailable, PostgresAdminStore,
@@ -592,3 +595,38 @@ class ScheduledChangeTest(unittest.TestCase):
         db = FakeDB(rows=[])
         PostgresAdminStore(db.cursor).list_scheduled_changes()
         self.assertNotIn("WHERE", db.sql[0])
+
+
+class JsonEncodableTest(unittest.TestCase):
+    """Admin rows carry types json.dumps rejects.
+
+    psycopg returns TIMESTAMPTZ as datetime and NUMERIC as Decimal. Every admin
+    read hands those straight to the response envelope, so a route returning a
+    row with a timestamp died inside json.dumps and reported a bare 502 --
+    "admin write failed: TypeError" for a write that had already committed.
+    """
+
+    def test_datetime_encodes_as_iso(self):
+        import datetime as dt
+        from games.teen_patti_pro.api import _json_default
+        v = dt.datetime(2026, 9, 30, 5, 11, 41, tzinfo=dt.timezone.utc)
+        self.assertEqual(_json_default(v), v.isoformat())
+        self.assertEqual(json.loads(json.dumps({"at": v}, default=_json_default)),
+                         {"at": v.isoformat()})
+
+    def test_whole_decimal_encodes_as_int(self):
+        import decimal as dec
+        from games.teen_patti_pro.api import _json_default
+        # A coin amount of 1000 must not become 1000.0 in the console.
+        self.assertEqual(_json_default(dec.Decimal("1000")), 1000)
+        self.assertEqual(_json_default(dec.Decimal("12.50")), 12.5)
+
+    def test_a_store_row_round_trips(self):
+        from games.teen_patti_pro.api import _json_default
+        row = {"package_id": "starter", "coins": dec.Decimal("1000"),
+               "price_minor": dec.Decimal("99"), "bonus_percent": 10,
+               "tags": ["popular"], "created_at": dt.datetime(2026, 1, 2, 3, 4, 5)}
+        out = json.loads(json.dumps(row, default=_json_default))
+        self.assertEqual(out["coins"], 1000)
+        self.assertEqual(out["price_minor"], 99)
+        self.assertTrue(out["created_at"].startswith("2026-01-02T03:04:05"))

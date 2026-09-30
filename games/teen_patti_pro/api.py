@@ -31,6 +31,32 @@ from .service import TeenPattiService, ServiceError
 log = logging.getLogger(__name__)
 
 
+def _json_default(value):
+    """Make a Postgres value JSON-encodable.
+
+    psycopg returns TIMESTAMPTZ as datetime and NUMERIC as Decimal, neither of
+    which json.dumps accepts. These are the types the admin read paths hand
+    straight to the envelope, so without this every route that returned a row
+    with a timestamp failed inside json.dumps and surfaced as a 502 that named
+    TypeError and nothing else. Timestamps serialise as ISO-8601 and numerics
+    as JSON numbers, which is what the console's date and money formatting
+    already expects.
+    """
+    import datetime as _dt
+    import decimal as _decimal
+    if isinstance(value, (_dt.datetime, _dt.date, _dt.time)):
+        return value.isoformat()
+    if isinstance(value, _decimal.Decimal):
+        # int where it is whole, so a coin count does not render as 1000.0
+        as_int = int(value)
+        return as_int if value == as_int else float(value)
+    if isinstance(value, (set, frozenset, tuple)):
+        return list(value)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return value.decode("utf-8", "replace")
+    return str(value)
+
+
 def _load_admin_keys():
     """ADMIN_KEYS from env GAME_ADMIN_KEYS=key:role,... (+ legacy GAME_ADMIN_KEY).
     Sandbox fallback keeps the previous dev keys; production requires env keys."""
@@ -844,7 +870,14 @@ audit_entity="game", audit_entity_id=m.group(1),
 
     # -- helpers --
     def send(self, status, payload, headers=None):
-        body = json.dumps(payload, ensure_ascii=False).encode()
+        # `default` covers what a Postgres driver hands back that json cannot
+        # encode: TIMESTAMPTZ arrives as datetime, NUMERIC as Decimal, JSONB
+        # sometimes as a str. Without it every admin read of a row with a
+        # timestamp raised TypeError inside json.dumps, which the route then
+        # reported as a bare 502 -- the rules endpoint returned
+        # "admin write failed: TypeError" for a write that had actually
+        # committed. Timestamps become ISO-8601, Decimals become numbers.
+        body = json.dumps(payload, ensure_ascii=False, default=_json_default).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
