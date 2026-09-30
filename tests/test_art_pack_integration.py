@@ -29,6 +29,10 @@ from games.teen_patti_pro.service import TeenPattiService
 
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "assets/games/teen-patti-pro"
+# The palace renderer reads the newer pack; chips, seats, panels and the
+# background all come from here. Asserting against the legacy root would
+# check files the player never loads.
+PAL = ROOT / "assets/teen-patti"
 CLIENT = ROOT / "games/teen_patti_pro/client"
 JS = (CLIENT / "game.js").read_text(encoding="utf-8")
 
@@ -59,12 +63,17 @@ def _all_pack_paths():
     """
     paths = _literal_pack_paths()
 
-    # chips: chip-<value>.svg, with 1000+ using a spelled slug
-    big = re.search(r"d >= 1000 \? '([\w-]+)'", JS)
+    # chips: chip-<value>.svg, with 1000+ spelled as <n>k. The slug is computed
+    # from the value now, not a fixed table of four names, so the client can
+    # draw whatever the config's denominations are. This reconstructs the same
+    # rule rather than a hardcoded list, which is what let the client's list
+    # and the config's list drift apart unnoticed.
+    big = re.search(r"\((\w+)\s*>=\s*1000\s*\?\s*\(\1\s*/\s*1000\)\s*\+\s*'k'", JS)
     assert big, "chip slug rule not found in game.js"
     from games.teen_patti_pro.config import DEFAULT_CONFIG
     for d in DEFAULT_CONFIG.denoms:
-        paths.add(f"chips/chip-{big.group(1) if d >= 1000 else d}.svg")
+        slug = f"{d // 1000}k" if d >= 1000 else d
+        paths.add(f"chips/chip-{slug}.svg")
 
     # card faces: card-<rank>-<suit>.svg for every rank x suit the engine can
     # deal, reconstructed from the engine's own RANKS and SUITS.
@@ -106,18 +115,32 @@ class PackWiringTest(unittest.TestCase):
         # denomination, so the literal never appears in the source. Assert the
         # builder exists, that the slug rule is the expected one, and that each
         # resulting file is present.
-        self.assertRegex(JS, r"function CHIP_FACE\(d\) \{ return ART_BASE \+ "
-                            r"'chips/chip-' \+ \(d >= 1000 \? '1k' : d\) \+ '\.svg'; \}")
-        for d in (20, 100, 500, 1000):
-            slug = "1k" if d >= 1000 else str(d)
-            self.assertTrue((PACK / "chips" / f"chip-{slug}.svg").is_file(),
-                            f"chip-{slug}.svg missing")
-        # Every configured denomination must resolve, not just these four.
+        # The slug is the value in thousands, so 1000 -> 1k and 10000 -> 10k.
+        # It used to collapse every value >= 1000 to '1k', which made 10000,
+        # 50000 and 100000 all request chip-1k.svg.
+        # The slug is the value in thousands, so 1000 -> 1k and 10000 -> 10k.
+        # It used to collapse every value >= 1000 to '1k', which made 10000,
+        # 50000 and 100000 all request chip-1k.svg.
+        self.assertRegex(
+            JS,
+            r"function chipArt\(v\) \{[^}]*v >= 1000 \? \(v / 1000\) \+ 'k' : v",
+            "chipArt must spell the chip slug from the value")
         from games.teen_patti_pro.config import DEFAULT_CONFIG
-        for d in DEFAULT_CONFIG.denoms:
-            slug = "1k" if d >= 1000 else str(d)
-            self.assertTrue((PACK / "chips" / f"chip-{slug}.svg").is_file(),
-                            f"denomination {d} has no chip art")
+        for d in list(DEFAULT_CONFIG.denoms) + [1000, 10000, 50000, 100000]:
+            slug = f"{d // 1000}k" if d >= 1000 else str(d)
+            self.assertTrue((PAL / "chips" / f"chip-{slug}.svg").is_file(),
+                            f"denomination {d} has no chip art ({slug})")
+
+    def test_the_client_does_not_hardcode_denominations(self):
+        """The chip bar must not invent its own list.
+
+        It used to hardcode [1000, 10000, 50000, 100000] while the config
+        accepts [20, 100, 500, 1000], so three of the four chips a player could
+        tap were refused by the table. The same bug shipped in the bot manager.
+        """
+        self.assertNotRegex(JS, r"const DENOMS = \[[0-9]")
+        self.assertIn("setDenoms", JS)
+        self.assertIn("snap.denoms", JS)
 
     def test_seats_map_to_the_srs_order(self):
         # SRS section 1: A green, B blue, C red. Asserted as a triple so a
@@ -166,8 +189,9 @@ class PackFallbackTest(unittest.TestCase):
         self.assertIn("naturalWidth", JS)
 
     def test_chip_fallback_is_the_procedural_chip(self):
-        # Palace renderer uses PAL_IMG['chip' + d] for chip assets
-        block = JS.split("const art = PAL_IMG['chip' + d]")[1][:900]
+        # The palace renderer resolves chips through chipImage(d), which is
+        # lazy so a denomination the server named after boot still has art.
+        block = JS.split("const art = chipImage(d)")[1][:900]
         self.assertIn("} else {", block, "chip needs an else branch")
         self.assertIn("ctx.arc(x, cy, cs * 0.42, 0, 7)", block,
                       "fallback must draw the original procedural chip")
@@ -285,3 +309,55 @@ class PackResolvesOverHttpTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChipDenominationsAreServerAuthoritativeTest(unittest.TestCase):
+    """The chips a player can tap must be the chips the table accepts.
+
+    Found by putting the reference screenshot next to the config. The artwork
+    in the reference shows 20 / 100 / 500 / 1K, which is what the config
+    accepts. The client hardcoded [1000, 10000, 50000, 100000] instead, so
+    three of the four chips in the bar were refused on tap with
+    VALIDATION_ERROR -- and the same mistake was in the bot manager, where it
+    meant bots sat at the table and never played.
+
+    These tests pin the rule: the snapshot names the denominations, and every
+    denomination it names must resolve to art.
+    """
+
+    def test_the_snapshot_carries_the_denominations(self):
+        from games.teen_patti_pro.engine import Room
+        from games.teen_patti_pro.config import DEFAULT_CONFIG
+        import inspect
+        src = inspect.getsource(Room.snapshot)
+        self.assertIn('"denoms"', src,
+                      "the snapshot must tell the client which chips exist")
+
+    def test_every_configured_denomination_has_art_in_the_palace_pack(self):
+        from games.teen_patti_pro.config import DEFAULT_CONFIG
+        for d in DEFAULT_CONFIG.denoms:
+            slug = f"{d // 1000}k" if d >= 1000 else str(d)
+            self.assertTrue((PAL / "chips" / f"chip-{slug}.svg").is_file(),
+                            f"denomination {d} has no art in the palace pack")
+
+    def test_the_legacy_fixed_chip_table_is_gone(self):
+        # Four hardcoded names against the old art root had no remaining
+        # reader once the palace renderer resolved chips by value.
+        for dead in ("CHIP_ART", "CHIP_FACE", "CHIP_IMAGES"):
+            self.assertNotIn(dead, JS,
+                             "%s is dead code left to drift" % dead)
+
+    def test_chip_art_spells_the_slug_from_the_value(self):
+        # Not "the file for each denomination exists" -- that a Python
+        # re-implementation of the rule would satisfy even if the client's rule
+        # were different. The rule itself is asserted in the source, and the
+        # file check is done against the slugs that rule produces.
+        self.assertRegex(JS, r"chipArt\(v\)")
+        self.assertRegex(JS, r"v >= 1000 \? \(v / 1000\) \+ 'k'",
+                         "the slug must be the value in thousands, so 10000 "
+                         "and 50000 do not both ask for chip-1k.svg")
+        for d in (20, 100, 500, 1000, 10000, 50000, 100000):
+            slug = f"{d // 1000}k" if d >= 1000 else str(d)
+            self.assertTrue((PAL / "chips" / f"chip-{slug}.svg").is_file(),
+                            f"the rule would request a file that is absent: "
+                            f"chip-{slug}.svg for {d}")

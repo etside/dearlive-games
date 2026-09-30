@@ -732,6 +732,14 @@ class Room:
                     "pots": {}, "pot_total": 0, "my_bet": 0, "carry_in": 0,
                     "seats": {}, "hands": {}, "winners": [],
                     "config_version": getattr(self.config, "version", ""),
+                    # Which chips the table will accept, so the client cannot
+                    # offer one the server will refuse. The client used to
+                    # hardcode 1000/10000/50000/100000 while the config
+                    # accepts 20/100/500/1000, so three of the four chips in
+                    # the bar were unbettable and tapping one returned a
+                    # validation error. Same lesson as the bot chip bug.
+                    "denoms": list(getattr(self.config, "denoms", ()) or ()),
+                    "max_bet": int(getattr(self.config, "max_bet", 0) or 0),
                     **self._occupancy(viewer)}
         reveal = r.status in (RoundStatus.RESULT, RoundStatus.SETTLED, RoundStatus.CLOSED)
         pots: Dict[str, int] = {}
@@ -765,6 +773,8 @@ class Room:
                           if reveal and self.config.jokers else {}),
             "winners": r.winner_positions if reveal else [],
             "config_version": r.config_version,
+            "denoms": list(getattr(self.config, "denoms", ()) or ()),
+            "max_bet": int(getattr(self.config, "max_bet", 0) or 0),
             **self._occupancy(viewer),
         }
 

@@ -90,7 +90,24 @@
   const S = { snap: null, selDenom: 1000, selPos: null, lastSeq: 0, connected: false,
               msg: '', msgKind: 'info' };
   let roundPollTimer = null, walletPollTimer = null, wsRetryTimer = null;
-  const DENOMS = [1000, 10000, 50000, 100000];
+  // Chip denominations come from the server, in the snapshot. This used to be
+  // a hardcoded [1000, 10000, 50000, 100000] while the running config accepts
+  // [20, 100, 500, 1000], so three of the four chips drawn in the bar were
+  // unbettable and tapping one came back as VALIDATION_ERROR. A client that
+  // invents its own denominations will always eventually disagree with the
+  // table about what money is legal.
+  let DENOMS = [];
+  function setDenoms(list) {
+    var next = (Array.isArray(list) ? list : [])
+      .map(Number).filter(function (n) { return n > 0 && isFinite(n); });
+    if (!next.length) return false;
+    if (DENOMS.length && DENOMS.join() === next.join()) return false;
+    DENOMS = next;
+    // Keep the selection legal: a previously valid chip may no longer be.
+    if (DENOMS.indexOf(S.selDenom) < 0) S.selDenom = DENOMS[0];
+    next.forEach(function (v) { chipImage(v); });
+    return true;
+  }
   const POS = ['A', 'B', 'C'];
   const SEAT_LABELS = { A: 'YOU', B: 'PLAYER A', C: 'ONLINE' };
   // Seat art. This pointed at 'assets/generated/seat-p4.svg' & friends, which
@@ -982,13 +999,11 @@
     return !!(img && img.complete && img.naturalWidth > 0 && w > 0 && h > 0);
   }
   const ART_BASE = '/assets/games/teen-patti-pro/';
-  // Chip denomination -> art file. The pack names them by value, so the
-  // mapping is a lookup rather than an index that could silently drift.
-  const CHIP_ART = {
-    20: CHIP_FACE(20), 100: CHIP_FACE(100),
-    500: CHIP_FACE(500), 1000: CHIP_FACE(1000)
-  };
-  function CHIP_FACE(d) { return ART_BASE + 'chips/chip-' + (d >= 1000 ? '1k' : d) + '.svg'; }
+  // Chip art lives in the palace pack and is resolved by chipArt() below.
+  // This legacy table named four fixed denominations against the old art root
+  // and was the source of the chip bar offering chips the table refuses; the
+  // palace renderer resolves art from the server's denominations instead, so
+  // the table has no remaining reader and is removed rather than left to drift.
   // Seats follow SRS section 1 and the reference: A green, B blue, C red.
   const SEAT_ART = { A: ART_BASE + 'seats/seat-green.svg',
                      B: ART_BASE + 'seats/seat-blue.svg',
@@ -1006,8 +1021,6 @@
   Object.keys(STATUS_ART).forEach(function (k) {
     STATUS_IMAGES[k] = preloadImage(STATUS_ART[k]);
   });
-  const CHIP_IMAGES = {};
-  DENOMS.forEach(function (d) { CHIP_IMAGES[d] = preloadImage(CHIP_ART[d]); });
   const SEAT_ART_IMAGES = {};
   Object.keys(SEAT_ART).forEach(function (k) {
     SEAT_ART_IMAGES[k] = preloadImage(SEAT_ART[k]);
@@ -1252,9 +1265,15 @@
                  C: PAL + 'ui/panel-green.svg' },
     seat:      { A: PAL + 'seats/seat-red.svg', B: PAL + 'seats/seat-blue.svg',
                  C: PAL + 'seats/seat-green.svg' },
-    chip:      { 1000: PAL + 'chips/chip-1k.svg', 10000: PAL + 'chips/chip-10k.svg',
-                 50000: PAL + 'chips/chip-50k.svg', 100000: PAL + 'chips/chip-100k.svg' }
+    // Chip art is resolved by value, not enumerated. The pack names them
+    // chip-20 / chip-100 / chip-500 / chip-1k / chip-10k / chip-50k /
+    // chip-100k, so every denomination the config can name has art. A fixed
+    // map only covered the four hardcoded values and left the rest blank.
+    chip:      null
   };
+  function chipArt(v) {
+    return PAL + 'chips/chip-' + (v >= 1000 ? (v / 1000) + 'k' : v) + '.svg';
+  }
   const PAL_IMG = {};
   Object.keys(PAL_ART).forEach(function (k) {
     if (k === 'panel' || k === 'seat' || k === 'chip') return;
@@ -1264,9 +1283,11 @@
     PAL_IMG['panel' + p] = preloadImage(PAL_ART.panel[p]);
     PAL_IMG['seat' + p] = preloadImage(PAL_ART.seat[p]);
   });
-  Object.keys(PAL_ART.chip).forEach(function (d) {
-    PAL_IMG['chip' + d] = preloadImage(PAL_ART.chip[d]);
-  });
+  function chipImage(v) {
+    var key = 'chip' + v;
+    if (!PAL_IMG[key]) PAL_IMG[key] = preloadImage(chipArt(v));
+    return PAL_IMG[key];
+  }
 
   // Reference palette, lifted from the palace art rather than invented.
   const PAL_THEME = {
@@ -1599,17 +1620,20 @@
                  px + cr * 2 + bh * 0.10, by + bh * 0.5 + 1);
     ctx.textAlign = 'center';
 
-    // chip row, centred
+    // chip row, centred. Drawn only once the server has named the chips: with
+    // none, avail / 0 is Infinity and the row geometry is NaN, and inventing
+    // a default list is how the bar came to offer chips the table refuses.
     S._chips = [];
     const repeatW = Math.min(96, W * 0.24);
     const avail = W - SAFE.l - SAFE.r - pillW - repeatW - 30;
-    const cs = Math.min(bh * 0.74, avail / DENOMS.length - 6);
-    const cx0 = px + pillW + 10 + (avail - cs * DENOMS.length) / 2 + cs / 2;
+    const nChips = DENOMS.length || 1;   // no chips yet: geometry stays finite
+    const cs = Math.min(bh * 0.74, avail / nChips - 6);
+    const cx0 = px + pillW + 10 + (avail - cs * nChips) / 2 + cs / 2;
     const cy = by + bh * 0.5;
     DENOMS.forEach(function (d, i) {
       const x = cx0 + i * cs;
       const sel = S.selDenom === d;
-      const art = PAL_IMG['chip' + d];
+      const art = chipImage(d);
       if (imageReady(art, 1, 1)) {
         if (sel) {
           ctx.beginPath(); ctx.arc(x, cy, cs * 0.56, 0, 7);
@@ -1842,6 +1866,7 @@
     try {
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
+      if (setDenoms(S.snap && S.snap.denoms)) refresh();
       refreshAppearances(S.snap);
       noteAuthoritativeRoom(S.snap);
       setRoundPill(S.snap && S.snap.round_no, roomLabel());
@@ -2084,6 +2109,7 @@
         const m = JSON.parse(ev.data);
         if (m.kind === 'snapshot' && m.data) {
           S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now();
+          if (setDenoms(S.snap && S.snap.denoms)) refresh();
           refreshAppearances(m.data);
           noteAuthoritativeRoom(m.data);
           setRoundPill(m.data.round_no, roomLabel());
