@@ -1,0 +1,147 @@
+"""event_id and state_version: the contract the animation layer binds to.
+
+Decision (a) of the rules lock. Without these the animation system has nothing
+server-authoritative to key on: no way to make an effect idempotent across a
+reconnect, and no way to tell whether a client missed a transition.
+
+state_version is bumped by the `status` setter rather than by a counter at each
+transition() call site, because there are status writes that do not go through
+transition() -- notably the settlement-resume restore. A counter maintained by
+hand would miss those and the animation layer would silently skip a transition.
+"""
+import os
+import sys
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from common.lifecycle import RoundStatus  # noqa: E402
+from games.teen_patti_pro.engine import Room, Round  # noqa: E402
+
+
+def _round():
+    return Round(round_id="t-r1", round_no=1)
+
+
+class StateVersionTest(unittest.TestCase):
+    def test_starts_at_zero(self):
+        self.assertEqual(_round().state_version, 0)
+
+    def test_increments_on_a_real_change(self):
+        r = _round()
+        r.status = RoundStatus.BETTING_OPEN
+        self.assertEqual(r.state_version, 1)
+
+    def test_writing_the_same_status_does_not_bump(self):
+        """Otherwise the counter stops meaning 'a transition happened'."""
+        r = _round()
+        r.status = RoundStatus.BETTING_OPEN
+        v = r.state_version
+        r.status = RoundStatus.BETTING_OPEN
+        self.assertEqual(r.state_version, v)
+
+    def test_tracks_a_whole_cycle_monotonically(self):
+        r = _round()
+        seen = [r.state_version]
+        for st in (RoundStatus.BETTING_OPEN, RoundStatus.BETTING_CLOSED,
+                   RoundStatus.RESULT_PROCESSING, RoundStatus.RESULT,
+                   RoundStatus.SETTLED, RoundStatus.CLOSED):
+            r.status = st
+            seen.append(r.state_version)
+        self.assertEqual(seen, sorted(seen))
+        self.assertEqual(len(set(seen)), len(seen), "versions repeated: %s" % seen)
+
+    def test_a_restore_bump_is_also_counted(self):
+        """The settlement-resume path assigns status without transition()."""
+        r = _round()
+        r.status = RoundStatus.SETTLED_PENDING
+        before = r.state_version
+        r.status = RoundStatus.RESULT_PROCESSING   # resume
+        self.assertGreater(r.state_version, before)
+
+
+class EventIdTest(unittest.TestCase):
+    def test_every_emit_carries_a_unique_event_id(self):
+        r = _round()
+        r.status = RoundStatus.BETTING_OPEN
+        ids = {r.emit("e%d" % i, {}, 0)["event_id"] for i in range(50)}
+        self.assertEqual(len(ids), 50, "event_id collided -- effects would replay")
+
+    def test_event_id_is_a_usable_key(self):
+        r = _round()
+        ev = r.emit("x", {}, 0)
+        self.assertIsInstance(ev["event_id"], str)
+        self.assertGreaterEqual(len(ev["event_id"]), 16)
+
+    def test_event_carries_the_state_version_at_emit_time(self):
+        r = _round()
+        r.status = RoundStatus.BETTING_OPEN
+        first = r.emit("a", {}, 0)
+        r.status = RoundStatus.BETTING_CLOSED
+        second = r.emit("b", {}, 0)
+        self.assertLess(first["state_version"], second["state_version"])
+        self.assertEqual(first["state_version"], 1)
+        self.assertEqual(second["state_version"], 2)
+
+    def test_events_are_appended_in_order_with_seq(self):
+        r = _round()
+        seqs = [r.emit("e", {}, 0)["seq"] for _ in range(5)]
+        self.assertEqual(seqs, [1, 2, 3, 4, 5])
+
+
+class SnapshotExposesStateVersionTest(unittest.TestCase):
+    def test_idle_snapshot_reports_zero(self):
+        snap = Room("t").snapshot("p1", now_ms=0)
+        self.assertEqual(snap["state_version"], 0)
+
+    def test_state_version_is_present_in_both_shapes(self):
+        """state_version must not be one of the keys that come and go.
+
+        The idle and live snapshots are NOT identical -- `round` appears only
+        when idle and `raw_hands` only when live, both pre-existing. This
+        asserts the key my change added is stable across both, which is what a
+        client reading it after a reconnect actually depends on.
+        """
+        room = Room("t")
+        self.assertIn("state_version", room.snapshot("p1", now_ms=0))
+        room.start_round(1000)
+        self.assertIn("state_version", room.snapshot("p1", now_ms=2000))
+
+    def test_the_two_snapshot_shapes_keep_their_known_differences(self):
+        """Recorded rather than asserted equal.
+
+        `round` (idle only) and `raw_hands` (live only) predate this work.
+        Silently equalising them would be a wire change with no test behind it,
+        so they are pinned here to be noticed if either moves.
+        """
+        room = Room("t")
+        idle = set(room.snapshot("p1", now_ms=0).keys())
+        room.start_round(1000)
+        live = set(room.snapshot("p1", now_ms=2000).keys())
+        self.assertEqual(idle - live, {"round"})
+        self.assertEqual(live - idle, {"raw_hands"})
+
+    def test_live_snapshot_tracks_the_round(self):
+        room = Room("t")
+        room.start_round(1000)
+        snap = room.snapshot("p1", now_ms=2000)
+        self.assertEqual(snap["state_version"], room.round.state_version)
+        self.assertGreaterEqual(snap["state_version"], 1)
+
+
+class ClientConsumesTheContractTest(unittest.TestCase):
+    """The client must be able to key animations on event_id."""
+
+    def setUp(self):
+        with open(os.path.join(ROOT, "games", "teen_patti_pro", "client", "game.js"),
+                  encoding="utf-8") as fh:
+            self.js = fh.read()
+
+    def test_client_already_tracks_a_last_seq(self):
+        self.assertIn("lastSeq", self.js,
+                      "the client has a sequence cursor to extend, not replace")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -14,6 +14,7 @@ import hashlib
 import random
 import threading
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -223,7 +224,13 @@ class Bet:
 class Round:
     round_id: str
     round_no: int
-    status: RoundStatus = RoundStatus.UPCOMING
+    # Stored as _status; `status` is a property below. Every assignment bumps
+    # _state_version, which is the only way to guarantee the counter tracks
+    # every state change -- there are status writes that do not go through
+    # transition(), notably the settlement-resume restore, and a counter
+    # incremented only in the transition() call sites would silently miss them.
+    _status: RoundStatus = RoundStatus.UPCOMING
+    _state_version: int = 0
     created_at_ms: int = 0
     betting_end_at_ms: int = 0
     seed_hex: str = ""
@@ -254,9 +261,38 @@ class Round:
     # change_ids affected so the result payload can report it.
     cap_binds: List[dict] = field(default_factory=list)
 
+    @property
+    def status(self) -> RoundStatus:
+        return self._status
+
+    @status.setter
+    def status(self, value: RoundStatus) -> None:
+        if value != self._status:
+            self._state_version += 1
+        self._status = value
+
+    @property
+    def state_version(self) -> int:
+        """Monotonic per round; increments on every status change.
+
+        The animation layer compares this on reconnect to decide whether it has
+        missed a transition. It must be strictly increasing and must change
+        exactly when the round's observable state does, so it is bumped by the
+        status setter rather than by a hand-maintained counter at call sites.
+        """
+        return self._state_version
+
     def emit(self, kind: str, data: dict, now_ms: int) -> dict:
         self._seq += 1
-        ev = {"seq": self._seq, "kind": kind, "serverTime": now_ms, **data}
+        # event_id is unique per emit and is what makes an animation idempotent:
+        # the client keys its consumed-event set on it, so a redelivered event
+        # over a reconnecting socket cannot replay the effect. seq alone is not
+        # enough -- it resets with the round and is not unique across emits
+        # after a resubscribe replay.
+        ev = {"seq": self._seq,
+              "event_id": uuid.uuid4().hex,
+              "state_version": self._state_version,
+              "kind": kind, "serverTime": now_ms, **data}
         self.events.append(ev)
         return ev
 
@@ -732,6 +768,11 @@ class Room:
                     "pots": {}, "pot_total": 0, "my_bet": 0, "carry_in": 0,
                     "seats": {}, "hands": {}, "winners": [],
                     "config_version": getattr(self.config, "version", ""),
+                    # Same keys as a live snapshot, so a client never has to
+                    # branch on the idle shape. 0 is the correct version for
+                    # "no round": there is nothing to have missed a transition
+                    # from.
+                    "state_version": 0,
                     # Which chips the table will accept, so the client cannot
                     # offer one the server will refuse. The client used to
                     # hardcode 1000/10000/50000/100000 while the config
@@ -762,6 +803,10 @@ class Room:
             "round_id": r.round_id,
             "round_no": r.round_no,
             "status": r.status.value,
+            # Bumped by the status setter on every state change. A reconnecting
+            # client compares this with its own to decide whether it missed a
+            # transition, and must not have to infer it from the status string.
+            "state_version": r.state_version,
             "serverTime": now_ms,
             "betting_end_at": r.betting_end_at_ms,
             "pots": pots, "pot_total": sum(pots.values()) + r.carry_in,
