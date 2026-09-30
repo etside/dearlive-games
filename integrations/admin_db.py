@@ -60,6 +60,11 @@ def build_admin_store(database_url: Optional[str] = None) -> AdminStore:
         committing would discard work. Every mutating method in
         PostgresAdminStore commits or rolls back before returning, so reaching
         the close means the transaction is already resolved.
+
+        IMPORTANT: If a transaction fails, psycopg leaves the connection in a
+        failed state (InFailedSqlTransaction). We must detect this and create
+        a fresh connection, otherwise every subsequent cursor will fail with
+        InFailedSqlTransaction.
         """
 
         def __init__(self, dsn: str):
@@ -67,7 +72,25 @@ def build_admin_store(database_url: Optional[str] = None) -> AdminStore:
             self._connection = None
 
         def _ensure(self):
+            """Get a healthy connection. If the current one is closed or in a
+            failed transaction state, create a fresh connection."""
             if self._connection is None or self._connection.closed:
+                self._connection = psycopg.connect(
+                    self._dsn, connect_timeout=_CONNECT_TIMEOUT_S)
+                return self._connection
+            # Check if the connection is in a failed transaction state
+            try:
+                # A failed transaction leaves the connection in a state where
+                # any new cursor will fail with InFailedSqlTransaction.
+                # We can detect this by checking the transaction status.
+                if self._connection.info.transaction_status == psycopg.pq.TransactionStatus.INTRANS_FAILED:
+                    raise psycopg.OperationalError("InFailedSqlTransaction")
+            except Exception:
+                # Connection is in a bad state, create a fresh one
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
                 self._connection = psycopg.connect(
                     self._dsn, connect_timeout=_CONNECT_TIMEOUT_S)
             return self._connection
