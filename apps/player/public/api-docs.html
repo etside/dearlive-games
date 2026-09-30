@@ -40,11 +40,24 @@
     color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:6px;
     font-size:12px;padding:4px 10px;cursor:pointer}
   button.copy:hover{background:rgba(255,255,255,.22)}
+  /* The copy button is absolutely positioned; without this the wrapper is
+     static and the button anchors to the page instead of the code block. */
+  .code{position:relative;margin:12px 0}
+  .code>pre{margin:0}
+  .code>code{display:block;background:var(--code-bg);color:var(--code-ink);
+    border-radius:10px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .note{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;
     padding:10px 14px;font-size:14px;margin:12px 0}
   .note strong{display:block;margin-bottom:2px}
   a{color:var(--accent)}
   footer{max-width:960px;margin:0 auto;padding:0 24px 48px;color:var(--muted);font-size:13px}
+  footer.cta{display:flex;flex-wrap:wrap;gap:10px;padding-top:28px}
+  .btn{display:inline-block;padding:10px 16px;border-radius:9px;text-decoration:none;
+    border:1px solid var(--line);color:var(--text);font-weight:600;font-size:14px}
+  .btn:hover{background:var(--panel)}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#06202e}
+  section{scroll-margin-top:16px}
 </style>
 </head>
 <body>
@@ -65,6 +78,14 @@
   <a href="#ws">WebSocket Events</a>
   <a href="#integration">Integration</a>
   <a href="#support">Support</a>
+  <a href="#install">One-line install</a>
+  <a href="#flutter">Flutter</a>
+  <a href="#nestjs">NestJS</a>
+  <a href="#mongodb">MongoDB</a>
+  <a href="#agora">Agora</a>
+  <a href="#nextjs">Next.js</a>
+  <a href="#errors">Error codes</a>
+  <a href="#limits">Rate limits</a>
 </nav>
 <main>
 
@@ -246,7 +267,237 @@ curl -X POST https://api.ura-dhura.com/api/v1/sessions \
   <code>/teen-patti-pro/demo.html</code>.</p>
 </section>
 
+
+<section id="install">
+  <h2>One-line install</h2>
+  <p>The installer asks for the operator key and HMAC secret your account
+  manager gave you, writes a <code>.env</code> at mode 600, adds it to
+  <code>.gitignore</code>, scaffolds the client for whichever stack it finds,
+  and verifies the API answers. Read it before you pipe it anywhere — that is
+  the point of it being a readable file.</p>
+  <div class="code"><button class="copy">Copy</button><code>curl -fsSL https://api.ura-dhura.com/install | bash</code></div>
+  <p>Run it inside your project directory. With no project present it writes
+  the <code>.env</code> and stops rather than guessing where your code lives.</p>
+</section>
+
+<section id="flutter">
+  <h2>Flutter (BLoC)</h2>
+  <p>Dependencies: <code>dio: ^5.0.0</code>, <code>web_socket_channel: ^2.4.0</code>.</p>
+  <p><strong>The client never mints its own session.</strong> Your backend holds
+  the HMAC secret and calls <code>POST /api/v1/sessions</code>; the app receives
+  a launch token and opens the table with it. Putting the secret in the app
+  would publish it to anyone who unzips the build.</p>
+  <div class="code"><pre>// 1. Your backend mints, the app redeems.
+final launchToken = await myBackend.mintSession(playerId: 'player_1');
+
+// 2. Open the table. This 302-redirects into the client with the session on.
+final tableUri = Uri.parse('$api/api/v1/provider/launch/$launchToken');
+await WebViewController().loadRequest(tableUri);
+
+// 3. Round state arrives over the socket. The server is authoritative: the
+//    BLoC renders snapshots and events, and computes no outcome of its own.
+final channel = WebSocketChannel.connect(wsUri);
+channel.sink.add(jsonEncode({'action': 'subscribe', 'session': sessionToken}));</pre></div>
+  <div class="code"><pre>// BLoC: one event in, one immutable state out.
+sealed class RoundEvent {}
+class RoundSnapshot extends RoundEvent { final Map&lt;String, dynamic&gt; data; RoundSnapshot(this.data); }
+class RoundUpdate   extends RoundEvent { final String kind; final Map&lt;String, dynamic&gt; data; RoundUpdate(this.kind, this.data); }
+class RoundFailure  extends RoundEvent { final String code; RoundFailure(this.code); }
+
+class RoundBloc extends Bloc&lt;RoundEvent, RoundState&gt; {
+  RoundBloc(WebSocketChannel ch) : super(const RoundState.idle()) {
+    on&lt;RoundSnapshot&gt;((e, emit) =&gt; emit(RoundState.ready(e.data)));
+    on&lt;RoundUpdate&gt;((e, emit) =&gt; emit(
+        e.kind == 'result.declared'
+          ? RoundState.settled(e.data)      // reveal cards here
+          : state.copyWith(lastEvent: e.kind)));
+    on&lt;RoundFailure&gt;((e, emit) =&gt; emit(RoundState.failed(e.code)));
+  }
+}</pre></div>
+  <div class="note"><strong>Bet rejections are not round events.</strong> A
+  refused bet comes back as <code>{"kind":"error"}</code>, not as an event in
+  the stream. Handle it separately or a full table reads as a silent no-op.</div>
+</section>
+
+<section id="nestjs">
+  <h2>NestJS wallet callbacks</h2>
+  <p>The game server calls your service to move money, in four operations. Each
+  one is retried until it gets a 2xx, so <strong>every handler must be
+  idempotent</strong>: charge on the transaction id, not on arrival.</p>
+  <table>
+    <tr><th>Operation</th><th>Your side does</th><th>On success return</th></tr>
+    <tr><td><code>balance</code></td><td>Read the player's available balance.</td><td>the balance</td></tr>
+    <tr><td><code>debit</code></td><td>Take the stake. Exactly once per transaction id.</td><td>the new balance</td></tr>
+    <tr><td><code>credit</code></td><td>Pay a win. Exactly once per transaction id.</td><td>the new balance</td></tr>
+    <tr><td><code>rollback</code></td><td>Reverse a debit that never completed.</td><td>the new balance</td></tr>
+  </table>
+  <p><strong>Verify before you trust.</strong> The provider signs the raw
+  request bytes with HMAC-SHA256 over the timestamp and nonce. Compare in
+  constant time, reject a timestamp outside your window, and remember the nonce
+  — without those two checks a captured request replays.</p>
+  <div class="code"><pre>import { Controller, Post, Headers, Req, Res,
+         UnauthorizedException } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
+
+const TOLERANCE_MS = 5 * 60 * 1000;
+
+function verify(raw: Buffer, h: Record&lt;string, string&gt;, secret: string) {
+  const ts = h['x-timestamp'] ?? '', nonce = h['x-nonce'] ?? '',
+        sig = h['x-signature'] ?? '';
+  if (!ts || !nonce || !sig) return false;
+  if (Math.abs(Date.now() - Number(ts)) &gt; TOLERANCE_MS) return false;
+  if (seenNonce(nonce)) return false;           // replay
+  const expected = createHmac('sha256', secret)
+    .update(Buffer.concat([Buffer.from(ts), Buffer.from(nonce), raw]))
+    .digest('hex');
+  const a = Buffer.from(expected, 'utf8'), b = Buffer.from(sig, 'utf8');
+  return a.length === b.length &amp;&amp; timingSafeEqual(a, b);
+}
+
+@Controller('teen-patti/wallet')
+export class WalletController {
+  @Post()
+  async handle(@Req() req, @Headers() h, @Res() res) {
+    const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    if (!verify(raw, h, process.env.OPERATOR_HMAC_SECRET!)) {
+      throw new UnauthorizedException('bad signature');
+    }
+    // Dispatch on req.body.op, and key the ledger write on
+    // req.body.transaction_id. A 5xx tells the server to retry; a 4xx tells
+    // it the request is wrong and must not be.
+    res.status(501).json({ error: 'wire this to your ledger' });
+  }
+}</pre></div>
+</section>
+
+<section id="mongodb">
+  <h2>MongoDB integration</h2>
+  <p><strong>There is no direct database access.</strong> The game server holds
+  its own state and speaks REST and WebSocket only. Connect Postgres or Mongo
+  to your side for your own reporting; do not point a second client at the
+  game's store, and do not read settlement rows to decide a balance — ask the
+  wallet callback, which is the authority.</p>
+  <p>If you keep your own copy of sessions, rounds or results, these are the
+  constraints worth encoding as indexes rather than discovering in production:</p>
+  <div class="code"><pre>// Unique keys are not optional: they are what makes a retry idempotent.
+db.sessions.createIndex({ session_id: 1 }, { unique: true });
+db.sessions.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });  // TTL
+db.rounds.createIndex({ room_id: 1, round_no: -1 }, { unique: true });
+db.bets.createIndex({ bet_id: 1 }, { unique: true });
+// Exactly-once payout. One settlement per bet, enforced by the database
+// rather than by a check-then-insert in application code.
+db.settlements.createIndex({ bet_id: 1 }, { unique: true });</pre></div>
+  <div class="note"><strong>The settlement index is the important one.</strong>
+  A unique constraint on <code>bet_id</code> is what makes a duplicate credit
+  impossible. Doing it in application code leaves a window between the read and
+  the write, and the game server will find it.</div>
+</section>
+
+<section id="agora">
+  <h2>Agora (video)</h2>
+  <p>Agora is an independent layer. It carries voice or video for a table; it
+  knows nothing about cards, rounds or balances, and the game server knows
+  nothing about it. The two share a room identifier and nothing else.</p>
+  <div class="code"><pre>// Independent of the game. The only shared value is a room name.
+final agora = AgoraRtcEngine();
+await agora.joinChannel(token: agoraToken, channel: roomId);
+
+// The game client renders the table from its own WebSocket snapshot.
+// A player joining or leaving Agora triggers nothing in the round state,
+// and a round event must never be inferred from Agora's roster.</pre></div>
+  <p>Keep the Agora token out of the game client and out of the launch URL: mint
+  it in your backend, scoped to a channel and an expiry, and pass it to the app
+  the same way you pass the launch token.</p>
+</section>
+
+<section id="nextjs">
+  <h2>Next.js admin proxy</h2>
+  <p>Proxy the admin API through your own origin so the operator key stays
+  server-side. <strong>Replace <code>X-Admin-Key</code>; do not forward the
+  caller's.</strong> Forwarding hands anyone who finds your route the ability to
+  spend your operator's key.</p>
+  <div class="code"><pre>// app/api/teen-patti/[...path]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+// An allowlist, not a pass-through. A proxy that forwards any path under
+// /admin is a proxy for whatever else lives there.
+const ALLOW = /^\/api\/v1\/admin\/(dashboard|packages|profit-risk|audit
+  |players|games|rooms|sessions)/;
+
+export async function proxy(req: NextRequest,
+                            ctx: { params: Promise&lt;{ path: string[] }&gt; }) {
+  const { path } = await ctx.params;
+  const suffix = '/' + path.join('/');
+  if (!ALLOW.test(suffix)) {
+    return NextResponse.json({ error: 'not proxied' }, { status: 404 });
+  }
+  const upstream = await fetch(
+    (process.env.GAME_API_URL ?? 'https://api.ura-dhura.com') + suffix,
+    { method: req.method,
+      headers: { 'X-Admin-Key': process.env.OPERATOR_API_KEY!,
+                 'Content-Type': 'application/json' },
+      body: ['GET','HEAD'].includes(req.method) ? undefined : await req.text(),
+      cache: 'no-store' });
+  return new NextResponse(upstream.body, { status: upstream.status,
+    headers: { 'Content-Type':
+      upstream.headers.get('content-type') ?? 'application/json' } });
+}</pre></div>
+  <p>Authorise the browser session in your own middleware before this route
+  runs. The route above checks the path, not who is asking.</p>
+</section>
+
+<section id="errors">
+  <h2>Error codes</h2>
+  <p>Every response uses the same envelope, so an error always carries a
+  <code>code</code>, never prose alone. Match on the code; the message is for
+  humans and may change.</p>
+  <table>
+    <tr><th>HTTP</th><th><code>code</code></th><th>Means</th><th>Retry?</th></tr>
+    <tr><td>401</td><td><code>UNAUTHENTICATED</code></td><td>No session, or it expired.</td><td>No — mint a new one.</td></tr>
+    <tr><td>401</td><td><code>INVALID_SESSION_TOKEN</code></td><td>Launch token unknown or expired.</td><td>No — mint a new one.</td></tr>
+    <tr><td>403</td><td><code>FORBIDDEN</code></td><td>Signed, but not permitted.</td><td>No.</td></tr>
+    <tr><td>403</td><td><code>TBC_RULE_UNCONFIRMED</code></td><td>A real-money action was refused because a rule is still to-be-confirmed.</td><td>No — confirm the rule.</td></tr>
+    <tr><td>404</td><td><code>NOT_FOUND</code></td><td>Unknown room, round or route.</td><td>No.</td></tr>
+    <tr><td>409</td><td><code>BETTING_CLOSED</code></td><td>The betting window for that round has closed.</td><td>No — wait for the next round.</td></tr>
+    <tr><td>409</td><td><code>DUPLICATE_REQUEST</code></td><td>That Idempotency-Key was already used.</td><td>No — it already happened.</td></tr>
+    <tr><td>409</td><td><code>STATE_CONFLICT</code></td><td>The room is in a state that forbids this (e.g. a seat is taken).</td><td>No — re-read state.</td></tr>
+    <tr><td>422</td><td><code>VALIDATION_ERROR</code></td><td>Bad field: not a chip, not a seat, over the limit.</td><td>No — fix the request.</td></tr>
+    <tr><td>402</td><td><code>INSUFFICIENT_BALANCE</code></td><td>Not enough funds for that stake.</td><td>No.</td></tr>
+    <tr><td>429</td><td><code>RATE_LIMITED</code></td><td>Too many mints. See <a href="#limits">limits</a>.</td><td>Yes, after the window.</td></tr>
+    <tr><td>503</td><td><code>WALLET_UNAVAILABLE</code></td><td>Your wallet service did not answer.</td><td>Yes, with backoff.</td></tr>
+    <tr><td>503</td><td><code>WALLET_NOT_CONFIGURED</code></td><td>No wallet is wired up on this deployment.</td><td>No — configure it.</td></tr>
+    <tr><td>500</td><td><code>INTERNAL_ERROR</code></td><td>Server fault. The detail is logged, not returned.</td><td>Yes, with backoff.</td></tr>
+  </table>
+  <div class="note"><strong>Never retry a 4xx as-is.</strong> A
+  <code>VALIDATION_ERROR</code> or <code>BETTING_CLOSED</code> retried unchanged
+  fails identically. A 5xx or a 503 is the only case where the same request
+  should be sent again — and then with the <em>same</em> Idempotency-Key, so
+  a successful first attempt that lost its response is not charged twice.</div>
+</section>
+
+<section id="limits">
+  <h2>Rate limits</h2>
+  <table>
+    <tr><th>Surface</th><th>Limit</th><th>Window</th><th>On exceed</th></tr>
+    <tr><td><code>POST /api/v1/admin/sessions/mint</code></td><td>100</td><td>per hour, per operator key</td><td>429 <code>RATE_LIMITED</code></td></tr>
+    <tr><td><code>POST /api/v1/admin/sessions/bulk</code></td><td>100</td><td>per hour, per operator key (shared with mint)</td><td>429 <code>RATE_LIMITED</code></td></tr>
+    <tr><td><code>POST …/sessions/bulk</code> body size</td><td>100</td><td>player ids per call</td><td>422 <code>VALIDATION_ERROR</code></td></tr>
+    <tr><td>Round state over WebSocket</td><td colspan="2">no request limit — snapshots arrive on the 1&nbsp;Hz tick</td><td>—</td></tr>
+  </table>
+  <p>Bulk minting shares the hourly bucket with single mints, so a bulk call of
+  60 consumes 60 of your 100. The limit is per operator key, not per IP: two
+  operators do not share a bucket, and one operator behind several IPs still
+  has one.</p>
+</section>
+
 </main>
+
+<footer class="cta">
+  <a class="btn btn-primary" href="/teen-patti-pro?operator=demo">Open demo table</a>
+  <a class="btn" href="/admin">Open admin console</a>
+  <a class="btn" href="/">Home</a>
+</footer>
+
 <footer>Teen Patti Pro API docs — generated from the deployed server contract. Event names follow SRS §8 as implemented in <code>common/wire_events.py</code>.</footer>
 <script>
 document.querySelectorAll("button.copy").forEach(function (btn) {

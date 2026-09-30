@@ -1,4 +1,5 @@
 """GET /api-docs serves the player integration docs page."""
+import re
 import sys
 import threading
 import unittest
@@ -92,3 +93,107 @@ class TestCanonicalGameCodeAccepted(unittest.TestCase):
         from provider.games import TEEN_CODE
         self.assertEqual(
             api_mod.Handler.game_kind(api_mod.Handler, TEEN_CODE), "teen")
+
+
+class IntegrationGuidesTest(unittest.TestCase):
+    """The docs must cover the five integrations the package promised.
+
+    These were specified and absent. Each guide is checked for the specific
+    thing that would make it useless if left out -- a code block that does not
+    compile, or a "here is the shape" with no shape.
+    """
+
+    HTML = (Path(__file__).resolve().parents[1]
+            / "apps" / "player" / "public" / "api-docs.html").read_text(
+                encoding="utf-8")
+
+    def test_every_guide_has_an_anchor_and_a_heading(self):
+        for anchor in ("flutter", "nestjs", "mongodb", "agora", "nextjs",
+                       "install", "errors", "limits"):
+            self.assertIn('id="%s"' % anchor, self.HTML,
+                          "no section for #%s" % anchor)
+            self.assertIn('href="#%s"' % anchor, self.HTML,
+                          "#%s is not linked from the table of contents" % anchor)
+
+    def test_guides_carry_real_code_not_prose(self):
+        for anchor in ("flutter", "nestjs", "mongodb", "nextjs"):
+            i = self.HTML.index('id="%s"' % anchor)
+            j = self.HTML.find("<section", i + 10)
+            block = self.HTML[i:j if j > 0 else len(self.HTML)]
+            self.assertIn("<pre>", block,
+                          "#%s has no code sample" % anchor)
+
+    def test_flutter_guide_does_not_put_the_hmac_secret_in_the_app(self):
+        i = self.HTML.index('id="flutter"')
+        block = self.HTML[i:self.HTML.find("<section", i + 10)]
+        # The secret belongs in the operator's backend. A guide that shows a
+        # Flutter client calling POST /api/v1/sessions teaches people to ship
+        # the operator's HMAC secret inside an app bundle.
+        self.assertNotIn("OPERATOR_HMAC_SECRET", block)
+        self.assertIn("launch", block.lower())
+
+    def test_nestjs_guide_warns_about_idempotency_and_signature(self):
+        i = self.HTML.index('id="nestjs"')
+        block = self.HTML[i:self.HTML.find("<section", i + 10)]
+        self.assertIn("idempotent", block.lower())
+        self.assertIn("timingSafeEqual", block)
+        self.assertIn("nonce", block.lower())
+
+    def test_nestjs_guide_lists_all_four_wallet_operations(self):
+        i = self.HTML.index('id="nestjs"')
+        block = self.HTML[i:self.HTML.find("<section", i + 10)]
+        for op in ("balance", "debit", "credit", "rollback"):
+            self.assertIn("<code>%s</code>" % op, block,
+                          "the %s callback is undocumented" % op)
+
+    def test_mongodb_guide_states_there_is_no_direct_access(self):
+        i = self.HTML.index('id="mongodb"')
+        block = self.HTML[i:self.HTML.find("<section", i + 10)]
+        self.assertIn("no direct database access", block.lower())
+        # The unique settlement index is the whole point of storing a copy.
+        self.assertIn("db.settlements.createIndex", block)
+        self.assertIn("unique: true", block)
+
+    def test_nextjs_guide_replaces_the_admin_key(self):
+        i = self.HTML.index('id="nextjs"')
+        block = self.HTML[i:self.HTML.find("<section", i + 10)]
+        self.assertIn("X-Admin-Key", block)
+        self.assertIn("ALLOW", block,
+                      "the proxy needs a path allowlist, not a pass-through")
+        self.assertIn("do not forward", block.lower())
+
+    def test_error_table_matches_the_codes_the_server_returns(self):
+        # Every E_* constant in common/envelope.py should appear in the table.
+        env = (Path(__file__).resolve().parents[1]
+               / "common" / "envelope.py").read_text(encoding="utf-8")
+        import re as _re
+        codes = set(_re.findall(r'E_\w+\s*=\s*"([A-Z_]+)"', env))
+        self.assertGreaterEqual(len(codes), 10)
+        for code in codes:
+            self.assertIn("<code>%s</code>" % code, self.HTML,
+                          "error %s is returned by the server but not "
+                          "documented" % code)
+
+    def test_rate_limits_match_the_enforced_number(self):
+        api = (Path(__file__).resolve().parents[1]
+               / "games" / "teen_patti_pro" / "api.py").read_text(encoding="utf-8")
+        limit = re.search(r"_MINT_RATE_LIMIT\s*=\s*(\d+)", api)
+        self.assertIsNotNone(limit, "cannot find the enforced mint limit")
+        i = self.HTML.index('id="limits"')
+        block = self.HTML[i:self.HTML.find("<section", i + 10)]
+        self.assertIn("<td>%s</td>" % limit.group(1), block,
+                      "the documented limit is not the enforced one (%s)"
+                      % limit.group(1))
+
+    def test_install_section_points_at_the_real_route(self):
+        self.assertIn("/install", self.HTML)
+        installer = (Path(__file__).resolve().parents[1]
+                     / "scripts" / "install.sh")
+        self.assertTrue(installer.is_file(), "the docs link to a missing script")
+        self.assertIn("curl -fsSL https://api.ura-dhura.com/install | bash",
+                      self.HTML)
+
+    def test_the_copy_button_wrapper_is_positioned(self):
+        # button.copy is position:absolute. A static wrapper anchors it to the
+        # page, so the button lands nowhere near the code it copies.
+        self.assertRegex(self.HTML, r"\.code\{position:relative")
