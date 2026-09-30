@@ -1193,8 +1193,14 @@
   // already drawable with defaults, so there is no reason to make a player
   // wait on an admin lookup to see their chips.
   function refreshAppearances(s) {
-    const seats = (s && s.seats) || {};
-    Object.keys(seats).forEach(pid => { refreshAppearance(pid); });
+    // Occupancy moved to `seatOccupancy` (seat -> playerId); the old `seats`
+    // object is no longer emitted, so this iterated zero keys and no player's
+    // appearance was ever fetched. Read the map that actually ships.
+    const occ = (s && s.seatOccupancy) || {};
+    Object.keys(occ).forEach(function (seat) {
+      const pid = occ[seat];
+      if (pid) refreshAppearance(pid);
+    });
   }
 
   // Expose for reconnect handling
@@ -1518,7 +1524,8 @@
       const cx = L.seats[p].x;
       const px = cx - pw / 2;
       const art = PAL_IMG['panel' + p];
-      const mine = num(s.seats && s.seats[p]);
+      const occ = s.seatOccupancy || {};
+      const mine = !!occ[p];
       const pot = num(s.pots && s.pots[p]);
       const mult = num((s.multipliers || {})[p]) || 2.9;
       const sel = S.selPos === p;
@@ -1830,7 +1837,7 @@
       refreshAppearances(S.snap);
       noteAuthoritativeRoom(S.snap);
       setRoundPill(S.snap && S.snap.round_no, roomLabel());
-      markLocalSeat((S.snap && S.snap.seats) ? 'A' : null);
+      markLocalSeat((S.snap && S.snap.mySeat) || null);
       setVeilForState(S.snap);
       const key = (S.snap && S.snap.round_id) + ':' + ((S.snap && S.snap.winners || []).join(','));
       
