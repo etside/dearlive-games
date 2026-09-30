@@ -1473,7 +1473,7 @@
     } else {
       placeholder(SAFE.l + 2, h - r, r * 2, r * 2, r);
     }
-    S._ctl.push({ x: SAFE.l + 2 + r, y: h, r: r, act: 'back' });
+    S._ctl.push({ x: SAFE.l + 2 + r, y: h, r: Math.max(r, 22), act: 'back' });
 
     // Table identity pill, immediately right of Back. The reference shows
     // "Round #N / Room: name" here. It used to read the pot instead, which put
@@ -1516,7 +1516,7 @@
         ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.4;
         ctx.beginPath(); ctx.arc(x, h, ir * 0.62, 0, 7); ctx.stroke();
       }
-      if (act) S._ctl.push({ x: x, y: h, r: ir * 1.15, act: act });
+      if (act) S._ctl.push({ x: x, y: h, r: Math.max(ir * 1.15, 22), act: act });
       x -= gap;
     }
     icon(PAL_IMG.gear, 'menu');
@@ -1546,7 +1546,8 @@
     // wording, or the player sees "polling" in one place and "reconnecting"
     // in the other, which is worse than either word alone. POLLING in
     // particular is not an error -- the table is fully playable.
-    const stTxt = S.connected ? '' : (S.polling ? 'POLLING' : 'OFFLINE');
+    const stTxt = (S.snap && !S.snap.mySeat) ? 'SPECTATING'
+      : S.connected ? '' : (S.polling ? 'POLLING' : 'OFFLINE');
     const ping = S.connected ? Math.max(1, Math.round(num(S.pingMs))) : 0;
     const leftTxt = stTxt || (ping ? ping + 'ms' : '');
     if (leftTxt) {
@@ -1574,9 +1575,10 @@
     switch (status) {
       case 'BETTING_OPEN':
         return secs === null || secs === undefined ? '0' : String(Math.ceil(secs));
+      case 'ABOUT_TO_START': return '\u2026';
       case 'BETTING_CLOSED': return '0';
       case 'RESULT_PROCESSING': return '\u2026';
-      case 'RESULT': return '\u2605';
+      case 'RESULT': case 'RESULT_DECLARED': return '\u2605';
       case 'SETTLED': case 'SETTLED_PENDING': return '\u2605';
       case 'UPCOMING': case 'CLOSED': return '0';
       default: return '0';
@@ -1649,8 +1651,13 @@
   function palaceCards(L, u) {
     const s = S.snap || {};
     // 3 columns x 3 cards, gold-back while the round is live.
-    const reveal = s.status === 'RESULT' || s.status === 'SETTLED' ||
-                   s.status === 'CLOSED' || s.status === 'REVEAL';
+    // RESULT_DECLARED means every card is face-up in the snapshot; RESULT and
+    // later keep their old treatment. During betting only card 0 arrives
+    // revealed, and the server marks it so -- the client draws whatever the
+    // snapshot shows and never decides visibility itself.
+    const reveal = s.status === 'RESULT' || s.status === 'RESULT_DECLARED' ||
+                   s.status === 'SETTLED' || s.status === 'CLOSED' ||
+                   s.status === 'REVEAL';
     const hands = s.hands || {};
     POS.forEach(function (p) {
       const pt = L.seats[p];
@@ -1877,6 +1884,11 @@
   // controls that do apply are seat selection, chip denomination and Repeat.
 
   function palaceBottom(L, u) {
+    // Spectators watch; they do not touch. The whole chip bar is dimmed and
+    // made non-interactive, while every animation still runs normally --
+    // spectating changes what you may do, not what you may see.
+    const spectating = !(S.snap && S.snap.mySeat);
+    if (spectating) { ctx.save(); ctx.globalAlpha = 0.35; }
     const h = L.y.bottom;
     const bh = Math.min(L.usable * L.band.bottom * 0.94, 62);
     const by = h + (L.usable * L.band.bottom - bh) / 2;
@@ -1947,6 +1959,7 @@
       ctx.fillText('Repeat', rx + rw / 2, ry + rh / 2);
     }
     S._repeat = { x: rx + rw / 2, y: ry + rh / 2, r: Math.max(rw, rh) * 0.5 };
+    if (spectating) ctx.restore();
   }
 
   // Numeric coercion that treats a missing or non-numeric value as zero.
@@ -2265,13 +2278,15 @@
     }
     // Traditional Teen Patti action buttons were removed (see the draw loop);
     // only chips, Repeat and seat selection are hit-testable.
+    const spectating = !(S.snap && S.snap.mySeat);
     for (const c of (S._chips || [])) {
+      if (spectating) break;
       if ((x - c.x) ** 2 + (y - c.y) ** 2 < c.r * c.r) {
         S.selDenom = c.d; status('Chip ' + c.d + ' selected', 'info'); return;
       }
     }
     const rp = S._repeat;
-    if (rp && (x - rp.x) ** 2 + (y - rp.y) ** 2 < rp.r * rp.r) { doRepeat(); return; }
+    if (!spectating && rp && (x - rp.x) ** 2 + (y - rp.y) ** 2 < rp.r * rp.r) { doRepeat(); return; }
     for (const pn of (S._panels || [])) {
       if (x > pn.x - pn.w / 2 && x < pn.x + pn.w / 2 &&
           y > pn.y - pn.h / 2 && y < pn.y + pn.h / 2) {
@@ -2359,6 +2374,12 @@
       
       // Round reset: animate cards flying back to deck before new deal
       if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
+        // A new round cancels everything mid-flight: an unfinished chip arc or
+        // flip from the previous round must not land in this one. Cancel, then
+        // hard-reset the layer, then start the new sequence. Without this a
+        // slow flip from round N completes over round N+1's table.
+        window.__tppAnim.AnimLayer.cancelAll();
+        window.__tppAnim.AnimLayer.hardReset();
         const L = layout();
         const deckPos = potPos(L);
         const players = (prev && prev.players) || [];
@@ -2377,35 +2398,63 @@
           S.myBets = {};
         }
       }
-      if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
+      // Animate only a transition this client actually observed. On a fresh
+      // load or a reconnect that skipped states, the canvas already paints the
+      // end state (face-up cards, glow, banner); replaying the flip and the
+      // flight would be theatre about a moment the player never saw. The
+      // cursor is the snapshot's state_version, compared against our own.
+      const sv = S.snap && S.snap.state_version;
+      const svAdvanced = prev && prev.round_id === (S.snap && S.snap.round_id) &&
+        sv !== undefined && S._lastSv !== undefined && sv !== S._lastSv;
+      if (S.snap) S._lastSv = sv;
+      if (svAdvanced && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
         // Authoritative result published: card flip reveal + win celebration
         const L = layout();
         
-        // Flip cards for all players who had hands (showdown reveal)
-        if (prev && prev.hands) {
+        // Showdown: only the cards that just turned over, in seat order and
+        // card order -- A2, B2, C2, then A3, B3, C3 -- each starting 120ms
+        // after the last. Card 0 is already face-up from the deal, so it never
+        // flips; and a card that was already visible in the previous snapshot
+        // is not replayed, which is what makes a refetch safe. Firing all six
+        // at once was the old behaviour, and it read as a single flash rather
+        // than a reveal.
+        if (prev && prev.hands && S.snap.hands) {
           const cardW = L.cw, cardH = L.ch;
-          for (const [pos, hands] of Object.entries(prev.hands)) {
-            if (!hands) continue;
-            const seatPos = L.seats[pos];
-            if (!seatPos) continue;
-            for (let i = 0; i < hands.length; i++) {
-              const cardData = hands[i];
-              if (cardData === '**') continue; // Already face down
-              // Create a temporary card element at the seat position for the flip
-              const cardEl = document.createElement('div');
-              cardEl.style.position = 'absolute';
-              cardEl.style.left = (seatPos.x - cardW * 1.15 + i * (cardW + 5)) + 'px';
-              cardEl.style.top = (seatPos.y - cardH / 2) + 'px';
-              cardEl.style.width = cardW + 'px';
-              cardEl.style.height = cardH + 'px';
-              cardEl.style.zIndex = 2000;
-              cardEl.innerHTML = renderCardBack();
-              cv.parentElement.appendChild(cardEl);
-              window.__tppAnim.animateFlip(cardEl, true, cardData);
-              // Remove after animation
-              setTimeout(() => { if (cardEl.parentElement) cardEl.remove(); }, 400);
+          const order = ["A", "B", "C"];
+          const flips = [];
+          for (let i = 1; i <= 2; i++) {
+            for (const pos of order) {
+              const was = (prev.hands[pos] || [])[i];
+              const is = (S.snap.hands[pos] || [])[i];
+              if (was === '**' && is && is !== '**' &&
+                  (!REDUCED)) flips.push([pos, i, is]);
+              else if (was === '**' && is && is !== '**' && REDUCED) {
+                // Reduced motion: nothing to animate, the canvas already shows
+                // the face. Skip silently rather than building a throwaway div.
+              }
             }
           }
+          let step = 0;
+          const runFlip = () => {
+            if (step >= flips.length) return;
+            const [pos, i, cardData] = flips[step++];
+            const seatPos = L.seats[pos];
+            if (!seatPos) { runFlip(); return; }
+            const cardEl = document.createElement('div');
+            cardEl.style.position = 'absolute';
+            cardEl.style.left = (seatPos.x - cardW * 1.15 + i * (cardW + 5)) + 'px';
+            cardEl.style.top = (seatPos.y - cardH / 2) + 'px';
+            cardEl.style.width = cardW + 'px';
+            cardEl.style.height = cardH + 'px';
+            cardEl.style.zIndex = 2000;
+            cardEl.innerHTML = renderCardBack();
+            cv.parentElement.appendChild(cardEl);
+            window.__tppAnim.animateFlip(cardEl, true, cardData);
+            setTimeout(() => { if (cardEl.parentElement) cardEl.remove(); }, 400);
+            // The next card starts 120ms after this one: a wave, not a flash.
+            setTimeout(runFlip, 120);
+          };
+          runFlip();
         }
         
         const winners = S.snap.winners;

@@ -29,10 +29,15 @@ from enum import Enum
 
 class RoundStatus(str, Enum):
     UPCOMING = "UPCOMING"
+    # Shown for ~1s after a round is dealt, before the window opens.
+    ABOUT_TO_START = "ABOUT_TO_START"
     BETTING_OPEN = "BETTING_OPEN"
     BETTING_CLOSED = "BETTING_CLOSED"
     RESULT_PROCESSING = "RESULT_PROCESSING"
     RESULT = "RESULT"
+    # The published outcome, held for the reveal before settlement moves
+    # money. Distinct from SETTLED: "you can see it" vs "you were paid".
+    RESULT_DECLARED = "RESULT_DECLARED"
     SETTLED = "SETTLED"
     CLOSED = "CLOSED"
     SETTLED_PENDING = "SETTLED_PENDING"
@@ -40,13 +45,17 @@ class RoundStatus(str, Enum):
 
 
 _ALLOWED = {
-    RoundStatus.UPCOMING: {RoundStatus.BETTING_OPEN, RoundStatus.CLOSED},
+    RoundStatus.UPCOMING: {RoundStatus.BETTING_OPEN, RoundStatus.ABOUT_TO_START,
+                             RoundStatus.CLOSED},
+    RoundStatus.ABOUT_TO_START: {RoundStatus.BETTING_OPEN, RoundStatus.CLOSED},
     RoundStatus.BETTING_OPEN: {RoundStatus.BETTING_CLOSED, RoundStatus.CLOSED},
     RoundStatus.BETTING_CLOSED: {RoundStatus.RESULT_PROCESSING, RoundStatus.CLOSED,
                                 RoundStatus.SETTLED_PENDING},
     RoundStatus.RESULT_PROCESSING: {RoundStatus.RESULT, RoundStatus.CLOSED,
                                      RoundStatus.SETTLED_PENDING},
-    RoundStatus.RESULT: {RoundStatus.SETTLED, RoundStatus.CLOSED,
+    RoundStatus.RESULT: {RoundStatus.SETTLED, RoundStatus.RESULT_DECLARED,
+                         RoundStatus.CLOSED, RoundStatus.SETTLED_PENDING},
+    RoundStatus.RESULT_DECLARED: {RoundStatus.SETTLED, RoundStatus.CLOSED,
                          RoundStatus.SETTLED_PENDING},
     RoundStatus.SETTLED: {RoundStatus.CLOSED},
     # Only reachable when settlement did not complete; see module docstring.

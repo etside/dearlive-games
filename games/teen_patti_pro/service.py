@@ -21,7 +21,8 @@ log = logging.getLogger(__name__)
 from common.audit import AuditLog
 from common.idempotency import (IdempotencyStore, MemoryIdempotencyStore,
                                 IdempotencyConflict, ClaimResult)
-from common.lifecycle import (RoundStatus, SETTLE_MAX_ATTEMPTS, needs_settlement_retry)
+from common.lifecycle import (RoundStatus, SETTLE_MAX_ATTEMPTS, needs_settlement_retry,
+                                transition)
 from common.session import TokenStore, MemoryTokenStore, SessionStore, MemorySessionStore, TokenError
 from common.wallet import WalletAdapter, MemoryWallet, InsufficientBalance, WalletError
 
@@ -31,6 +32,13 @@ from common.wallet import WalletAdapter, MemoryWallet, InsufficientBalance, Wall
 # that a table does not feel stalled. Settling and dealing in the same tick
 # made every round's outcome invisible.
 RESULT_DWELL_MS = 6_000
+# How long the "about to start" banner shows before the window opens.
+ABOUT_TO_START_MS = 1_000
+# How long the published result stays on screen before money moves. The reveal
+# sequence needs ~1.8s for its six 300ms flips plus the hand labels, so the
+# dwell gives it 2.2s. Settling earlier would move the balance while the cards
+# are still turning over.
+DECLARED_DWELL_MS = 2_200
 from common.settlement import SettlementStore, MemorySettlementStore
 from common.webhooks import build_event, MemoryDeliveryLog
 from .config import TeenPattiConfig, DEFAULT_CONFIG
@@ -86,9 +94,12 @@ class TeenPattiService:
         # When each room's result was published, so the sweep can leave it on
         # screen before dealing the next round. See publish_result.
         self._result_published_at: Dict[str, int] = {}
-        # Per-instance so a test can shorten the dwell rather than
-        # sleeping through it. The default is the shipped behaviour.
+        # Per-instance so a test can shorten a dwell rather than sleeping
+        # through it. The defaults are the shipped behaviour.
         self.result_dwell_ms = RESULT_DWELL_MS
+        self.about_to_start_ms = ABOUT_TO_START_MS
+        self.declared_dwell_ms = DECLARED_DWELL_MS
+        self._declared_at: Dict[str, int] = {}
         self.skills = skills
         self._now = lambda: int(time.time() * 1000)
 
@@ -323,7 +334,17 @@ class TeenPattiService:
         moved = []
         now = self._now()
 
-        if r.status == RoundStatus.BETTING_OPEN:
+        # The banner shows until its dwell expires, then the window opens and
+        # only then starts the clock. A round that never leaves ABOUT_TO_START
+        # is dealt but never bettable, so this gate is load-bearing.
+        if r is not None and r.status == RoundStatus.ABOUT_TO_START:
+            started = getattr(r, "about_start_at_ms", 0) or 0
+            if not started or now - started >= self.about_to_start_ms:
+                room.open_betting(now)
+                moved.append("betting.opened")
+                r = room.round
+
+        if r is not None and r.status == RoundStatus.BETTING_OPEN:
             end = getattr(r, "betting_end_at_ms", None) or getattr(r, "betting_end_at", 0)
             if end and now >= end:
                 self.close_betting(room_id)
@@ -340,9 +361,25 @@ class TeenPattiService:
         # publish_result leaves the round in RESULT, not SETTLED. Settling only
         # from SETTLED stalled every table there forever, which is the other
         # half of "no round is running".
-        if r is not None and r.status in (RoundStatus.RESULT,
-                                          RoundStatus.SETTLED,
-                                          RoundStatus.SETTLED_PENDING):
+        # RESULT means the outcome was calculated but never published; publish
+        # first (which declares it), so settle() always runs from the declared
+        # state and the reveal sequence is never skipped.
+        if r is not None and r.status == RoundStatus.RESULT:
+            self._declare(room_id)
+            moved.append("result.declared")
+            r = room.round
+        if r is not None and r.status == RoundStatus.RESULT_DECLARED:
+            declared = self._declared_at.get(room_id, 0)
+            if declared and (self._now() - declared) >= self.declared_dwell_ms:
+                self._declared_at.pop(room_id, None)
+                try:
+                    self.settle(room_id)
+                    moved.append("settlement.completed")
+                except Exception as exc:  # settlement retries itself; do not spin
+                    log.warning("settlement deferred: %s", exc)
+                r = room.round
+        elif r is not None and r.status in (RoundStatus.SETTLED,
+                                            RoundStatus.SETTLED_PENDING):
             try:
                 self.settle(room_id)
                 moved.append("settlement.completed")
@@ -394,12 +431,34 @@ class TeenPattiService:
                           after={"winners": r.winner_positions})
         self._fire("result.published", {"round_id": r.round_id, "room_id": room_id,
                                         "winners": r.winner_positions})
+        # The outcome is now public but no money has moved: declare it so the
+        # reveal sequence has a state to play against, and flip every card face
+        # up in the same step. Settlement waits out the declared dwell.
+        self._declare(room_id)
         self._skill("on_result", {"room_id": room_id, "round_id": r.round_id})
         from .engine import fmt_card
         return {"round_id": r.round_id, "winners": r.winner_positions,
                 "hands": {p: [fmt_card(c) for c in h] for p, h in r.resolved.items()},
                 "raw_hands": {p: [fmt_card(c) for c in h] for p, h in r.hands.items()},
                 "deck_commit": r.deck_commit, "seed": r.seed_hex}
+
+    def _declare(self, room_id: str) -> None:
+        """RESULT -> RESULT_DECLARED, turning every remaining card face up.
+
+        Idempotent: a round already declared is returned untouched, so a pump
+        that re-runs this step cannot re-stamp the dwell clock and hold the
+        result on screen forever.
+        """
+        room = self._room(room_id)
+        r = room.round
+        if r is None or r.status != RoundStatus.RESULT:
+            return
+        r.revealed = {p: [True, True, True] for p in r.hands}
+        transition(r.status, RoundStatus.RESULT_DECLARED)
+        r.status = RoundStatus.RESULT_DECLARED
+        self._declared_at[room_id] = self._now()
+        self._fire("result.declared", {"round_id": r.round_id, "room_id": room_id,
+                                       "winners": r.winner_positions})
 
     def settle(self, room_id: str, round_id: str = "") -> dict:
         self._require_confirmed()

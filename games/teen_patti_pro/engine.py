@@ -233,6 +233,15 @@ class Round:
     _state_version: int = 0
     created_at_ms: int = 0
     betting_end_at_ms: int = 0
+    # When the round entered ABOUT_TO_START (drives the ~1s banner dwell) and
+    # when its result was declared (drives the reveal dwell before money moves).
+    about_start_at_ms: int = 0
+    declared_at_ms: int = 0
+    # Per-card visibility. The reference shows 1 face-up + 2 backs per seat
+    # during betting, so card 0 starts revealed and the other two flip at
+    # RESULT_DECLARED. A bool per card rather than a single flag, because the
+    # reveal is sequential and the snapshot must be able to say which.
+    revealed: Dict[str, List[bool]] = field(default_factory=dict)
     seed_hex: str = ""
     deck_commit: str = ""
     hands: Dict[str, List[Card]] = field(default_factory=dict)
@@ -366,9 +375,13 @@ class Room:
             if self.round is not None and self.round.status not in (RoundStatus.SETTLED, RoundStatus.CLOSED):
                 raise LifecycleError("Previous round still active")
             self._round_no += 1
+            # Born in ABOUT_TO_START, not BETTING_OPEN. The betting deadline
+            # does not start until the window actually opens, so the ~1s banner
+            # and the deal animation are presentation, never lost betting time.
             r = Round(round_id=f"{self.room_id}-r{self._round_no}",
                       round_no=self._round_no, created_at_ms=now_ms,
-                      betting_end_at_ms=now_ms + self.config.guess_ms,
+                      betting_end_at_ms=0,
+                      about_start_at_ms=now_ms,
                       seed_hex=seed_hex or secrets.token_hex(16),
                        carry_in=self.carry_over,
                        config_version=self.config.version,
@@ -376,12 +389,32 @@ class Room:
             deck = shuffle_deck(r.seed_hex, self.config.jokers)
             r.deck_commit = deck_commitment(deck)
             r.hands = {p: deck[i * 3:(i + 1) * 3] for i, p in enumerate(self.config.seats)}
-            transition(r.status, RoundStatus.BETTING_OPEN)
-            r.status = RoundStatus.BETTING_OPEN
+            r.revealed = {p: [True, False, False] for p in self.config.seats}
+            transition(r.status, RoundStatus.ABOUT_TO_START)
+            r.status = RoundStatus.ABOUT_TO_START
             r.emit("round.started", {"round_id": r.round_id,
                                      "betting_end_at": r.betting_end_at_ms}, now_ms)
             self.round = r
             self.carry_over = 0
+            return r
+
+    def open_betting(self, now_ms: int) -> Round:
+        """Move a dealt round from the banner into the betting window.
+
+        The deadline starts HERE, not at creation: the ~1s ABOUT_TO_START is
+        presentation, never lost betting time. Safe to call every tick -- a
+        round that is not waiting is returned untouched.
+        """
+        with self.lock:
+            r = self.round
+            if r is None or r.status != RoundStatus.ABOUT_TO_START:
+                return r
+            transition(r.status, RoundStatus.BETTING_OPEN)
+            r.status = RoundStatus.BETTING_OPEN
+            r.betting_end_at_ms = now_ms + self.config.guess_ms
+            r.emit("betting.opened", {"round_id": r.round_id,
+                                      "betting_end_at": r.betting_end_at_ms},
+                   now_ms)
             return r
 
     def _window_open(self, r: Round, now_ms: int) -> bool:
@@ -523,8 +556,11 @@ class Room:
                 raise LifecycleError("No active round")
             if r._settled:
                 return r.settlements  # replay after CLOSED: identical rows, no double-pay
-            if r.status != RoundStatus.RESULT:
-                raise LifecycleError(f"Settle requires RESULT, have {r.status}")
+            # RESULT_DECLARED is where a round waits out its reveal; money
+            # must be able to move from there, not only from RESULT.
+            if r.status not in (RoundStatus.RESULT, RoundStatus.RESULT_DECLARED):
+                raise LifecycleError(
+                    f"Settle requires RESULT or RESULT_DECLARED, have {r.status}")
             pot = sum(b.amount for b in r.bets if b.status == "accepted") + r.carry_in
             rake = pot * self.config.rake_bps // 10_000
             distributable = pot - rake
@@ -783,7 +819,8 @@ class Room:
                     "chip_set": str(getattr(self.config, "chip_set", "low") or "low"),
                     "max_bet": int(getattr(self.config, "max_bet", 0) or 0),
                     **self._occupancy(viewer)}
-        reveal = r.status in (RoundStatus.RESULT, RoundStatus.SETTLED, RoundStatus.CLOSED)
+        reveal = r.status in (RoundStatus.RESULT, RoundStatus.RESULT_DECLARED,
+                                RoundStatus.SETTLED, RoundStatus.CLOSED)
         pots: Dict[str, int] = {}
         mine = 0
         # Seat -> player id. The client resolves each seat's avatar from the
@@ -814,7 +851,10 @@ class Room:
             "seats": seats,
             "hands": ({p: [fmt_card(c) for c in r.resolved.get(p, h)]
                        for p, h in r.hands.items()}
-                      if reveal else {p: ["**"] * 3 for p in r.hands}),
+                      if reveal else
+                      {p: [fmt_card(c) if rev else "**"
+                           for c, rev in zip(h, r.revealed.get(p, [False] * 3))]
+                       for p, h in r.hands.items()}),
             "raw_hands": ({p: [fmt_card(c) for c in h] for p, h in r.hands.items()}
                           if reveal and self.config.jokers else {}),
             "winners": r.winner_positions if reveal else [],

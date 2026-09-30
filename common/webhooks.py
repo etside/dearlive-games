@@ -19,7 +19,8 @@ EVENTS = ("game.session.created", "player.joined", "player.left",
           # SRS section 8 lifecycle. The catalogue is an allow-list, so a new
           # emit site without its entry here fails loudly at first use rather
           # than delivering an event nobody documented.
-          "round.created", "result.processing", "settlement.started",
+          "round.created", "betting.opened", "result.processing",
+          "result.declared", "settlement.started",
           "balance.updated",
           # Settlement-failure lifecycle (money safety). Consumers should
           # alert on settlement.failed; settlement.pending is retryable.
