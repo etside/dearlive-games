@@ -131,13 +131,26 @@ class BotIdentity:
     display_name: str
     avatar_url: str
     # Internal bookkeeping. None of this is ever attached to a snapshot.
+    #   bet_round_id  the round this bot is armed for / has acted in
+    #   bet_at_ms     when the human delay expires
+    #   bet_done      the round this bot has already placed a bet in
+    # bet_round_id alone is not enough: it means "armed", and it stays equal
+    # to the round after the bet lands, so the next tick readmitted itself as
+    # due and tried to bet again. The idempotency key saved the money (same key
+    # per round) but every attempt after the first logged "Idempotency key
+    # reused with different payload", because a retry that picks a different
+    # chip has a different payload. A separate done-marker is the honest
+    # statement of intent: one bet per round, per bot.
     bet_round_id: str = ""
     bet_at_ms: int = 0
+    bet_done: str = ""
     bot_seed: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
 
     def reset_for_round(self, round_id: str, now_ms: int, delay_ms: int) -> None:
         self.bet_round_id = round_id
         self.bet_at_ms = now_ms + delay_ms
+        if self.bet_done != round_id:
+            self.bet_done = ""
 
 
 class BotManager:
@@ -377,6 +390,8 @@ class BotManager:
             if r is not None and r.round_id != bot.bet_round_id:
                 bot.bet_round_id = ""
             return
+        if bot.bet_done == r.round_id:
+            return  # already played this round
         if bot.bet_round_id != r.round_id:
             # First look at this round: give it a human delay, jittered so two
             # bots do not bet on the same millisecond.
@@ -399,11 +414,14 @@ class BotManager:
                 "demo-bot-%s-%s" % (bot.player_id, r.round_id))
             log.info("demo bot bet room=%s seat=%s pos=%s amt=%s",
                      room_id, bot.player_id[-4:], position, amount)
+            bot.bet_done = r.round_id
         except Exception as exc:
-            # An out-of-window or duplicate bet is normal; the next round
-            # re-arms. Anything else is worth seeing.
+            # Betting closed between the check and the call, or the chip was
+            # refused. Either way this round is over for the bot: marking it
+            # done stops a retry every second until the window shuts, which is
+            # what filled the journal with "Idempotency key reused".
             log.info("demo bot bet skipped room=%s: %s", room_id, exc)
-            bot.bet_round_id = r.round_id
+            bot.bet_done = r.round_id
 
     def _choose_position(self, room, bot: BotIdentity) -> str:
         """Pick a position to back, spreading the table's money."""

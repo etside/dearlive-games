@@ -215,6 +215,76 @@ class FillArmingTest(unittest.TestCase):
                       "a bot taking a seat is an auditable act")
 
 
+class OneBetPerRoundTest(unittest.TestCase):
+    """A bot acts once per round, on purpose rather than by rejection.
+
+    The armed-marker doubles as the acted-marker, so after a bot's bet landed
+    it still looked due on the next tick and tried again. The per-round
+    idempotency key kept the money correct, but a retry that picked a different
+    chip has a different payload, so the service rejected it -- and the journal
+    filled with "Idempotency key reused with different payload" once a second
+    for the rest of the betting window.
+    """
+
+    def setUp(self):
+        self._saved = set(bm._DEMO_ROOMS)
+        bm._DEMO_ROOMS.clear()
+        self.svc = _service()
+        self.svc.sessions.create("human", "demo-low", "teen-patti-pro")
+        self.svc.claim_seat("demo-low", "human", "auto")
+        bm.mark_demo_room("demo-low")
+        self.mgr = bm.BotManager(self.svc, start=False)
+        self.addCleanup(self.mgr.stop)
+
+    def tearDown(self):
+        bm._DEMO_ROOMS.clear()
+        bm._DEMO_ROOMS.update(self._saved)
+
+    def test_repeated_ticks_place_exactly_one_bet(self):
+        self.mgr.on_player_join("demo-low", "human", is_real=True)
+        self.mgr._armed["demo-low"] = 0
+        self.mgr._tick()
+        bot = next(b for b in self.mgr._bots["demo-low"])
+        room = self.svc._room("demo-low")
+        now = int(time.time() * 1000)
+        self.mgr._maybe_bet("demo-low", bot, now)
+        self.mgr._maybe_bet("demo-low", bot, bot.bet_at_ms)
+        placed = len([b for b in room.round.bets
+                      if b.player_id == bot.player_id
+                      and b.status == "accepted"])
+        self.assertEqual(placed, 1)
+        # Keep ticking for the rest of the window.
+        for _ in range(20):
+            self.mgr._maybe_bet("demo-low", bot, bot.bet_at_ms + 1)
+        again = len([b for b in room.round.bets
+                     if b.player_id == bot.player_id
+                     and b.status == "accepted"])
+        self.assertEqual(again, placed,
+                         "a bot must not re-bet inside one round")
+        self.assertEqual(bot.bet_done, room.round.round_id)
+
+    def test_a_new_round_re_arms_the_bot(self):
+        self.mgr.on_player_join("demo-low", "human", is_real=True)
+        self.mgr._armed["demo-low"] = 0
+        self.mgr._tick()
+        bot = next(b for b in self.mgr._bots["demo-low"])
+        room = self.svc._room("demo-low")
+        now = int(time.time() * 1000)
+        self.mgr._maybe_bet("demo-low", bot, now)
+        self.mgr._maybe_bet("demo-low", bot, bot.bet_at_ms)
+        first = room.round.round_id
+        # Drive the round forward the way the sweep does.
+        self.svc.close_betting("demo-low")
+        self.svc.publish_result("demo-low")
+        self.svc.settle("demo-low")
+        self.svc.ensure_round("demo-low")
+        new_round = self.svc._room("demo-low").round
+        self.assertNotEqual(new_round.round_id, first)
+        self.mgr._maybe_bet("demo-low", bot, int(time.time() * 1000))
+        self.assertEqual(bot.bet_round_id, new_round.round_id,
+                         "the bot must arm again for the new round")
+
+
 class ChipDenominationTest(unittest.TestCase):
     """A bot must only ever choose a chip the table accepts.
 
