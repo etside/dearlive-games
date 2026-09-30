@@ -1054,11 +1054,22 @@ class PostgresAdminStore(AdminStore):
                                   limit: int = 10) -> List[Dict[str, Any]]:
         cur = self._cursor_factory()
         try:
-            cur.execute("SELECT version, confirmed, created_at FROM "
-                        "game_configuration WHERE game_id = %s "
+            # is_active and payload are both returned: without is_active the
+            # panel cannot say which entry is live, and without payload it
+            # cannot show what a version actually changed, so choosing one to
+            # roll back to is guesswork.
+            cur.execute("SELECT version, confirmed, is_active, payload, created_at "
+                        "FROM game_configuration WHERE game_id = %s "
                         "ORDER BY created_at DESC LIMIT %s", (game_id, int(limit)))
-            return [{"version": r[0], "confirmed": bool(r[1]), "created_at": r[2]}
-                    for r in cur.fetchall()]
+            out = []
+            for r in cur.fetchall():
+                payload = r[3] if isinstance(r[3], dict) else json.loads(r[3] or "{}")
+                out.append({"version": r[0], "confirmed": bool(r[1]),
+                            "is_active": bool(r[2]),
+                            "payload": payload,
+                            "rules": payload.get("rules", {}) if isinstance(payload, dict) else {},
+                            "created_at": r[4]})
+            return out
         finally:
             self._close(cur)
 
@@ -1135,16 +1146,28 @@ class PostgresAdminStore(AdminStore):
         render, not a fault."""
         cur = self._cursor_factory()
         try:
+            # Only the ACTIVE row is the effective rules. Without the filter
+            # this returned the most recently created version, which after a
+            # save is the same row, but after a rollback or a deactivate is a
+            # superseded one -- the panel would show rules the game is not
+            # running.
             cur.execute("SELECT version, confirmed, tbc, payload, created_at "
-                        "FROM game_configuration WHERE game_id = %s "
+                        "FROM game_configuration "
+                        "WHERE game_id = %s AND is_active "
                         "ORDER BY created_at DESC LIMIT 1", (game_id,))
             r = cur.fetchone()
             if not r:
                 return {"game_id": game_id, "version": None, "confirmed": False,
                         "tbc": [], "rules": {}, "created_at": None}
+            payload = r[3] if isinstance(r[3], dict) else json.loads(r[3] or "{}")
+            # The stored payload is the whole request envelope
+            # {"rules": {...}, "confirmed": ..., "updated_by": ...}. The
+            # caller wants the rules, not the envelope -- returning payload
+            # verbatim made the panel read rules.seats and find nothing.
+            rules = payload.get("rules", payload) if isinstance(payload, dict) else {}
             return {"game_id": game_id, "version": r[0], "confirmed": bool(r[1]),
                     "tbc": r[2] if isinstance(r[2], list) else json.loads(r[2] or "[]"),
-                    "rules": r[3] if isinstance(r[3], dict) else json.loads(r[3] or "{}"),
+                    "rules": rules,
                     "created_at": r[4]}
         finally:
             self._close(cur)

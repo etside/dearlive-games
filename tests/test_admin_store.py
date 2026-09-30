@@ -298,11 +298,33 @@ class WithdrawalTest(unittest.TestCase):
 
 class GameConfigVersioningTest(unittest.TestCase):
     def test_list_versions(self):
-        db = FakeDB(rows=[("v3", True, "ts"), ("v2", False, "ts")])
+        # version, confirmed, is_active, payload, created_at
+        db = FakeDB(rows=[("v3", True, True, '{"rules":{"min_bet":50}}', "ts"),
+                          ("v2", False, False, '{"rules":{"min_bet":20}}', "ts")])
         out = PostgresAdminStore(db.cursor).list_game_config_versions("teen-patti-pro")
         self.assertEqual(out[0]["version"], "v3")
         self.assertIs(out[0]["confirmed"], True)
         self.assertIn("ORDER BY created_at DESC", db.sql[0])
+        # The panel cannot say which entry is live, nor show what a version
+        # changed, without these two.
+        self.assertIs(out[0]["is_active"], True)
+        self.assertIs(out[1]["is_active"], False)
+        self.assertEqual(out[0]["rules"], {"min_bet": 50})
+        self.assertEqual(out[1]["rules"], {"min_bet": 20})
+
+    def test_get_rules_reads_the_active_row_and_unwraps_the_envelope(self):
+        """The effective rules are the active row's rules, not the envelope.
+
+        Two faults lived here: the read did not filter on is_active, so a
+        superseded version could be presented as current, and it returned the
+        stored payload verbatim, which is {"rules": {...}, "confirmed": ...} --
+        so a caller reading `rules` got a dict with no rule fields in it.
+        """
+        db = FakeDB(one=("vNEW", False, [], '{"rules":{"min_bet":50}}', "ts"))
+        out = PostgresAdminStore(db.cursor).get_game_rules("teen-patti-pro")
+        self.assertEqual(out["rules"], {"min_bet": 50})
+        self.assertIn("is_active", db.sql[0],
+                      "get_game_rules must read only the active configuration")
 
     def test_get_version_parses_jsonb(self):
         row = ("teen-patti-pro", "v1", False, '[{"k":1}]', '{"min_bet":20}', "ts")
