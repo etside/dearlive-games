@@ -257,8 +257,7 @@ class ChipDenominationTest(unittest.TestCase):
         for _ in range(6):
             for b in self.mgr._bots["demo-low"]:
                 self.mgr._maybe_bet("demo-low", b, now)
-                b.bet_at_ms = 0
-                self.mgr._maybe_bet("demo-low", b, now)
+                self.mgr._maybe_bet("demo-low", b, b.bet_at_ms)
         accepted = [b for b in room.round.bets
                     if b.player_id in self.mgr.bot_ids("demo-low")
                     and b.status == "accepted"]
@@ -354,8 +353,15 @@ class BotBettingTest(unittest.TestCase):
         now = int(time.time() * 1000)
         self.mgr._maybe_bet("demo-low", bot, now)
         self.assertTrue(bot.bet_round_id, "the bot must arm for this round")
-        bot.bet_at_ms = 0
-        self.mgr._maybe_bet("demo-low", bot, now)
+        # The arming must be a delay a human would keep, not a timestamp in
+        # the far future. reset_for_round adds the duration to now_ms, so
+        # passing an absolute time here stored 2*now_ms and the guard below
+        # never expired -- the table filled with bots that never bet.
+        self.assertGreater(bot.bet_at_ms, now, "the bot must be armed to bet")
+        self.assertLess(bot.bet_at_ms - now, 15_000,
+                        "the arming must be seconds away, not hours")
+        # Let the delay elapse the way the reaper would.
+        self.mgr._maybe_bet("demo-low", bot, bot.bet_at_ms)
 
         bets = [b for b in room.round.bets
                 if b.player_id in bot_ids and b.status == "accepted"]
@@ -369,8 +375,7 @@ class BotBettingTest(unittest.TestCase):
         bot = next(b for b in self.mgr._bots["demo-low"])
         now = int(time.time() * 1000)
         self.mgr._maybe_bet("demo-low", bot, now)
-        bot.bet_at_ms = 0
-        self.mgr._maybe_bet("demo-low", bot, now)
+        self.mgr._maybe_bet("demo-low", bot, bot.bet_at_ms)
         room = self.svc._room("demo-low")
         before = len([b for b in room.round.bets
                       if b.player_id == bot.player_id and b.status == "accepted"])
@@ -386,8 +391,7 @@ class BotBettingTest(unittest.TestCase):
         bot = next(b for b in self.mgr._bots["demo-low"])
         now = int(time.time() * 1000)
         self.mgr._maybe_bet("demo-low", bot, now)
-        bot.bet_at_ms = 0
-        self.mgr._maybe_bet("demo-low", bot, now)
+        self.mgr._maybe_bet("demo-low", bot, bot.bet_at_ms)
         room = self.svc._room("demo-low")
         bet = [b for b in room.round.bets
                if b.player_id == bot.player_id and b.status == "accepted"]

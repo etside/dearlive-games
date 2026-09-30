@@ -219,13 +219,6 @@ class BotManager:
         for room_id, bots in seated.items():
             for bot in bots:
                 try:
-                    log.warning("PROBE room=%s bot=%s round=%s status=%s armed=%s at=%s now=%s",
-                                room_id, bot.player_id[-4:],
-                                (self.service._room(room_id).round.round_id
-                                 if self.service._room(room_id).round else None),
-                                (self.service._room(room_id).round.status.value
-                                 if self.service._room(room_id).round else None),
-                                bot.bet_round_id, bot.bet_at_ms, now)
                     self._maybe_bet(room_id, bot, now)
                 except Exception:
                     log.exception("demo bot bet failed room=%s bot=%s",
@@ -387,8 +380,14 @@ class BotManager:
         if bot.bet_round_id != r.round_id:
             # First look at this round: give it a human delay, jittered so two
             # bots do not bet on the same millisecond.
-            delay = random.randint(2500, 9000)
-            bot.reset_for_round(r.round_id, now_ms, now_ms + delay)
+            #
+            # The third argument is a DURATION, not an absolute time.
+            # reset_for_round adds it to now_ms, so passing now_ms + delay here
+            # stored 2*now_ms + delay, which is always in the future -- the
+            # guard below never expired and no bot ever bet. The table filled
+            # with silent opponents.
+            delay_ms = random.randint(2500, 9000)
+            bot.reset_for_round(r.round_id, now_ms, delay_ms)
             return
         if now_ms < bot.bet_at_ms:
             return
