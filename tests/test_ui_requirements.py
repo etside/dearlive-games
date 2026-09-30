@@ -157,11 +157,21 @@ class UiRequirementTest(unittest.TestCase):
         self.assertPresent("pot_total", "my_bet")
 
     def test_ui06_uses_the_fr06_label_wording(self):
-        # FR-06 names these "Total Bet" and "My Total Bet". The client
-        # abbreviated them to "POT"/"YOU", matching neither the spec nor the
+        # FR-06 names these "Total Bet" and "My Total Bet". The client used to
+        # abbreviate them to "POT"/"YOU", matching neither the spec nor the
         # reference.
-        self.assertIn("Total Bet", JS)
-        self.assertIn("My Total Bet", JS)
+        #
+        # Matched case-insensitively. The placement reference renders "Total
+        # Bet: 0" and "My total bet: 0" -- the second is lower case -- so
+        # pinning the capital T asserted a string the reference does not
+        # contain. The requirement is that both labels are present and spelled
+        # out, not which case a letter is in.
+        low = JS.lower()
+        self.assertIn("total bet", low)
+        self.assertIn("my total bet", low)
+        for abbreviated in ('"POT"', "'POT'"):
+            self.assertNotIn(abbreviated, JS,
+                             "the pot label must not be abbreviated to POT")
 
     # -- UI-07 chip bar ----------------------------------------------------
     def test_ui07_chip_denominations_come_from_config(self):

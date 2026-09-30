@@ -36,6 +36,11 @@ ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "games" / "teen_patti_pro" / "client"
 GAME_JS = CLIENT / "game.js"
 HARNESS = ROOT / "tests" / "render_harness.js"
+# Records every drawImage/fillRect box and prints any that fall outside the
+# canvas, plus a dump of the computed layout. Both are generated from the real
+# client rather than a model of it.
+GEOM = ROOT / "tests" / "render_geometry.js"
+LAYOUT_PROBE = ROOT / "tests" / "layout_probe.js"
 
 # Identifiers that are provided by the host rather than by the client.
 HOST_PROVIDED = {
@@ -217,3 +222,72 @@ class UndefinedCalleeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OnScreenGeometryTest(unittest.TestCase):
+    """Every drawn box must land inside the canvas.
+
+    Found by measuring, not by looking. palaceLayout assigned y.bottom inside
+    the band loop and then overwrote it with the running total, which put the
+    chip-bar band at exactly H on an H-tall canvas. The balance pill, the chip
+    row and the Repeat button were all drawn below the visible area, so three
+    separate "missing element" reports had one cause.
+
+    This executes the client, records every drawImage/fillRect, and asserts
+    the boxes are in bounds -- so an element that is drawn off-screen fails
+    here instead of being reported three times as absent.
+    """
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node is required")
+
+    def _boxes(self, snapshot):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(snapshot, fh)
+            path = fh.name
+        try:
+            r = subprocess.run(["node", str(GEOM), path],
+                               capture_output=True, text=True, timeout=60)
+        finally:
+            Path(path).unlink(missing_ok=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def test_no_element_is_drawn_off_screen(self):
+        out = self._boxes(LIVE_SNAPSHOT)
+        self.assertIn("OFF-SCREEN: 0", out,
+                      "an element is drawn outside the canvas:\n" + out)
+
+    def test_the_chip_bar_band_is_inside_the_viewport(self):
+        # The specific regression: the band must start above the canvas
+        # height, or the bar, the balance pill and Repeat all vanish.
+        probe = subprocess.run(["node", str(LAYOUT_PROBE)],
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(probe.returncode, 0, probe.stdout + probe.stderr)
+        m = re.search(r"bottom bar: y=([\d.]+) \.\. ([\d.]+)\s+\(H=(\d+)\)",
+                      probe.stdout)
+        self.assertIsNotNone(m, probe.stdout)
+        start, end, height = float(m.group(1)), float(m.group(2)), float(m.group(3))
+        self.assertLess(start, height,
+                        "the chip-bar band starts at or below the canvas "
+                        "bottom, so nothing in it is visible")
+        self.assertLessEqual(end, height + 1,
+                             "the chip-bar band runs past the canvas bottom")
+
+    def test_cards_are_three_separated_groups_of_three(self):
+        out = self._boxes(LIVE_SNAPSHOT)
+        starts = [int(m) for m in re.findall(r"x=\s*(\d+) y=\s*196", out)]
+        self.assertEqual(len(starts), 9,
+                         "expected nine cards, got %d at the card row" % len(starts))
+        gaps = [b - (a + 33) for a, b in zip(starts, starts[1:])]
+        within = [g for g in gaps if g < 15]
+        between = [g for g in gaps if g >= 15]
+        self.assertEqual(len(within), 6, "six within-group gaps expected")
+        self.assertEqual(len(between), 2, "two between-group gaps expected")
+        # Nine cards with a smaller gap between groups than within one read as
+        # a single row across the table.
+        self.assertTrue(between and min(between) > max(within) * 2,
+                        "the gap between card groups (%s) must be clearly "
+                        "larger than the gap within one (%s)" % (between, within))

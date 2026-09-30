@@ -88,7 +88,12 @@
   }
 
   const S = { snap: null, selDenom: 1000, selPos: null, lastSeq: 0, connected: false,
-              msg: '', msgKind: 'info' };
+              msg: '', msgKind: 'info',
+              // What THIS client has staked on each seat in the current round.
+              // The snapshot carries the seat pot and the player's total bet,
+              // not the split per seat, so the panel header is built from
+              // what we placed rather than from a field that does not exist.
+              myBets: {}, _myBetsRound: '' };
   let roundPollTimer = null, walletPollTimer = null, wsRetryTimer = null;
   // Chip denominations come from the server, in the snapshot. This used to be
   // a hardcoded [1000, 10000, 50000, 100000] while the running config accepts
@@ -1316,18 +1321,26 @@
       y[k] = acc;
       acc += usable * band[k];
     });
-    y.bottom = acc;
+    // No y.bottom = acc here. The loop above already assigns y.bottom to the
+    // START of the chip-bar band. Overwriting it with the running total put
+    // the bar at exactly H on an H-tall canvas -- so the balance pill, the chip
+    // row and the Repeat button were all drawn below the visible area and
+    // simply never appeared. The loop and this line disagreed, and the
+    // reference screenshot is the only thing that shows it.
     const colW = (W - SAFE.l - SAFE.r) / 3;
     const seats = {};
     POS.forEach(function (p, i) {
       seats[p] = { x: SAFE.l + colW * (i + 0.5), y: y.chairs + usable * band.chairs * 0.52 };
     });
-    // Three cards per position, filling most of the column as in the
-    // reference. Capped in absolute terms so a tablet does not render cards
-    // the size of playing cards, but the cap is a ceiling and not the usual
-    // value: at 0.235 * colW the old geometry was already under a third of
-    // the column, and the 34px ceiling pinned it there on every phone.
-    const cw = Math.max(26, Math.min(colW * 0.30, 64)), ch = cw * 1.42;
+    // Three cards per position, grouped over each chair.
+    //
+    // The width is chosen so a group occupies ~82% of its column, which is
+    // what leaves a visible gap BETWEEN groups. At 0.30 * colW the three
+    // groups were 128px wide inside a 130px column -- a 2px gap between
+    // groups against a 5px gap within one, so nine cards read as a single
+    // continuous row across the table. The reference shows three clearly
+    // separated hands.
+    const cw = Math.max(24, Math.min(colW * 0.256, 56)), ch = cw * 1.42;
     // The pot/deck anchor. Animation code asks for `L.y.centre` /
     // `L.band.centre` (the old layout's centre band), which this grid does not
     // define, so those reads were undefined and every deck/pot position came
@@ -1528,11 +1541,23 @@
     const s = S.snap || {};
     const h = L.y.total + L.usable * L.band.total * 0.5;
     const pot = num(s.pot_total), mine = num(s.my_bet);
+    // Both figures sit on one dark plate, as in the reference. Drawn as bare
+    // text they sat on the busy marble column and read as smudges, which is
+    // how "Total Bet / My total bet" came to be reported missing.
+    const l1 = 'Total Bet: ' + pot;
+    const l2 = 'My total bet: ' + mine;
     ctx.font = '600 ' + u.f(12);
+    const wMax = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width);
+    const padX = u.f(12), padY = u.f(7);
+    const boxW = wMax + padX * 2, boxH = u.f(30) + padY;
+    const bx = L.cx - boxW / 2, by = h - boxH / 2;
+    ctx.fillStyle = 'rgba(28,14,54,.86)';
+    rr(bx, by, boxW, boxH, u.f(6)); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,213,74,.45)'; ctx.lineWidth = 1.2; ctx.stroke();
     ctx.fillStyle = PAL_THEME.cream;
-    ctx.fillText('Total Bet ' + pot, L.cx, h - u.f(7) * 0.6);
+    ctx.fillText(l1, L.cx, by + padY + u.f(5));
     ctx.fillStyle = '#ffe9a8';
-    ctx.fillText('My Total Bet ' + mine, L.cx, h + u.f(8) * 0.6);
+    ctx.fillText(l2, L.cx, by + padY + u.f(20));
   }
 
   function palaceChairs(L, u) {
@@ -1575,14 +1600,23 @@
     const s = S.snap || {};
     const top = L.y.panels;
     const hgt = L.usable * L.band.panels * 0.92;
-    const pw = L.colW * 0.90;
+    // One panel per explicit third of the drawable width, inset from the slot
+    // edge. Deriving x from the seat centre and a width fraction let a panel
+    // straddle two slots, which is how panel A ended up over the frame.
+    const slotW = (W - SAFE.l - SAFE.r) / 3;
+    const inset = Math.max(0, slotW * 0.05);
+    const pw = slotW - inset * 2;
     S._panels = [];
     POS.forEach(function (p, i) {
-      const cx = L.seats[p].x;
-      const px = cx - pw / 2;
+      const px = SAFE.l + slotW * i + inset;
+      const cx = px + pw / 2;
       const art = PAL_IMG['panel' + p];
       const occ = s.seatOccupancy || {};
-      const mine = !!occ[p];
+      const seated = !!occ[p];
+      // "0/0" in the reference: my stake on this seat over the seat's pot.
+      // This used to be `!!occ[p]`, a boolean, so the header read "true/0" or
+      // "false/0" -- a seat being occupied has nothing to do with a stake.
+      const myStake = num(S.myBets[p]);
       const pot = num(s.pots && s.pots[p]);
       const mult = num((s.multipliers || {})[p]) || 2.9;
       const sel = S.selPos === p;
@@ -1596,18 +1630,22 @@
         ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 3;
         rr(px - 2, top - 2, pw + 4, hgt + 4, 11); ctx.stroke();
       }
-      // header strip: my bet / seat pot, then the multiplier, as in the panel.
+      // Header strip: my stake / seat pot, then the multiplier -- the
+      // reference's "0/0" and "x2.9".
       ctx.fillStyle = 'rgba(0,0,0,.30)';
       rr(px + pw * 0.08, top + hgt * 0.06, pw * 0.84, hgt * 0.15, 6); ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = '600 ' + u.f(12);
-      ctx.fillText(mine + '/' + pot, cx, top + hgt * 0.135);
+      ctx.fillText(myStake + '/' + pot, cx, top + hgt * 0.135);
       ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.20)));
       ctx.fillStyle = 'rgba(255,255,255,.92)';
       ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.44);
       ctx.font = u.f(10);
       ctx.fillStyle = 'rgba(255,255,255,.85)';
-      ctx.fillText(p + (s.mySeat === p ? '  YOU' : ''), cx, top + hgt * 0.66);
+      // Just "You" on your own panel. The seat letter used to be prefixed
+      // here, so a player in seat C saw "C  YOU" on the green panel while the
+      // letter was already on the chair directly above it.
+      ctx.fillText(s.mySeat === p ? 'You' : '', cx, top + hgt * 0.66);
       S._panels.push({ p: p, x: cx, y: top + hgt * 0.45, w: pw, h: hgt });
     });
   }
@@ -1932,6 +1970,7 @@
       });
       status('Bet accepted · ' + S.selDenom + ' on ' + pos, 'success');
       S._placedThisRound = true;
+      S.myBets[pos] = num(S.myBets[pos]) + S.selDenom;
       // Chip animation + sound
       const L = layout();
       const seatPos = L.seats[pos];
@@ -1987,7 +2026,13 @@
         S._placedThisRound = false;
         announce('New round ' + (S.snap.round_id || ''));
       }
-      if (S.snap) S._roundId = S.snap.round_id;
+      if (S.snap) {
+        S._roundId = S.snap.round_id;
+        if (S._myBetsRound !== S.snap.round_id) {
+          S._myBetsRound = S.snap.round_id;
+          S.myBets = {};
+        }
+      }
       if (S._lastWinKey && key !== S._lastWinKey && S.snap.winners && S.snap.winners.length) {
         // Authoritative result published: card flip reveal + win celebration
         const L = layout();
