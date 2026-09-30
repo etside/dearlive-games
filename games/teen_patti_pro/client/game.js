@@ -1329,6 +1329,11 @@
     // The previous set gave 11 / 22 / 40 / 45 / 62 / 87 / 100, which put the
     // chairs ~4% and the betting panels ~8% too high and left the chip bar 13%
     // tall where the reference shows 9%.
+    // Boundaries 11 / 24 / 41 / 45 / 71 / 91 / 100 % -- measured off the
+    // placement reference, and unchanged by the fixed sizes above. The
+    // toolbar band is 11% (92px) but only its top 56px is drawn into, so the
+    // controls sit where the reference has them and the spare 36px is
+    // breathing room above the timer rather than dead space.
     const w = { toolbar: 0.92, timer: 1.09, cards: 1.42, total: 0.33,
                 chairs: 2.17, panels: 1.67, bottom: 0.76 };
     const sum = Object.keys(w).reduce(function (a, k) { return a + w[k]; }, 0);
@@ -1425,8 +1430,11 @@
       drawContain(PAL_IMG.toolbarFrame, SAFE.l, L.y.toolbar,
                   W - SAFE.l - SAFE.r, L.usable * L.band.toolbar);
     }
-    const h = L.y.toolbar + L.usable * L.band.toolbar * 0.5;
-    const r = Math.max(15, Math.min(21, L.usable * L.band.toolbar * 0.34));
+    // Reference: a 56px toolbar and a 64px timer circle. Both are fixed, not
+    // band-derived -- the band is 92px tall, and controls placed by its centre
+    // sat 18px lower than the reference puts them.
+    const h = L.y.toolbar + 28;
+    const r = 18;                       // 36px controls
     // Back
     S._ctl = [];
     if (imageReady(PAL_IMG.back, 1, 1)) {
@@ -1547,7 +1555,7 @@
   function palaceTimer(L, u) {
     const s = S.snap || {};
     const cy = L.y.timer + L.usable * L.band.timer * 0.5;
-    const r = Math.max(20, Math.min(30, L.usable * L.band.timer * 0.30));
+    const r = 32;                     // 64px diameter, per the reference
     let secs = null;
     if (s.status === 'BETTING_OPEN' && s.betting_end_at) {
       // betting_end_at is server epoch millis. Comparing it against the
@@ -1724,7 +1732,7 @@
   function palacePanels(L, u) {
     const s = S.snap || {};
     const top = L.y.panels;
-    const hgt = L.usable * L.band.panels * 0.92;
+    const hgt = 140;                  // reference panel height, fixed
     // One panel per explicit third of the drawable width, inset from the slot
     // edge. Deriving x from the seat centre and a width fraction let a panel
     // straddle two slots, which is how panel A ended up over the frame.
@@ -1755,16 +1763,22 @@
       const pot = num(s.pots && s.pots[p]);
       const mult = num((s.multipliers || {})[p]) || 2.9;
       const sel = S.selPos === p;
+      // Contain-fit, and record where the art actually landed. The supplied
+      // panel art is 260x205 (1.27) while the slot is 114x140 (0.81): the plate
+      // cannot be both 114 wide and 140 tall without distorting a framed
+      // border, so it is fitted and the labels below are anchored to the
+      // DRAWN rect. Anchoring them to the slot instead put "0/0" and "x2.9"
+      // outside the plate they belong to.
+      var ax = px, ay = top, ah = hgt;
       if (imageReady(art, 1, 1)) {
-        // Contain-fit. The panel art is a framed plate with a border in the
-        // SVG; stretching it to an arbitrary box aspect crops that frame, which
-        // is what a "broken / clipped red panel" looks like on a phone.
         var ar = art.naturalWidth && art.naturalHeight
           ? art.naturalWidth / art.naturalHeight : pw / hgt;
-        var boxAR = pw / hgt;
-        var dw = pw, dh = hgt;
-        if (ar > boxAR) { dh = pw / ar; } else { dw = hgt * ar; }
-        ctx.drawImage(art, px + (pw - dw) / 2, top + (hgt - dh) / 2, dw, dh);
+        var dw = pw, dh = pw / ar;
+        if (dh > hgt) { dh = hgt; dw = hgt * ar; }
+        ax = px + (pw - dw) / 2;
+        ay = top + (hgt - dh) / 2;
+        ah = dh;
+        ctx.drawImage(art, ax, ay, dw, dh);
       } else {
         placeholder(px, top, pw, hgt, 10);
       }
@@ -1778,13 +1792,13 @@
       // The slash is safe now because both operands are always numbers --
       // this header used to read "false/0" because it was a boolean.
       ctx.fillStyle = 'rgba(0,0,0,.30)';
-      rr(px + pw * 0.08, top + hgt * 0.06, pw * 0.84, hgt * 0.17, 6); ctx.fill();
+      rr(px + pw * 0.08, ay + ah * 0.10, pw * 0.84, Math.max(u.f(15), ah * 0.22), 6); ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = 'bold ' + u.f(14);
-      ctx.fillText(myStake + '/' + pot, cx, top + hgt * 0.145);
+      ctx.fillText(myStake + '/' + pot, cx, ay + ah * 0.21);
       ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.24)));
       ctx.fillStyle = 'rgba(255,255,255,.95)';
-      ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.52);
+      ctx.fillText('x' + mult.toFixed(1), cx, ay + ah * 0.66);
       S._panels.push({ p: p, x: cx, y: top + hgt * 0.45, w: pw, h: hgt });
     });
   }
@@ -1809,7 +1823,7 @@
 
     // coin balance pill, bottom-left
     const cr = bh * 0.30;
-    const pillW = Math.max(74, W * 0.24);
+    const pillW = 120;                // reference balance pill width
     const px = SAFE.l + 6;
     ctx.fillStyle = 'rgba(16,8,32,.92)';
     rr(px, by + bh * 0.18, pillW, bh * 0.64, bh * 0.32); ctx.fill();
@@ -1829,10 +1843,10 @@
     // none, avail / 0 is Infinity and the row geometry is NaN, and inventing
     // a default list is how the bar came to offer chips the table refuses.
     S._chips = [];
-    const repeatW = Math.min(96, W * 0.24);
+    const repeatW = 124;              // reference repeat button width
     const avail = W - SAFE.l - SAFE.r - pillW - repeatW - 30;
     const nChips = DENOMS.length || 1;   // no chips yet: geometry stays finite
-    const cs = Math.min(bh * 0.74, avail / nChips - 6);
+    const cs = 48;                    // 48px chips, fixed per the reference
     const cx0 = px + pillW + 10 + (avail - cs * nChips) / 2 + cs / 2;
     const cy = by + bh * 0.5;
     DENOMS.forEach(function (d, i) {
@@ -1857,7 +1871,7 @@
     });
 
     // repeat, bottom-right
-    const rw = repeatW, rh = bh * 0.66;
+    const rw = repeatW, rh = 44;      // 124 x 44, per the reference
     const rx = W - SAFE.r - 6 - rw, ry = by + (bh - rh) / 2;
     if (imageReady(PAL_IMG.repeat, 1, 1)) {
       ctx.drawImage(PAL_IMG.repeat, rx, ry, rw, rh);

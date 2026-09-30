@@ -36,7 +36,7 @@ const sb={console,document,innerWidth:Number(process.env.TPP_W||390),innerHeight
   Image:function(){var o={complete:true,naturalWidth:64,naturalHeight:64,set src(v){
     var n=String(v||'');var d=/card-.*\\.png$/.test(n)&&!/back/.test(n)?[110,186]
       :/card-back/.test(n)?[119,179]
-      :/panel-(red|blue|green)/.test(n)?[388,122]
+      :/panel-(red|blue|green)/.test(n)?[260,205]
       :/chip-/.test(n)?[96,96]
       :/seat-/.test(n)?[256,222]
       :/background/.test(n)?[552,342]
