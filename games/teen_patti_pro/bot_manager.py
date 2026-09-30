@@ -35,6 +35,7 @@ adds a field to a snapshot. A bot is visible as a bot only in this module's
 own registry, which the admin surface can read and the client cannot.
 """
 
+import logging
 import os
 import random
 import threading
@@ -50,7 +51,7 @@ from typing import Dict, List, Optional, Set
 # No cycle: service.py never imports bot_manager or ws.
 from .service import TeenPattiService
 
-log = __import__("logging").getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def _env_float(name: str, default: float) -> float:

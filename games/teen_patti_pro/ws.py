@@ -107,12 +107,24 @@ def _looks_like_token(value: str) -> bool:
     return value.startswith("gst_")
 
 
+# How long a disconnected player's seat is held before it is released.
+#
+# A release has to be delayed, not immediate: a phone dropping off WiFi mid
+# round reconnects within seconds, and releasing the seat on the first dropped
+# frame would take the player out of a round they are still in. The grace
+# period is longer than a normal reconnect and shorter than a round, so an
+# abandoned table empties without stranding anyone.
+SEAT_GRACE_S = 45.0
+
+
 class Hub:
     def __init__(self, svc, tokens=None):
         self.svc = svc
         self.tokens = tokens
         self.lock = threading.Lock()
         self.rooms = {}  # room_id -> set[(conn, player_id)]
+        # Pending seat releases: (room_id, player_id) -> Timer
+        self._pending_release = {}
         # Bot manager for demo mode
         self.bot_manager = create_bot_manager(svc) if svc else None
 
@@ -156,12 +168,72 @@ class Hub:
     def join(self, room, conn, player_id):
         with self.lock:
             self.rooms.setdefault(room, set()).add((conn, player_id))
+            # The player is here, so any pending release for them is void. A
+            # phone that reconnects inside the grace window keeps its seat and
+            # its round, which is the whole point of the delay.
+            self._cancel_release_locked(room, player_id)
+
+    def _cancel_release_locked(self, room, player_id):
+        key = (room, player_id)
+        timer = self._pending_release.pop(key, None)
+        if timer is not None:
+            timer.cancel()
+
+    def has_connection(self, room, player_id) -> bool:
+        with self.lock:
+            return any(pid == player_id
+                       for _c, pid in self.rooms.get(room, set()))
 
     def leave(self, conn):
+        """Drop a socket, and schedule the seat's release.
+
+        The seat used to be held forever. Nothing called leave_table on
+        disconnect, so every abandoned tab left a ghost member occupying a seat
+        for the lifetime of the process. A demo table reached "full of ghosts"
+        after a few refreshes, and because the bot fill stands down when it
+        counts two or more players, the table then sat empty of bots and no
+        longer looked joinable. The ghosts were also visible to real players as
+        seated opponents who never acted.
+        """
+        released = []
         with self.lock:
-            for members in self.rooms.values():
+            for room, members in list(self.rooms.items()):
                 for m in [m for m in members if m[0] is conn]:
                     members.discard(m)
+                    released.append((room, m[1]))
+            for room, player_id in released:
+                # A second tab for the same player is still connected, so the
+                # seat must not be scheduled for release.
+                if any(pid == player_id
+                       for _c, pid in self.rooms.get(room, set())):
+                    continue
+                key = (room, player_id)
+                if key in self._pending_release:
+                    continue
+                timer = threading.Timer(SEAT_GRACE_S,
+                                        self._release_seat, args=(room, player_id))
+                timer.daemon = True
+                self._pending_release[key] = timer
+                timer.start()
+        return released
+
+    def _release_seat(self, room, player_id):
+        """Give up a seat whose player did not come back."""
+        with self.lock:
+            self._pending_release.pop((room, player_id), None)
+            if any(pid == player_id for _c, pid in self.rooms.get(room, set())):
+                return  # they came back
+        try:
+            self.svc.leave_table(room, player_id)
+        except Exception:
+            log.exception("teen_patti_seat_release_failed room=%s player=%s",
+                          room, player_id)
+            return
+        try:
+            if self.bot_manager is not None:
+                self.bot_manager.on_player_leave(room, player_id)
+        except Exception:
+            log.exception("teen_patti_bot_leave_notify_failed room=%s", room)
 
     def push(self, room, event: dict):
         dead = []
