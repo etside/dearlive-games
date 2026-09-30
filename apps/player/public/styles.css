@@ -39,3 +39,29 @@ button:disabled{opacity:.5;cursor:wait}
 .hint{font-size:12.5px;color:var(--muted)}
 .hint a,.foot a{color:var(--accent)}
 .foot{padding:16px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ---- home page ------------------------------------------------------- */
+/* The .kv rules above styled dt/dd inside a wrapper div; the home page puts
+   them directly in the <dl>, so they are matched directly here too. */
+.kv > dt,.kv > dd{grid-column:auto}
+.kv{display:grid;grid-template-columns:minmax(96px,132px) 1fr;gap:6px 10px;align-items:baseline}
+.kv > dt{color:var(--muted);font-size:13px}
+.kv > dd{margin:0;font-family:ui-monospace,monospace;font-size:12.5px;overflow-wrap:anywhere}
+.kv > dd.bad{color:var(--err)}
+
+.hero{background:linear-gradient(180deg,#16233f,var(--card));
+  border:1px solid var(--line);border-radius:12px;padding:18px 16px}
+.hero h1{margin:0 0 6px;font-size:22px;letter-spacing:.2px}
+.lede{margin:0 0 14px;color:var(--muted);max-width:56ch}
+.cta-row{display:flex;flex-wrap:wrap;gap:8px}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#06202e}
+.fine{display:block;margin:10px 0 0;color:var(--muted);font-size:12.5px;max-width:60ch}
+#cfg-tbc{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+
+.entry-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.entry-list li{display:grid;gap:2px}
+.entry-list a{color:var(--accent);font-weight:600;text-decoration:none}
+.entry-list a:hover{text-decoration:underline}
+.entry-list a:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+.nav-link.active,.mobile-nav-link.active{color:var(--accent)}

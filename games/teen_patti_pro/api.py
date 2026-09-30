@@ -1401,14 +1401,23 @@ audit_entity="game", audit_entity_id=m.group(1),
         self.end_headers()
         return self.wfile.write(body)
 
+    # The player home serves markup, a script and a stylesheet, so the content
+    # type has to follow the extension. It was hardcoded to text/html, which
+    # would have handed the browser app.js with an HTML content type: a strict
+    # MIME check refuses to execute it, and the page would have rendered with
+    # no behaviour at all.
+    PLAYER_MIME = {".html": "text/html; charset=utf-8",
+                   ".js": "application/javascript; charset=utf-8",
+                   ".css": "text/css; charset=utf-8"}
+
     def serve_player_doc(self, name: str):
-        """Serve a player-facing document page.
+        """Serve a player-facing document page or one of its assets.
 
         Only allowlisted filenames, no path separators: unlike serve_admin this
         takes a fixed name, never a URL-derived relative path, so there is no
         traversal surface at all.
         """
-        allowed = {"api-docs.html"}
+        allowed = {"api-docs.html", "index.html", "app.js", "styles.css"}
         if name not in allowed:
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         target = (self.PLAYER_DIR / name).resolve()
@@ -1423,7 +1432,9 @@ audit_entity="game", audit_entity_id=m.group(1),
         except OSError:
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header(
+            "Content-Type",
+            self.PLAYER_MIME.get(target.suffix.lower(), "text/plain; charset=utf-8"))
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
@@ -1618,6 +1629,18 @@ audit_entity="game", audit_entity_id=m.group(1),
                 return self.serve_shared(path[len("/shared"):])
             if path == "/api-docs":
                 return self.serve_player_doc("api-docs.html")
+            # The player home page and its assets. / returned 404 with a JSON
+            # body while the markup sat complete in apps/player/public, so the
+            # front door of the site did not exist and the navbar's "/" brand
+            # link was a dead end. Served from an allowlist rather than
+            # serve_admin's path handling: this is a public page and there is no
+            # reason to expose the directory.
+            if path == "/" or path == "/index.html":
+                return self.serve_player_doc("index.html")
+            if path == "/app.js":
+                return self.serve_player_doc("app.js")
+            if path == "/styles.css":
+                return self.serve_player_doc("styles.css")
             m = re.fullmatch(r"/teen-patti-pro/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 return self.serve_client(m.group(1))

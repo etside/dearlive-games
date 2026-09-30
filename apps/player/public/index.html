@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DearLive Staging — Player</title>
-<link rel="stylesheet" href="/shared/navbar.css">
+<title>Teen Patti Pro</title>
+<meta name="description" content="Teen Patti Pro: three-seat highest-hand card game. Play the demo table or open the admin console.">
 <link rel="stylesheet" href="/shared/navbar.css">
 <link rel="stylesheet" href="styles.css">
-</head><body>
-<!-- Navbar -->
+</head>
+<body>
+<!-- Shared navbar component - include in all pages -->
 <nav class="navbar" role="navigation" aria-label="Main navigation">
   <div class="navbar-inner">
+    <!-- Left: Logo -->
     <a href="/" class="navbar-brand" aria-label="Teen Patti Pro Home">
       <svg class="navbar-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect width="32" height="32" rx="6" fill="#1a0a2e"/>
@@ -20,6 +22,7 @@
       <span class="navbar-title">Teen Patti Pro</span>
     </a>
 
+    <!-- Center: Main navigation links -->
     <div class="navbar-center">
       <a href="/teen-patti-pro?operator=demo" class="nav-link" data-page="demo">
         <span class="nav-icon">🎮</span>
@@ -35,11 +38,15 @@
       </a>
     </div>
 
+    <!-- Right: Status, Language, User -->
     <div class="navbar-right">
+      <!-- System status indicator -->
       <div class="status-indicator" id="system-status" title="System status">
         <span class="status-dot"></span>
         <span class="status-text">Healthy</span>
       </div>
+
+      <!-- Language selector -->
       <div class="lang-selector">
         <button class="lang-btn" id="lang-btn" aria-expanded="false" aria-haspopup="true">
           <span class="lang-flag">🇬🇧</span>
@@ -57,7 +64,13 @@
           </button>
         </div>
       </div>
-      <div class="user-area" id="user-area"></div>
+
+      <!-- User/Login area -->
+      <div class="user-area" id="user-area">
+        <!-- Filled in by page-specific JS -->
+      </div>
+
+      <!-- Mobile hamburger -->
       <button class="hamburger" id="hamburger" aria-expanded="false" aria-label="Toggle menu" aria-controls="mobile-menu">
         <span class="hamburger-line"></span>
         <span class="hamburger-line"></span>
@@ -66,6 +79,7 @@
     </div>
   </div>
 
+  <!-- Mobile slide-out menu -->
   <div class="mobile-menu" id="mobile-menu" role="navigation" aria-label="Mobile menu">
     <div class="mobile-menu-header">
       <a href="/" class="navbar-brand">
@@ -90,295 +104,68 @@
       <div class="mobile-user" id="mobile-user-area"></div>
     </nav>
   </div>
-  <div class="mobile-overlay" id="mobile-overlay"></div>
-</nav>
-<!-- Navbar -->
-<nav class="navbar" role="navigation" aria-label="Main navigation">
-  <div class="navbar-inner">
-    <a href="/" class="navbar-brand" aria-label="Teen Patti Pro Home">
-      <svg class="navbar-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="32" height="32" rx="6" fill="#1a0a2e"/>
-        <path d="M16 8 L22 16 L16 24 Z" fill="#ffd700"/>
-        <path d="M10 16 L16 8 L22 16 L16 24 L10 16 Z" fill="none" stroke="#ffd700" stroke-width="2"/>
-      </svg>
-      <span class="navbar-title">Teen Patti Pro</span>
-    </a>
-
-    <div class="navbar-center">
-      <a href="/teen-patti-pro?operator=demo" class="nav-link" data-page="demo">
-        <span class="nav-icon">🎮</span>
-        <span>Demo</span>
-      </a>
-      <a href="/admin" class="nav-link" data-page="admin">
-        <span class="nav-icon">⚙️</span>
-        <span>Admin</span>
-      </a>
-      <a href="/api-docs" class="nav-link" data-page="api-docs">
-        <span class="nav-icon">📚</span>
-        <span>API Docs</span>
-      </a>
-    </div>
-
-    <div class="navbar-right">
-      <div class="status-indicator" id="system-status" title="System status">
-        <span class="status-dot"></span>
-        <span class="status-text">Healthy</span>
-      </div>
-      <div class="lang-selector">
-        <button class="lang-btn" id="lang-btn" aria-expanded="false" aria-haspopup="true">
-          <span class="lang-flag">🇬🇧</span>
-          <span class="lang-code">EN</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none">
-            <path d="M4 6 L8 10 L12 6" stroke="currentColor" stroke-width="2" fill="none"/>
-          </svg>
-        </button>
-        <div class="lang-dropdown" id="lang-dropdown" role="menu">
-          <button class="lang-option" data-lang="en" role="menuitem">
-            <span class="lang-flag">🇬🇧</span> English
-          </button>
-          <button class="lang-option" data-lang="bn" role="menuitem">
-            <span class="lang-flag">🇧🇩</span> বাংলা
-          </button>
-        </div>
-      </div>
-      <div class="user-area" id="user-area"></div>
-      <button class="hamburger" id="hamburger" aria-expanded="false" aria-label="Toggle menu" aria-controls="mobile-menu">
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-      </button>
-    </div>
-  </div>
-
-  <div class="mobile-menu" id="mobile-menu" role="navigation" aria-label="Mobile menu">
-    <div class="mobile-menu-header">
-      <a href="/" class="navbar-brand">
-        <span class="navbar-title">Teen Patti Pro</span>
-      </a>
-      <button class="mobile-close" id="mobile-close" aria-label="Close menu">✕</button>
-    </div>
-    <nav class="mobile-nav">
-      <a href="/teen-patti-pro?operator=demo" class="mobile-nav-link" data-page="demo">
-        <span class="nav-icon">🎮</span> Demo
-      </a>
-      <a href="/admin" class="mobile-nav-link" data-page="admin">
-        <span class="nav-icon">⚙️</span> Admin Panel
-      </a>
-      <a href="/api-docs" class="mobile-nav-link" data-page="api-docs">
-        <span class="nav-icon">📚</span> API Docs
-      </a>
-      <a href="/" class="mobile-nav-link" data-page="home">
-        <span class="nav-icon">🏠</span> Home
-      </a>
-      <div class="mobile-divider"></div>
-      <div class="mobile-user" id="mobile-user-area"></div>
-    </nav>
-  </div>
-  <div class="mobile-overlay" id="mobile-overlay"></div>
-</nav>
-<!-- Navbar -->
-<nav class="navbar" role="navigation" aria-label="Main navigation">
-  <div class="navbar-inner">
-    <a href="/" class="navbar-brand" aria-label="Teen Patti Pro Home">
-      <svg class="navbar-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="32" height="32" rx="6" fill="#1a0a2e"/>
-        <path d="M16 8 L22 16 L16 24 Z" fill="#ffd700"/>
-        <path d="M10 16 L16 8 L22 16 L16 24 L10 16 Z" fill="none" stroke="#ffd700" stroke-width="2"/>
-      </svg>
-      <span class="navbar-title">Teen Patti Pro</span>
-    </a>
-
-    <div class="navbar-center">
-      <a href="/teen-patti-pro?operator=demo" class="nav-link" data-page="demo">
-        <span class="nav-icon">🎮</span>
-        <span>Demo</span>
-      </a>
-      <a href="/admin" class="nav-link" data-page="admin">
-        <span class="nav-icon">⚙️</span>
-        <span>Admin</span>
-      </a>
-      <a href="/api-docs" class="nav-link" data-page="api-docs">
-        <span class="nav-icon">📚</span>
-        <span>API Docs</span>
-      </a>
-    </div>
-
-    <div class="navbar-right">
-      <div class="status-indicator" id="system-status" title="System status">
-        <span class="status-dot"></span>
-        <span class="status-text">Healthy</span>
-      </div>
-      <div class="lang-selector">
-        <button class="lang-btn" id="lang-btn" aria-expanded="false" aria-haspopup="true">
-          <span class="lang-flag">🇬🇧</span>
-          <span class="lang-code">EN</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none">
-            <path d="M4 6 L8 10 L12 6" stroke="currentColor" stroke-width="2" fill="none"/>
-          </svg>
-        </button>
-        <div class="lang-dropdown" id="lang-dropdown" role="menu">
-          <button class="lang-option" data-lang="en" role="menuitem">
-            <span class="lang-flag">🇬🇧</span> English
-          </button>
-          <button class="lang-option" data-lang="bn" role="menuitem">
-            <span class="lang-flag">🇧🇩</span> বাংলা
-          </button>
-        </div>
-      </div>
-      <div class="user-area" id="user-area"></div>
-      <button class="hamburger" id="hamburger" aria-expanded="false" aria-label="Toggle menu" aria-controls="mobile-menu">
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-      </button>
-    </div>
-  </div>
-
-  <div class="mobile-menu" id="mobile-menu" role="navigation" aria-label="Mobile menu">
-    <div class="mobile-menu-header">
-      <a href="/" class="navbar-brand">
-        <span class="navbar-title">Teen Patti Pro</span>
-      </a>
-      <button class="mobile-close" id="mobile-close" aria-label="Close menu">✕</button>
-    </div>
-    <nav class="mobile-nav">
-      <a href="/teen-patti-pro?operator=demo" class="mobile-nav-link" data-page="demo">
-        <span class="nav-icon">🎮</span> Demo
-      </a>
-      <a href="/admin" class="mobile-nav-link" data-page="admin">
-        <span class="nav-icon">⚙️</span> Admin Panel
-      </a>
-      <a href="/api-docs" class="mobile-nav-link" data-page="api-docs">
-        <span class="nav-icon">📚</span> API Docs
-      </a>
-      <a href="/" class="mobile-nav-link" data-page="home">
-        <span class="nav-icon">🏠</span> Home
-      </a>
-      <div class="mobile-divider"></div>
-      <div class="mobile-user" id="mobile-user-area"></div>
-    </nav>
-  </div>
-  <div class="mobile-overlay" id="mobile-overlay"></div>
 </nav>
 
+<!-- Overlay for mobile menu -->
+<div class="mobile-overlay" id="mobile-overlay"></div>
 
 <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <main class="wrap">
+  <section class="hero">
+    <h1>Teen Patti Pro</h1>
+    <p class="lede">Three-seat highest-hand card game. Play the demo table, or
+    operate the stack from the admin console. No sign-up: the demo link mints a
+    session and seats you.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/teen-patti-pro?operator=demo">Play demo table</a>
+      <a class="btn" href="/admin">Admin console</a>
+      <a class="btn" href="/api-docs">API docs</a>
+    </div>
+    <p class="fine">The demo table is the same build as a real session. If you
+    are alone, bots take the other seats after 40&nbsp;seconds so the round can
+    play out.</p>
+  </section>
 
-  <section class="card" aria-labelledby="h-login">
-    <h2 id="h-login">1 · Test-player login</h2>
-    <form id="login-form">
-      <div class="grid">
-        <label>Player
-          <input id="player" name="player" list="players" value="qa-player" maxlength="64"
-                 autocomplete="off" required>
-          <datalist id="players">
-            <option value="qa-player"></option>
-            <option value="qa-player-2"></option>
-            <option value="staging-tester"></option>
-          </datalist>
-        </label>
-        <label>Game
-          <select id="game" name="game">
-            <option value="teen-patti-pro">Teen Patti Pro</option>
-          </select>
-        </label>
-        <label>Room
-          <input id="room" name="room" value="staging-room" maxlength="64" autocomplete="off" required>
-        </label>
-      </div>
-      <div class="row">
-        <button type="submit" id="login-btn">Log in (staging)</button>
-        <button type="button" id="logout-btn" class="ghost">Log out</button>
-      </div>
-    </form>
-    <dl class="kv" id="login-out" hidden>
-      <div><dt>player_id</dt><dd id="o-player">–</dd></div>
-      <div><dt>game_id</dt><dd id="o-game">–</dd></div>
-      <div><dt>room_id</dt><dd id="o-room">–</dd></div>
-      <div><dt>launch_token</dt><dd id="o-token">–</dd></div>
-      <div><dt>session_id</dt><dd id="o-session">–</dd></div>
+  <section class="card" aria-labelledby="h-live">
+    <h2 id="h-live">Live service</h2>
+    <p class="hint">Read from <code>/health</code>. No sample values.</p>
+    <dl class="kv" id="live">
+      <dt>Status</dt><dd id="live-status">&hellip;</dd>
+      <dt>Config version</dt><dd id="live-config">&hellip;</dd>
+      <dt>Confirmed</dt><dd id="live-confirmed">&hellip;</dd>
+      <dt>Server time</dt><dd id="live-time">&hellip;</dd>
     </dl>
   </section>
 
-  <section class="card" aria-labelledby="h-fund">
-    <h2 id="h-fund">2 · TEST funding</h2>
-    <form id="fund-form">
-      <div class="grid">
-        <label>Amount (TEST)
-          <input id="amount" name="amount" type="number" min="1" step="1" value="5000" required>
-        </label>
-      </div>
-      <div class="row">
-        <button type="submit" id="fund-btn">Grant TEST coins</button>
-        <button type="button" id="refresh-btn" class="ghost">Refresh views</button>
-      </div>
-    </form>
-    <p class="hint">Grants are idempotent per key and never touch real money.</p>
+  <section class="card" aria-labelledby="h-config">
+    <h2 id="h-config">Table configuration</h2>
+    <p class="hint">Read from <code>GET /api/v1/games/teen-patti-pro</code>.</p>
+    <dl class="kv" id="cfg">
+      <dt>Seats</dt><dd id="cfg-seats">&hellip;</dd>
+      <dt>Chips</dt><dd id="cfg-denoms">&hellip;</dd>
+      <dt>Min / max bet</dt><dd id="cfg-bets">&hellip;</dd>
+      <dt>Betting window</dt><dd id="cfg-window">&hellip;</dd>
+    </dl>
   </section>
 
-  <section class="card" aria-labelledby="h-play">
-    <h2 id="h-play">3 · Play</h2>
-    <div class="row">
-      <button type="button" id="open-session-btn">Open session</button>
-      <a id="launch-link" class="btn" href="#" hidden>Open game client ↗</a>
-    </div>
-    <p class="hint" id="launch-hint">Open a session first, then launch the exact backend game client
-      (<code>/teen-patti-pro/</code>)
-      with <code>?session=&amp;room=</code>. Use the in-game controls there; this page mirrors
-      balance / state / history below. <a href="./">Return home</a> any time.</p>
+  <section class="card" aria-labelledby="h-entry">
+    <h2 id="h-entry">Entry points</h2>
+    <ul class="entry-list">
+      <li><a href="/teen-patti-pro?operator=demo">Demo table</a>
+        <span class="fine">Mints a session and redirects into the client.</span></li>
+      <li><a href="/teen-patti-pro/lobby.html">Lobby</a>
+        <span class="fine">Table list and rules.</span></li>
+      <li><a href="/admin">Admin console</a>
+        <span class="fine">Dashboard, rules, packages, audit.</span></li>
+      <li><a href="/api-docs">API reference</a>
+        <span class="fine">Endpoints, auth, errors.</span></li>
+    </ul>
   </section>
-
-  <section class="card" aria-labelledby="h-bal">
-    <h2 id="h-bal">Balance</h2>
-    <pre id="balance" class="out">Log in first.</pre>
-    <p class="hint" id="balance-note" hidden></p>
-  </section>
-
-  <section class="card" aria-labelledby="h-state">
-    <h2 id="h-state">Table state</h2>
-    <pre id="state" class="out">Log in first.</pre>
-  </section>
-
-  <section class="card" aria-labelledby="h-bet">
-    <h2 id="h-bet">Place a bet (same contract as the game client)</h2>
-    <form id="bet-form">
-      <div class="grid">
-        <label>Choice <span class="hint" id="choice-src"></span>
-          <select id="choice" name="choice"></select>
-        </label>
-        <label>Amount
-          <input id="bet-amount" name="bet-amount" type="number" min="1" step="1" value="100" required>
-        </label>
-      </div>
-      <div class="row">
-        <button type="submit" id="bet-btn">Place bet</button>
-        <button type="button" id="choices-btn" class="ghost">Reload choices</button>
-      </div>
-    </form>
-    <p class="hint">Choices come from the server (<code>/api/v1/games/teen-patti-pro</code> seats for
-      Teen Patti, <code>/api/v1/games/{game}/assets</code> options for wheels). No rules are invented here.</p>
-  </section>
-
-  <section class="card" aria-labelledby="h-hist">
-    <h2 id="h-hist">History &amp; results</h2>
-    <div class="row">
-      <button type="button" id="hist-btn" class="ghost">Reload history</button>
-      <button type="button" id="recent-btn" class="ghost">Reload recent results</button>
-    </div>
-    <h3>My bets</h3>
-    <pre id="history" class="out">–</pre>
-    <h3>Recent results</h3>
-    <pre id="recent" class="out">–</pre>
-    <h3>Published result</h3>
-    <pre id="result" class="out">–</pre>
-  </section>
-
 </main>
 
 <footer class="foot">
-  <a href="./">Home</a> · static build, no dependencies · TEST environment only
+  <span>Staging build &middot; <a href="/api-docs">docs</a></span>
 </footer>
 
 <script src="/shared/navbar.js"></script>
