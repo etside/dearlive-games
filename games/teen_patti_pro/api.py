@@ -175,6 +175,16 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "TeenPattiPro/1.0"
     svc: TeenPattiService = None
     game_enabled: dict = {}  # game_id/alias -> bool (admin enable/disable)
+    # Admin-created demo rooms and minted player sessions. In-memory, like the
+    # engine rooms and sessions they describe: a process restart wipes them,
+    # exactly as it wipes the tables themselves. The admin panel re-creates
+    # rooms on demand; nothing here is durable by design.
+    admin_rooms: dict = {}     # room_id -> {name, currency, chip_denoms,
+                               #   betting_duration_sec, max_seats, multiplier,
+                               #   created_at, created_by}
+    admin_sessions: dict = {}  # session_id -> {player_id, room, token,
+                               #   expires_at_ms, created_at, revoked}
+    _ratelimit_hits: dict = {}  # (key, route) -> [epoch seconds]
 
     # Canonical provider code "teen_patti_pro" (provider/games.py TEEN_CODE)
     # must be accepted: session tokens minted by h_create_session carry it as
@@ -269,6 +279,86 @@ class Handler(BaseHTTPRequestHandler):
             # type only.
             return self.send(502, E.err(
                 f"admin query failed: {type(exc).__name__}", E.E_INTERNAL))
+
+    # -- admin rooms + player sessions (demo suite) ---------------------
+    # Rate limit for the minting surface: 100/hour per operator key. Minting
+    # is the one admin action that creates bearer credentials, so it gets its
+    # own guard rather than sharing the global throttle (there is none).
+    _MINT_RATE_LIMIT = 100
+    _MINT_RATE_WINDOW_S = 3600
+
+    @classmethod
+    def _check_rate(cls, key: str, route: str) -> bool:
+        """True when the call is within quota. Counts only allowed calls, so
+        a client hammering past the limit does not extend its own window."""
+        now = time.time()
+        bucket = cls._ratelimit_hits.setdefault((key, route), [])
+        cutoff = now - cls._MINT_RATE_WINDOW_S
+        while bucket and bucket[0] <= cutoff:
+            bucket.pop(0)
+        if len(bucket) >= cls._MINT_RATE_LIMIT:
+            return False
+        bucket.append(now)
+        return True
+
+    def _public_base(self) -> str:
+        """Public base URL for player-facing links minted by admin routes.
+
+        Prefers the configured provider public base; falls back to the
+        request Host header so the URLs work on any deployment without
+        extra configuration. Scheme follows the configured base, else http
+        (tests, local) -- nginx terminates TLS in front of this process.
+        """
+        ctx = getattr(self, "provider_ctx", None)
+        base = (getattr(ctx, "base_url", "") or "").strip()
+        if base:
+            return base.rstrip("/")
+        host = (self.headers.get("Host") or "127.0.0.1:5002").strip()
+        return "http://" + host
+
+    def _admin_mint_session(self, player_id: str, room: str,
+                            ttl_hours=24) -> dict:
+        """Mint a playable provider session for one player.
+
+        Same credential shape as the operator-signed provider flow
+        (game session + short token + launch URL), minus the HMAC: the caller
+        already proved admin role. The token resolves through the same store
+        the launch and WS paths read, so the URL plays immediately and
+        revocation takes effect everywhere at once.
+        """
+        from common.envelope import now_iso
+        player_id = str(player_id or "").strip()
+        if not player_id:
+            raise ServiceError(E.E_VALIDATION, "player_id is required")
+        room_id = str(room or "teen-patti-low").strip() or "teen-patti-low"
+        try:
+            ttl_h = float(ttl_hours if ttl_hours is not None else 24)
+        except (TypeError, ValueError):
+            raise ServiceError(E.E_VALIDATION, "ttl_hours must be a number")
+        if not 0 < ttl_h <= 24 * 30:
+            raise ServiceError(E.E_VALIDATION,
+                               "ttl_hours must be between 0 and 720")
+        if self.provider_tokens is None:
+            raise ServiceError(E.E_INTERNAL, "token store unavailable")
+        sess = self.svc.sessions.create(player_id, room_id, "teen-patti-pro")
+        record = self.provider_tokens.mint(sess.session_id, {
+            "player_id": player_id, "game_code": "teen-patti-pro",
+            "table_id": room_id, "currency": "COIN", "language": "en",
+            "platform": "web", "minted_by": "admin",
+        }, int(ttl_h * 3600))
+        now_ms = int(time.time() * 1000)
+        entry = {"session_id": sess.session_id, "player_id": player_id,
+                 "room": room_id, "token": record["token"],
+                 "expires_at_ms": record["expires_at_ms"],
+                 "expires_at": now_iso(record["expires_at_ms"]),
+                 "created_at": now_iso(now_ms), "revoked": False}
+        self.admin_sessions[sess.session_id] = entry
+        return {"session_id": sess.session_id, "player_id": player_id,
+                "room": room_id,
+                "play_url": self._public_base() +
+                            "/api/v1/provider/launch/" + record["token"],
+                "expires_at": entry["expires_at"],
+                "expires_at_ms": entry["expires_at_ms"]}
 
     def _admin_post(self, path, body, query=""):
         """POST routes for the deep-control surface. None means "not mine".
@@ -404,8 +494,109 @@ class Handler(BaseHTTPRequestHandler):
                     m.group(1), enabled, status=body.get("status"),
                     message=str(body.get("message", ""))),
                 audit_action=("game.enable" if enabled else "game.disable"),
-                audit_entity="game", audit_entity_id=m.group(1),
-                before={"enabled": enabled})
+audit_entity="game", audit_entity_id=m.group(1),
+                    before={"enabled": enabled})
+        # --- demo rooms + player sessions (demo suite) ---
+        if path == "/api/v1/admin/rooms":
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not isinstance(body, dict):
+                return self.send(422, E.err("JSON body required",
+                                            E.E_VALIDATION))
+            name = str(body.get("name") or "").strip()
+            if not name:
+                return self.send(422, E.err("name is required",
+                                            E.E_VALIDATION))
+            room_id = re.sub(r"[^a-z0-9]+", "-",
+                             name.lower()).strip("-") or "room"
+            if room_id in self.admin_rooms:
+                return self.send(409, E.err(
+                    f"room {room_id} already exists", E.E_CONFLICT))
+            from common.envelope import now_iso
+            meta = {
+                "room_id": room_id, "name": name,
+                "currency": str(body.get("currency") or "COIN").upper(),
+                "chip_denoms": list(body.get("chip_denoms") or
+                                    [1000, 10000, 50000, 100000]),
+                "betting_duration_sec": int(
+                    body.get("betting_duration_sec") or 30),
+                "max_seats": int(body.get("max_seats") or 3),
+                "multiplier": body.get("multiplier", 2.9),
+                "created_at": now_iso(),
+                "created_by": self.admin_role() or "admin",
+            }
+            self.svc._room(room_id)  # materialise the engine room now
+            self.admin_rooms[room_id] = meta
+            try:
+                self.svc.audit.record(
+                    self.admin_role() or "admin", "room.create", "room",
+                    room_id, after={"ok": True})
+            except Exception:
+                pass
+            return self.ok({
+                "room_id": room_id,
+                "join_url": self._public_base() +
+                            "/teen-patti-pro?operator=demo&room=" + room_id,
+                "created_at": meta["created_at"]})
+        if path == "/api/v1/admin/sessions/mint":
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not self._check_rate(self.headers.get("X-Admin-Key", ""),
+                                    "sessions/mint"):
+                return self.send(429, E.err(
+                    "mint rate limit exceeded (100/hour)", E.E_RATE_LIMIT))
+            if not isinstance(body, dict):
+                return self.send(422, E.err("JSON body required",
+                                            E.E_VALIDATION))
+            try:
+                out = self._admin_mint_session(
+                    body.get("player_id"), body.get("room"),
+                    body.get("ttl_hours", 24))
+            except ServiceError as exc:
+                return self.fail(exc)
+            try:
+                self.svc.audit.record(
+                    self.admin_role() or "admin", "session.mint",
+                    "session", out["session_id"],
+                    after={"player_id": out["player_id"]})
+            except Exception:
+                pass
+            return self.ok(out)
+        if path == "/api/v1/admin/sessions/bulk":
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            if not self._check_rate(self.headers.get("X-Admin-Key", ""),
+                                    "sessions/bulk"):
+                return self.send(429, E.err(
+                    "mint rate limit exceeded (100/hour)", E.E_RATE_LIMIT))
+            if not isinstance(body, dict):
+                return self.send(422, E.err("JSON body required",
+                                            E.E_VALIDATION))
+            ids = body.get("player_ids") or []
+            if not isinstance(ids, list) or not ids:
+                return self.send(422, E.err("player_ids must be a non-empty "
+                                            "list", E.E_VALIDATION))
+            if len(ids) > 100:
+                return self.send(422, E.err("at most 100 player_ids per call",
+                                            E.E_VALIDATION))
+            out, errors = [], []
+            for pid in ids:
+                try:
+                    out.append(self._admin_mint_session(
+                        pid, body.get("room"), body.get("ttl_hours", 24)))
+                except ServiceError as exc:
+                    errors.append({"player_id": pid, "error": str(exc)})
+            try:
+                self.svc.audit.record(
+                    self.admin_role() or "admin", "session.bulk_mint",
+                    "session", f"{len(out)} minted",
+                    after={"ok": True, "errors": len(errors)})
+            except Exception:
+                pass
+            return self.ok({"sessions": out, "errors": errors})
         return None
 
     def _admin_put(self, path, body):
@@ -541,6 +732,56 @@ class Handler(BaseHTTPRequestHandler):
                     m.group(1), self.admin_role() or "admin")},
                 audit_action="player.override.revoke", audit_entity="player_override",
                 audit_entity_id=m.group(1))
+        # --- demo rooms + player sessions (demo suite) ---
+        m = re.fullmatch(r"/api/v1/admin/rooms/([^/]+)", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            room_id = m.group(1)
+            meta = self.admin_rooms.pop(room_id, None)
+            if meta is None and room_id not in self.svc.rooms:
+                return self.send(404, E.err(f"room {room_id} not found",
+                                            E.E_NOT_FOUND))
+            # Force-close: drop the live engine room so in-flight state ends
+            # here; members' sessions stay valid for other rooms.
+            self.svc.rooms.pop(room_id, None)
+            try:
+                self.svc.audit.record(
+                    self.admin_role() or "admin", "room.delete", "room",
+                    room_id, after={"ok": True})
+            except Exception:
+                pass
+            return self.ok({"room_id": room_id, "closed": True})
+        m = re.fullmatch(r"/api/v1/admin/sessions/([^/]+)", path)
+        if m:
+            denied = self.require_role("admin")
+            if denied:
+                return self.send(*denied)
+            sid = m.group(1)
+            entry = self.admin_sessions.get(sid)
+            if entry is None:
+                return self.send(404, E.err(f"session {sid} not found",
+                                            E.E_NOT_FOUND))
+            # Revoke the bearer token first: any in-flight use fails closed
+            # from here on; then end the game session itself.
+            try:
+                if self.provider_tokens is not None:
+                    self.provider_tokens.revoke(entry["token"])
+            except Exception:
+                pass
+            try:
+                self.svc.sessions.end(sid)
+            except Exception:
+                pass
+            entry["revoked"] = True
+            try:
+                self.svc.audit.record(
+                    self.admin_role() or "admin", "session.revoke",
+                    "session", sid, after={"ok": True})
+            except Exception:
+                pass
+            return self.ok({"session_id": sid, "revoked": True})
         return None
 
     def _admin_write(self, fn, audit_action=None, audit_entity=None,
@@ -1695,6 +1936,53 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(*denied)
                 return self.ok({"entries": self.svc.audit.list(
                     qs.get("entity", [""])[0], int(qs.get("limit", ["100"])[0]))})
+            # --- demo rooms + player sessions (demo suite) ---
+            if path == "/api/v1/admin/rooms":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                rooms = []
+                for room_id, meta in self.admin_rooms.items():
+                    try:
+                        members = len(self.svc.rooms.get(
+                            room_id).members) if room_id in self.svc.rooms \
+                            else 0
+                    except Exception:
+                        members = 0
+                    rooms.append({**meta, "active": room_id in self.svc.rooms,
+                                  "players_count": members})
+                return self.ok({"rooms": rooms})
+            if path == "/api/v1/admin/sessions":
+                denied = self.require_role("auditor")
+                if denied:
+                    return self.send(*denied)
+                want_room = (qs.get("room", [""])[0] or "").strip()
+                want_active = (qs.get("active", [""])[0] or "").strip().lower()
+                out = []
+                for sid, e in self.admin_sessions.items():
+                    if want_room and e.get("room") != want_room:
+                        continue
+                    live = False
+                    if not e.get("revoked"):
+                        try:
+                            live = (self.provider_tokens is not None
+                                    and self.provider_tokens.get(
+                                        e["token"]) is not None
+                                    and self.svc.sessions.get(sid) is not None)
+                        except Exception:
+                            live = False
+                    if want_active in ("true", "1", "yes") and not live:
+                        continue
+                    if want_active in ("false", "0", "no") and live:
+                        continue
+                    out.append({"session_id": sid,
+                                "player_id": e.get("player_id"),
+                                "room": e.get("room"),
+                                "expires_at": e.get("expires_at"),
+                                "expires_at_ms": e.get("expires_at_ms"),
+                                "status": "active" if live else "revoked",
+                                "created_at": e.get("created_at")})
+                return self.ok({"sessions": out})
             if path == "/api/v1/admin/webhooks":
                 denied = self.require_role("auditor")
                 if denied:
