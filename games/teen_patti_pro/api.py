@@ -28,6 +28,8 @@ from common.session import TokenError
 from .config import TeenPattiConfig, DEFAULT_CONFIG
 from .service import TeenPattiService, ServiceError
 
+log = logging.getLogger(__name__)
+
 
 def _load_admin_keys():
     """ADMIN_KEYS from env GAME_ADMIN_KEYS=key:role,... (+ legacy GAME_ADMIN_KEY).
@@ -1466,7 +1468,6 @@ audit_entity="game", audit_entity_id=m.group(1),
                 # Demo only available in non-production environments
                 if os.environ.get("APP_ENV", "sandbox").strip().lower() == "production":
                     return self.send(404, E.err("Not found", E.E_NOT_FOUND))
-                qs = urllib.parse.parse_qs(url.query)
                 player_id = str(qs.get("user", ["demo_" + secrets.token_hex(8)])[0] or "demo_" + secrets.token_hex(8))
                 room = str(qs.get("room", ["teen-patti-low"])[0] or "teen-patti-low")
                 # Mint a session for the demo user directly (in-process, no HTTP round-trip)
@@ -1484,15 +1485,27 @@ audit_entity="game", audit_entity_id=m.group(1),
                     else:
                         # Fallback: use session ID as token if no token store
                         session_token = sess.session_id
-                    # Redirect to canonical URL with session token
+                    # Redirect to canonical URL with session token. The room
+                    # must come from the request, not a hardcoded default: a
+                    # caller asking for teen-patti-high used to be redirected
+                    # into teen-patti-low, so the page loaded a table the
+                    # operator never asked for.
                     self.send_response(302)
-                    self.send_header("Location", "/teen-patti-pro/?session=" + session_token + "&room=teen-patti-low")
+                    self.send_header(
+                        "Location",
+                        "/teen-patti-pro/?session="
+                        + urllib.parse.quote(session_token, safe="")
+                        + "&room=" + urllib.parse.quote(room, safe=""))
                     self.end_headers()
                     return
                 except Exception:
-                    pass  # Fall through to normal serve
+                    # Never swallow: a failed mint used to fall through to the
+                    # static handler, which served game.js as the page body,
+                    # so the operator saw a blank game with no explanation.
+                    log.exception(
+                        "demo session mint failed")
             if path in ("/teen-patti-pro", "/teen-patti-pro/"):
-                return self.serve_client("game.js", "application/javascript; charset=utf-8")
+                return self.serve_client("index.html", "text/html; charset=utf-8")
             if path == "/teen-patti-pro/demo.html":
                 return self.serve_client("demo.html", "text/html; charset=utf-8")
             if path == "/teen-patti-pro/demo_round.json":
@@ -2075,7 +2088,7 @@ audit_entity="game", audit_entity_id=m.group(1),
             return self.send(503, E.err("Wallet service is temporarily "
                                            "unavailable", E.E_WALLET_UNAVAILABLE))
         except Exception:                      # noqa: BLE001
-            logging.getLogger(__name__).exception("unhandled request error")
+            log.exception("unhandled request error")
             return self.send(500, E.err("Internal error", E.E_INTERNAL))
 
     def do_POST(self):

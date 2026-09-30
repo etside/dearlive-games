@@ -132,6 +132,22 @@
     .hud{left:calc(var(--sal) + 16px);right:calc(var(--sar) + 16px)}
   }
 
+  /* Animation 6: button press scale(0.96). Every control is a real <button>,
+     so this is the one animation that needs no JS. Transition is short so it
+     tracks the finger instead of lagging behind it. */
+  .iconbtn,.pillbtn,.lang-btn,.veil-btn,.chipbtn{transition:transform .09s ease-out,
+    background-color .15s ease,border-color .15s ease}
+  .iconbtn:active,.pillbtn:active,.lang-btn:active,.veil-btn:active,
+  .chipbtn:active,.btn:active{transform:scale(.96)}
+
+  /* prefers-reduced-motion: state changes still happen, nothing moves. */
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms !important;
+      animation-iteration-count:1 !important;transition-duration:.001ms !important}
+    .iconbtn:active,.pillbtn:active,.lang-btn:active,.veil-btn:active,
+    .chipbtn:active,.btn:active{transform:none}
+  }
+
   #err{position:fixed;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);
     top:calc(var(--sat) + 8px);z-index:10;display:none;
     padding:12px 14px;border-radius:10px;font-size:15px;line-height:1.4;

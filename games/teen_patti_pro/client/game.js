@@ -373,6 +373,19 @@
         easeOutElastic: t => t === 1 ? 1 : -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * 2 * Math.PI / 3)
       };
       const ease = easings[easing] || easings.easeOutCubic;
+      // prefers-reduced-motion: apply the end state on the next frame, once.
+      // Every animation funnels through here, so this is the single place
+      // that has to honour it for the state to be correct without motion.
+      if (REDUCED) {
+        instance.promise = new Promise(resolve => {
+          requestAnimationFrame(() => {
+            if (!instance.cancelled) { onFrame(1, 1); onComplete && onComplete(); }
+            resolve('done');
+          });
+        });
+        animations.set(id, instance);
+        return { id, promise: instance.promise, cancel: () => { instance.cancelled = true; } };
+      }
       instance.promise = new Promise(resolve => {
         function step(now) {
           if (instance.cancelled) { resolve('cancelled'); return; }
@@ -675,6 +688,8 @@
   // ===== GAME ANIMATIONS (use AnimLayer + Sound) =====
   // Card deal: deck -> seat with bezier arc, stagger, Lottie + sound
   async function animateDeal(deckPos, seatPositions, cardsPerPlayer, players) {
+    // prefers-reduced-motion: land every card immediately, no arc, no stagger.
+    if (REDUCED) { deckPos = deckPos || { x: 0, y: 0 }; for (let i = 0; i < (seatPositions || []).length; i++) { /* snapshot already draws the cards */ } return; }
     const L = layout();
     const totalCards = cardsPerPlayer * players.length;
     const cardW = L.cw, cardH = L.ch;
@@ -721,6 +736,8 @@
 
   // Card flip: scaleX 1 -> 0 -> 1 with texture swap
   function animateFlip(cardEl, faceUp, cardData) {
+    // prefers-reduced-motion: swap the texture with no flip.
+    if (REDUCED) { cardEl.innerHTML = faceUp ? renderCardFace(cardData) : renderCardBack(); return Promise.resolve(); }
     return AnimLayer.animate({
       duration: 350,
       easing: 'easeInOutCubic',
@@ -746,6 +763,7 @@
 
   // Chip bet: arc from seat to pot, stack, glow Lottie + sound
   async function animateChipBet(seatPos, potPos, amount) {
+    if (REDUCED) return;  // prefers-reduced-motion: no chip flight
     const chipEl = document.createElement('div');
     chipEl.style.position = 'absolute';
     chipEl.style.left = seatPos.x + 'px';
@@ -791,6 +809,7 @@
 
   // Pot collection: chips fly from pot to winner(s)
   async function animatePotCollection(potPos, winnerPositions, amounts) {
+    if (REDUCED) return;  // prefers-reduced-motion: no collection flight
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = (potPos.x - 60) + 'px';
@@ -837,22 +856,50 @@
 
   // Timer pulse: Lottie synced to server timeout
   let timerPulseAnim = null;
+  let pulseStyleInjected = false;
   function startTimerPulse(container, secsRemaining) {
     stopTimerPulse();
-    if (secsRemaining > 10) return;
+    if (!container) return;
+    if (secsRemaining > 5) { container.dataset.pulse = ''; return; }
+    // prefers-reduced-motion: state only, no motion.
+    if (REDUCED) { container.dataset.pulse = 'ring'; return; }
     // The countdown is drawn by the SVG ring (avatars/timer-ring.svg) plus
     // the stroked progress arc in draw(). 'timer_pulse' was layered on top of
     // that and is a placeholder: one shape layer, solid fill [1, 0.25, 0.05,
     // 1] = #FF400D, on a 512x512 canvas -- a solid orange square, not a ring.
     // It used to 404 so nobody saw it; fixing MASTER_BASE made it resolve and
-    // it painted a bright orange block over the timer. The pulse is now the
-    // ring's own scale/opacity animation, driven by secsRemaining.
-    if (container) container.dataset.pulse = 'ring';
+    // it painted a bright orange block over the timer. The pulse is the ring's
+    // own scale/opacity, driven by secsRemaining.
+    if (!pulseStyleInjected) {
+      pulseStyleInjected = true;
+      const st = document.createElement('style');
+      // No id: this node is created once and never read back, and a runtime
+      // id that is never looked up is a maintenance trap.
+      st.textContent =
+        '@keyframes tppTimerPulse{0%,100%{transform:scale(1);opacity:1}' +
+        '50%{transform:scale(1.14);opacity:.62}}' +
+        '[data-pulse="ring"]{animation:tppTimerPulse 1s ease-in-out infinite;' +
+        'transform-origin:50% 50%}';
+      document.head.appendChild(st);
+    }
+    // Faster as the clock runs out, so the urgency is legible.
+    const period = secsRemaining <= 2 ? 0.5 : 0.9;
+    container.style.animationDuration = period + 's';
+    container.dataset.pulse = 'ring';
   }
-  function stopTimerPulse() { if (timerPulseAnim) { timerPulseAnim.destroy(); timerPulseAnim = null; } }
+  function stopTimerPulse() {
+    if (timerPulseAnim) { timerPulseAnim.destroy(); timerPulseAnim = null; }
+    // The pulse node only exists while the countdown is inside the threshold,
+    // so this lookup is absent for most of the round and must be guarded.
+    const pulseEl = document.getElementById('tpp-timer-pulse');
+    if (!pulseEl) return;
+    pulseEl.dataset.pulse = '';
+    pulseEl.style.animationDuration = '';
+  }
 
   // Winner celebration: fireworks + glow
   async function animateWin(winnerSeatPositions) {
+    if (REDUCED) return;  // prefers-reduced-motion: no glow/fireworks
     const promises = winnerSeatPositions.map(pos => {
       const container = document.createElement('div');
       container.style.position = 'absolute';
@@ -871,6 +918,7 @@
 
   // Round reset: cards fly back to deck
   async function animateRoundReset(seatPositions, deckPos, players) {
+    if (REDUCED) return;  // prefers-reduced-motion: cards are already gone
     const L = layout();
     const cardW = L.cw, cardH = L.ch;
     const promises = [];
@@ -1235,9 +1283,22 @@
       seats[p] = { x: SAFE.l + colW * (i + 0.5), y: y.chairs + usable * band.chairs * 0.52 };
     });
     const cw = Math.max(24, Math.min(34, colW * 0.235)), ch = cw * 1.42;
+    // The pot/deck anchor. Animation code asks for `L.y.centre` /
+    // `L.band.centre` (the old layout's centre band), which this grid does not
+    // define, so those reads were undefined and every deck/pot position came
+    // out NaN: cards flew from off-screen and chip arcs never landed. The pot
+    // lives between the cards row and the chairs, so anchor it there.
+    const pot = { x: W / 2, y: y.chairs + usable * band.chairs * 0.12 };
     return { top: top, usable: usable, band: band, y: y, seats: seats,
-             cw: cw, ch: ch, colW: colW, cx: W / 2, land: W > H };
+             cw: cw, ch: ch, colW: colW, cx: W / 2, land: W > H,
+             pot: pot, y_centre: pot.y, band_centre: 0.12 * band.chairs,
+             // Aliases the animation layer already reads.
+             centre: { x: pot.x, y: pot.y } };
   }
+
+  // Centre-of-table position used by the deal/flip/chip animations. Kept as a
+  // function so the three call sites cannot drift apart again.
+  function potPos(L) { return L.pot || { x: L.cx, y: L.y.chairs + L.usable * L.band.chairs * 0.12 }; }
 
   // The old layout() is still called by the tap handler for seat hit-testing;
   // it now answers with palace geometry so the two cannot disagree.
@@ -1735,8 +1796,8 @@
       // Chip animation + sound
       const L = layout();
       const seatPos = L.seats[pos];
-      const potPos = { x: L.cx, y: H * 0.115 + 30 };
-      if (seatPos) window.__tppAnim.animateChipBet(seatPos, potPos, S.selDenom);
+      const potP = potPos(L);
+      if (seatPos) window.__tppAnim.animateChipBet(seatPos, potP, S.selDenom);
       await Sound.play('bet');
     } catch (e) {
       status(friendlyError(e), 'error');
@@ -1776,7 +1837,7 @@
       // Round reset: animate cards flying back to deck before new deal
       if (S._roundId && S.snap && S.snap.round_id !== S._roundId) {
         const L = layout();
-        const deckPos = { x: L.cx, y: (L.y.centre + L.usable * L.band.centre * 0.5) };
+        const deckPos = potPos(L);
         const players = (prev && prev.players) || [];
         await window.__tppAnim.animateRoundReset(L.seats, deckPos, players);
         
@@ -1820,11 +1881,11 @@
         
         const winners = S.snap.winners;
         const winnerPositions = winners.map(w => L.seats[w]).filter(Boolean);
-        const potPos = { x: L.cx, y: H * 0.115 + 30 };
+        const potP = potPos(L);
         if (winnerPositions.length) {
           window.__tppAnim.animateWin(winnerPositions);
           const amounts = winners.map(w => S.snap.pots?.[w] || 0);
-          window.__tppAnim.animatePotCollection(potPos, winnerPositions, amounts);
+          window.__tppAnim.animatePotCollection(potP, winnerPositions, amounts);
         }
         if (S._placedThisRound) { Sound.play('win'); Sound.play('coin'); }
         else Sound.play('lose');
@@ -1844,7 +1905,7 @@
             tc.id = 'tpp-timer-pulse';
             tc.style.position = 'absolute';
             tc.style.left = (L.cx - 40) + 'px';
-            tc.style.top = ((L.y.centre + L.usable * L.band.centre * 0.5) - 40) + 'px';
+            tc.style.top = (potPos(L).y - 40) + 'px';
             tc.style.width = '80px';
             tc.style.height = '80px';
             tc.style.pointerEvents = 'none';
@@ -2020,7 +2081,7 @@
           if (kind === 'round.created' || kind === 'round.started' || kind === 'ROUND_CREATED' || kind === 'ROUND_STARTED') {
             // New round dealt - trigger deal animation
             const L = layout();
-            const deckPos = { x: L.cx, y: (L.y.centre + L.usable * L.band.centre * 0.5) };
+            const deckPos = potPos(L);
             const players = (S.snap && S.snap.players) || [];
             window.__tppAnim.animateDeal(deckPos, L.seats, 3, players);
           } else if (kind === 'bet.accepted' || kind === 'BET_ACCEPTED') {
@@ -2028,18 +2089,18 @@
             const L = layout();
             const seatKey = m.data.player_id || m.data.position;
             const seatPos = L.seats[seatKey];
-            const potPos = { x: L.cx, y: H * 0.115 + 30 };
-            if (seatPos) window.__tppAnim.animateChipBet(seatPos, potPos, m.data.amount);
+            const potP = potPos(L);
+            if (seatPos) window.__tppAnim.animateChipBet(seatPos, potP, m.data.amount);
           } else if (kind === 'result.published' || kind === 'settlement.completed' || kind === 'RESULT_DECLARED' || kind === 'SETTLEMENT_COMPLETED') {
             // Winner celebration + pot collection
             const L = layout();
             const winners = m.data.winners || m.data.winner_positions || [];
             const winnerPositions = winners.map(w => L.seats[w]).filter(Boolean);
-            const potPos = { x: L.cx, y: H * 0.115 + 30 };
+            const potP = potPos(L);
             if (winnerPositions.length) {
               window.__tppAnim.animateWin(winnerPositions);
               const amounts = winners.map(w => m.data.pots?.[w] || 0);
-              window.__tppAnim.animatePotCollection(potPos, winnerPositions, amounts);
+              window.__tppAnim.animatePotCollection(potP, winnerPositions, amounts);
             }
           } else if (kind === 'betting.closed' || kind === 'BETTING_CLOSED') {
             // Timer pulse stop
@@ -2052,7 +2113,7 @@
               const timerContainer = document.createElement('div');
               timerContainer.style.position = 'absolute';
               timerContainer.style.left = (L.cx - 40) + 'px';
-              timerContainer.style.top = ((L.y.centre + L.usable * L.band.centre * 0.5) - 40) + 'px';
+              timerContainer.style.top = (potPos(L).y - 40) + 'px';
               timerContainer.style.width = '80px';
               timerContainer.style.height = '80px';
               timerContainer.style.pointerEvents = 'none';
