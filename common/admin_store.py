@@ -1095,6 +1095,14 @@ class PostgresAdminStore(AdminStore):
             # created_by and is_active also have no usable default in every
             # deployment (created_by defaults to '', and the caller knows who
             # they are), so they are written explicitly.
+            # One active configuration per game is enforced by the partial
+            # unique index game_configuration_one_active (007). Saving a new
+            # version therefore has to retire the previous one in the same
+            # transaction, or the insert fails with a UniqueViolation that
+            # surfaces as a generic 502. The history is preserved: the old row
+            # stays, with is_active = FALSE, which is what rollback reads.
+            cur.execute("UPDATE game_configuration SET is_active = FALSE "
+                        "WHERE game_id = %s AND is_active", (game_id,))
             cur.execute(
                 "INSERT INTO game_configuration "
                 "(game_id, version, config_version, confirmed, tbc, payload, "
@@ -1102,7 +1110,8 @@ class PostgresAdminStore(AdminStore):
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (game_id, version) DO UPDATE "
                 "SET confirmed = EXCLUDED.confirmed, tbc = EXCLUDED.tbc, "
-                "payload = EXCLUDED.payload RETURNING game_id, version, confirmed, "
+                "payload = EXCLUDED.payload, is_active = EXCLUDED.is_active "
+                "RETURNING game_id, version, confirmed, "
                 "tbc, payload, created_at",
                 (game_id, version, version, bool(confirmed),
                  json.dumps(tbc or []), json.dumps(payload), True,

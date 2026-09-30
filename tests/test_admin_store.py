@@ -316,7 +316,11 @@ class GameConfigVersioningTest(unittest.TestCase):
         db = FakeDB(one=("g", "vNEW", False, "[]", '{"a":1}', "ts"))
         out = PostgresAdminStore(db.cursor).save_game_config_version("g", {"a": 1})
         self.assertEqual(out["payload"], {"a": 1})
-        params = db.executed[0][1]
+        # The save issues a deactivate first (one active config per game), so
+        # the INSERT is the second statement, not the first.
+        idx = next(i for i, q in enumerate(db.sql)
+                   if "INSERT INTO game_configuration" in q)
+        params = db.executed[idx][1]
         # Positional order is (game_id, version, config_version, confirmed,
         # tbc, payload, is_active, created_by). Both version columns are
         # constrained -- config_version is NOT NULL and half the primary key --
@@ -325,6 +329,21 @@ class GameConfigVersioningTest(unittest.TestCase):
         self.assertEqual(params[5], '{"a": 1}')
         self.assertEqual(params[1], params[2],
                          "version and config_version must not disagree")
+
+    def test_save_retires_the_previous_active_config_first(self):
+        """game_configuration_one_active allows one active row per game.
+
+        Without the deactivate, the second save raised UniqueViolation, which
+        the console reported as a generic 502 with no indication that a rules
+        version already existed.
+        """
+        db = FakeDB(one=("g", "vNEW", False, "[]", '{"a":1}', "ts"))
+        PostgresAdminStore(db.cursor).save_game_config_version("g", {"a": 1})
+        idx = next(i for i, q in enumerate(db.sql)
+                   if "INSERT INTO game_configuration" in q)
+        self.assertGreater(idx, 0, "a deactivate must precede the insert")
+        self.assertIn("UPDATE game_configuration SET is_active = FALSE",
+                      db.sql[idx - 1])
 
     def test_save_writes_every_not_null_column(self):
         """A column the insert omits and the table will not default is a 502.
@@ -336,7 +355,7 @@ class GameConfigVersioningTest(unittest.TestCase):
         """
         db = FakeDB(one=("g", "vNEW", False, "[]", '{"a":1}', "ts"))
         PostgresAdminStore(db.cursor).save_game_config_version("g", {"a": 1})
-        sql = db.sql[0]
+        sql = next(q for q in db.sql if "INSERT INTO game_configuration" in q)
         for col in ("game_id", "version", "config_version", "confirmed",
                     "tbc", "payload", "is_active", "created_by"):
             self.assertIn(col, sql, "rules save must write %s" % col)
