@@ -65,10 +65,35 @@ class ClientPathTest(unittest.TestCase):
         html = (CLIENT / "index.html").read_text(encoding="utf-8")
         m = re.search(r'<script[^>]+src="([^"]+)"', html)
         self.assertIsNotNone(m, "index.html loads no script")
+        src = m.group(1)
+        # The path must stay absolute, or it 404s and the page renders a blank
+        # canvas with no socket and no error. A ?v= build id is allowed and is
+        # in fact required: see the next test.
+        self.assertTrue(
+            src.startswith(f"{MOUNT}/game.js"),
+            f"the game script must be referenced absolutely under {MOUNT}, "
+            f"got {src!r}")
         self.assertEqual(
-            m.group(1), f"{MOUNT}/game.js",
-            "the game script must be referenced absolutely, or it 404s and the "
-            "page renders a blank canvas with no socket and no error")
+            src.split("?")[0], f"{MOUNT}/game.js",
+            "the query string must not alter the script path")
+
+    def test_the_script_url_carries_a_build_id(self):
+        """A renderer fix that a phone silently keeps running is a fix that
+        never happened. The shell stamps game.js with a content id so the URL
+        changes whenever the client does; combined with no-store on the script
+        response, no cache can serve a build we already replaced.
+        """
+        html = (CLIENT / "index.html").read_text(encoding="utf-8")
+        m = re.search(r'<script[^>]+src="([^"]+)"', html)
+        self.assertIsNotNone(m)
+        self.assertIn("{{CLIENT_BUILD}}", m.group(1),
+                      "the script URL must carry the build id placeholder")
+        api = (CLIENT.parent / "api.py").read_text(encoding="utf-8")
+        self.assertIn("{{CLIENT_BUILD}}", api,
+                      "the server must substitute the placeholder, or the "
+                      "script 404s and the canvas stays blank")
+        self.assertIn("no-store", api,
+                      "the client must be served no-store")
 
     def test_every_local_reference_resolves_to_a_served_route(self):
         """Cross-check the references against the server's route table."""

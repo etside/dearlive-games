@@ -9,6 +9,7 @@ X-Signature), handled by provider/router.py.
 """
 import argparse
 import hmac
+import hashlib
 import json
 import logging
 import os
@@ -1518,7 +1519,13 @@ audit_entity="game", audit_entity_id=m.group(1),
             "Content-Type",
             self.PLAYER_MIME.get(target.suffix.lower(), "text/plain; charset=utf-8"))
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache")
+        # no-store, not no-cache. A renderer fix that reaches the phone hours
+        # later is worse than no fix at all: the player reloads, sees the old
+        # layout, and the report becomes "you did not fix it". A client this
+        # size costs ~110KB to re-fetch and must never be served from a cache.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         return self.wfile.write(body)
         """Serve a file from the repo assets/ tree, read-only and contained.
@@ -1568,6 +1575,22 @@ audit_entity="game", audit_entity_id=m.group(1),
                        ".png": "image/png", ".webp": "image/webp",
                        ".ico": "image/x-icon"}
 
+    _CLIENT_BUILD: str = ""
+
+    def _client_build(self) -> str:
+        """Content id for the client bundle, cheap enough to do per request.
+
+        Hash of game.js bytes, memoised for the life of the process. A deploy
+        restarts the process, so the id changes exactly when the code does.
+        """
+        if not self._CLIENT_BUILD:
+            js = self.CLIENT_DIR / "game.js"
+            try:
+                self._CLIENT_BUILD = hashlib.sha256(js.read_bytes()).hexdigest()[:10]
+            except OSError:
+                self._CLIENT_BUILD = "dev"
+        return self._CLIENT_BUILD
+
     def serve_client(self, name: str, ctype: str = ""):
         # name reaches here from the URL. Without the containment check below,
         # "..%2f..%2f.env" would read outside the client directory.
@@ -1583,6 +1606,13 @@ audit_entity="game", audit_entity_id=m.group(1),
             body = target.read_bytes()
         except OSError:
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+        if target.name == "index.html":
+            # Stamp the shell with a build id derived from game.js itself, so
+            # the <script> URL changes the instant the client changes. Combined
+            # with no-store on the script itself this removes the last path by
+            # which a phone can keep rendering a build we already replaced.
+            body = body.replace(b"{{CLIENT_BUILD}}",
+                                self._client_build().encode("ascii"))
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
