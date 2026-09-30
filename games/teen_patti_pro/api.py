@@ -1463,20 +1463,27 @@ audit_entity="game", audit_entity_id=m.group(1),
                 return
             # Auto-mint demo session when operator=demo
             if path in ("/teen-patti-pro", "/teen-patti-pro/") and qs.get("operator") == ["demo"]:
+                # Demo only available in non-production environments
+                if os.environ.get("APP_ENV", "sandbox").strip().lower() == "production":
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
                 qs = urllib.parse.parse_qs(url.query)
                 player_id = str(qs.get("user", ["demo_" + secrets.token_hex(8)])[0] or "demo_" + secrets.token_hex(8))
                 room = str(qs.get("room", ["teen-patti-low"])[0] or "teen-patti-low")
-                # Mint a session for the demo user
+                # Mint a session for the demo user directly (in-process, no HTTP round-trip)
                 try:
-                    b = json.dumps({"player_id": player_id, "game_code": "teen-patti-pro",
-                                    "currency": "COIN", "language": "en"})
-                    p = subprocess.run(["/opt/dearlive-venv/bin/python", "tools/provider_sign.py",
-                                        "POST", "/api/v1/sessions", "--body", b],
-                                     capture_output=True, text=True,
-                                     env={**os.environ, "PROVIDER_BASE_URL": "http://127.0.0.1:5002"})
-                    l = [x for x in p.stdout.split("\n") if x.startswith("curl")][0]
-                    d = json.loads(subprocess.run(l[0], shell=True, capture_output=True, text=True).stdout)["data"]
-                    session_token = d["session_token"]
+                    # Create session in the session store
+                    sess = self.svc.sessions.create(player_id, room, "teen-patti-pro")
+                    # Mint a token for the session
+                    if self.provider_tokens is not None:
+                        record = self.provider_tokens.mint(sess.session_id, {
+                            "player_id": player_id, "game_code": "teen-patti-pro",
+                            "table_id": room, "currency": "COIN", "language": "en",
+                            "platform": "web", "minted_by": "admin",
+                        }, 24 * 3600)
+                        session_token = record["token"]
+                    else:
+                        # Fallback: use session ID as token if no token store
+                        session_token = sess.session_id
                     # Redirect to canonical URL with session token
                     self.send_response(302)
                     self.send_header("Location", "/teen-patti-pro/?session=" + session_token + "&room=teen-patti-low")
