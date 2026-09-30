@@ -388,7 +388,16 @@ class PostgresAdminStore(AdminStore):
             cur.execute("SELECT key, value_json FROM platform_config")
             out = {}
             for k, v in cur.fetchall():
-                out[k] = v if isinstance(v, (dict, list, int, float, bool, type(None))) \
+                # psycopg already decodes JSONB into Python objects, so a
+                # JSONB column holding a plain string comes back as str. str was
+                # missing from this tuple, so every string setting was fed back
+                # through json.loads -- and json.loads("off") raises
+                # JSONDecodeError. Settings are mostly strings (a banner text, a
+                # maintenance flag), so the Settings page failed on the most
+                # ordinary input it could be given. Only re-parse what is
+                # actually still a JSON string.
+                out[k] = v if isinstance(v, (dict, list, int, float, bool, str,
+                                             type(None))) \
                     else json.loads(v)
             return out
         finally:

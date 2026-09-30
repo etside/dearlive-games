@@ -64,6 +64,36 @@ def _coerce_config_kwargs(config_cls, kwargs):
     return dropped
 
 
+# scheduled_config_change.target_type is constrained by a CHECK in 006. Kept
+# as a set next to the parser so the API can reject a bad value with a 422
+# instead of letting the constraint violation surface as a 502.
+_SCHEDULED_TARGET_TYPES = {"profit_risk", "game_config", "settings", "package"}
+
+
+def _parse_iso8601(value):
+    """Parse an ISO-8601 timestamp into a form Postgres will accept.
+
+    Postgres reads "2030-01-01T00:00:00+00:00" but not the trailing "Z", and
+    not a bare date with a T separator. Returns a string rather than a datetime
+    so the value handed to the driver is already in the database's dialect.
+    """
+    import datetime as _dt
+    text = value.strip()
+    if text.endswith("Z") or text.endswith("z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = _dt.datetime.fromisoformat(text)
+    except ValueError:
+        raise ValueError(
+            "expected ISO-8601, e.g. 2030-01-01T00:00:00+00:00")
+    if parsed.tzinfo is None:
+        # A naive timestamp is ambiguous. Assume UTC rather than the server's
+        # local zone, so a scheduled change fires at the time the operator
+        # typed regardless of where the process runs.
+        parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+    return parsed.isoformat(sep=" ")
+
+
 def _json_default(value):
     """Make a Postgres value JSON-encodable.
 
@@ -494,6 +524,33 @@ class Handler(BaseHTTPRequestHandler):
             denied = need("admin")
             if denied:
                 return self.send(*denied)
+            # Validated here rather than left to Postgres. Both of these used
+            # to reach the database as raw strings and came back as a 502
+            # naming a driver error -- InvalidDatetimeFormat for a timestamp
+            # Postgres could not read, or a bare check-constraint violation for
+            # an unknown target. An operator filling in a form needs to be told
+            # which field is wrong, not shown a driver message.
+            target_type = str(body.get("target_type", ""))
+            if target_type not in _SCHEDULED_TARGET_TYPES:
+                return self.send(422, E.err(
+                    "target_type must be one of: "
+                    + ", ".join(sorted(_SCHEDULED_TARGET_TYPES)),
+                    E.E_VALIDATION))
+            raw_at = str(body.get("effective_at", "")).strip()
+            if not raw_at:
+                return self.send(422, E.err("effective_at is required",
+                                            E.E_VALIDATION))
+            try:
+                effective_at = _parse_iso8601(raw_at)
+            except ValueError as exc:
+                return self.send(422, E.err(f"effective_at: {exc}",
+                                            E.E_VALIDATION))
+            if not isinstance(body.get("payload") or {}, dict):
+                return self.send(422, E.err("payload must be a JSON object",
+                                            E.E_VALIDATION))
+            body = dict(body)
+            body["effective_at"] = effective_at
+            body["target_type"] = target_type
             return self._admin_write(
                 lambda st: st.create_scheduled_change(
                     change_id=body.get("change_id") or _new_id("chg"),

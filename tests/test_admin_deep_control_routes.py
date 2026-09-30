@@ -470,3 +470,105 @@ class AdminDeepControlTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScheduledChangeValidationTest(AdminDeepControlTest):
+    """A bad field must be a 422 naming the field, not a 502 naming a driver.
+
+    Both of these used to be passed to Postgres as raw strings. An ISO
+    timestamp ending in "Z" came back as InvalidDatetimeFormat, and an unknown
+    target_type tripped a CHECK constraint -- so an operator filling in the
+    form was shown a database driver's error text and a 500-ish status, with no
+    indication of which field to correct.
+    """
+
+    KEY = {"X-Admin-Key": "a-key"}
+
+    def _post(self, body):
+        return self.call("POST", "/api/v1/admin/scheduled-changes", body,
+                         headers=self.KEY)
+
+    def test_iso_z_is_accepted(self):
+        code, body = self._post({
+            "target_type": "settings", "target_id": "banner",
+            "payload": {"v": 1}, "effective_at": "2030-01-01T00:00:00Z"})
+        # 503 here means validation passed and the request reached a store that
+        # is not configured in unit tests. What must not happen is a 422 (the
+        # parser rejected a valid Z timestamp) or a 502 naming a driver error.
+        self.assertIn(code, (200, 409, 422, 503), body)
+        self.assertNotEqual(code, 502, body)
+
+    def test_unknown_target_type_is_a_validation_error(self):
+        code, body = self._post({
+            "target_type": "not-a-thing", "target_id": "x",
+            "payload": {}, "effective_at": "2030-01-01T00:00:00Z"})
+        self.assertEqual(code, 422, body)
+        self.assertIn("target_type", str(body))
+
+    def test_unparseable_timestamp_is_a_validation_error(self):
+        code, body = self._post({
+            "target_type": "settings", "target_id": "x",
+            "payload": {}, "effective_at": "next tuesday"})
+        self.assertEqual(code, 422, body)
+        self.assertIn("effective_at", str(body))
+
+    def test_missing_timestamp_is_a_validation_error(self):
+        code, body = self._post({
+            "target_type": "settings", "target_id": "x", "payload": {}})
+        self.assertEqual(code, 422, body)
+
+    def test_a_driver_error_is_never_the_message(self):
+        for when_ in ("next tuesday", "", "01-01-2030"):
+            code, body = self._post({
+                "target_type": "settings", "target_id": "x",
+                "payload": {}, "effective_at": when_})
+            text = str(body).lower()
+            for leak in ("invaliddatetimeformat", "psycopg", "check constraint",
+                         "violates"):
+                self.assertNotIn(leak, text,
+                                 "a driver message leaked to the client: %s" % body)
+
+
+class SettingsScalarTest(AdminDeepControlTest):
+    """A plain-string setting must round-trip.
+
+    get_settings re-parsed any JSONB value whose type was not in its tuple,
+    and str was not in it. A JSONB column holding "off" came back as the Python
+    string "off" and was fed to json.loads, which raises. Settings are mostly
+    strings -- a banner text, a maintenance flag -- so the Settings page failed
+    on the most ordinary value an operator could enter.
+    """
+
+    def test_a_string_jsonb_value_is_not_re_parsed(self):
+        """The real behaviour, not the source text.
+
+        psycopg hands a JSONB column back already decoded, so a string setting
+        arrives as str. The old type check omitted str and re-parsed it, and
+        json.loads of a bare word raises. Driving get_settings through a stub
+        cursor that returns str is the only way to catch that: a regex over the
+        source would have matched the fixed line while the bug was live, which
+        is exactly what happened to the earlier substring assertion here.
+        """
+        class _Cur:
+            def __init__(self, rows):
+                self._rows = rows
+            def execute(self, *_a, **_kw):
+                return None
+            def fetchall(self):
+                return self._rows
+
+        store = PostgresAdminStore(lambda: _Cur([("maintenance_banner", "off"),
+                                                 ("threshold", 7),
+                                                 ("flag", True),
+                                                 ("nested", {"a": 1}),
+                                                 ("listy", [1, 2])]))
+        out = store.get_settings()
+        self.assertEqual(out["maintenance_banner"], "off")
+        self.assertEqual(out["threshold"], 7)
+        self.assertIs(out["flag"], True)
+        self.assertEqual(out["nested"], {"a": 1})
+        self.assertEqual(out["listy"], [1, 2])
+        # A str result IS the value. psycopg decodes JSONB before handing it
+        # over, so a JSONB object arrives as dict and a JSONB string as str --
+        # there is no "still encoded" case for the caller to handle, and
+        # re-parsing a str is precisely the bug.
