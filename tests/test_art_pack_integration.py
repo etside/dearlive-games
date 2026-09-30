@@ -106,9 +106,15 @@ def _orphan_paths():
     referenced |= {"avatars/avatar-placeholder.svg",
                    "avatars/avatar-frame-navy.svg"}
     referenced |= set(BUILD_TIME_INPUTS)
-    # extracted/ is the unpacked source the crops were made from. It is kept
-    # for provenance and is never drawn, so it is not an orphan.
-    all_files = {p for p in all_files if not p.startswith("extracted/")}
+    # Two directories hold art that is deliberately not drawn:
+    #   extracted/  unpacked source the crops were made from
+    #   cardsets/   alternative card sets, staged and documented but not
+    #               selected -- see cardsets/figma/PROVENANCE.md
+    # Neither is an orphan; both are recorded so the list cannot quietly grow
+    # into a dumping ground.
+    all_files = {p for p in all_files
+                 if not p.startswith("extracted/")
+                 and not p.startswith("cardsets/")}
     return sorted(all_files - referenced)
 
 

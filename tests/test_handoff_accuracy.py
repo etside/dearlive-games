@@ -154,7 +154,8 @@ class HandoffNumbersTest(unittest.TestCase):
         base = ROOT / "assets/games/teen-patti-pro"
         pack = [p for p in base.rglob("*")
                 if p.is_file() and p.suffix in (".svg", ".png")
-                and "extracted" not in p.relative_to(base).parts]
+                and not set(p.relative_to(base).parts)
+                & {"extracted", "cardsets"}]
         self.assertEqual(len(pack), 93)
         self.assertIn("93 / 93", HANDOFF)
 
