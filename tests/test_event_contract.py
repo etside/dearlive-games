@@ -239,3 +239,40 @@ class ClientEventIdempotencyTest(unittest.TestCase):
     def test_the_set_is_bounded(self):
         self.assertIn("MAX_CONSUMED", self.js,
                       "an unbounded set is a slow memory leak in a long session")
+
+
+class AssetHandlerServesTheClipTest(unittest.TestCase):
+    """The handler's suffix allowlist has to include what we actually ship.
+
+    The clip was committed, present on disk, referenced by the shell, and still
+    returned 404 -- the allowlist held .svg/.png/.webp/.jpg/.jpeg/.json and no
+    video type. That presents as a missing asset, and the symptom is a preloader
+    stuck on a black frame rather than any error.
+    """
+    def setUp(self):
+        with open(os.path.join(ROOT, "games", "teen_patti_pro", "api.py"),
+                  encoding="utf-8") as fh:
+            self.api = fh.read()
+
+    def test_video_suffixes_are_allowed(self):
+        import re
+        m = re.search(r"ASSET_SUFFIXES = \((.*?)\)", self.api, re.S)
+        self.assertIsNotNone(m, "ASSET_SUFFIXES not found")
+        for ext in (".mp4", ".webm"):
+            self.assertIn(ext, m.group(1), "%s is not served" % ext)
+
+    def test_video_suffixes_have_a_mime_type(self):
+        import re
+        m = re.search(r"ASSET_MIME = \{(.*?)\}", self.api, re.S)
+        self.assertIsNotNone(m, "ASSET_MIME not found")
+        for mime in ("video/mp4", "video/webm"):
+            self.assertIn(mime, m.group(1), "%s has no mime mapping" % mime)
+
+    def test_the_allowlist_still_refuses_arbitrary_types(self):
+        """Adding video must not turn the handler into a file server."""
+        import re
+        m = re.search(r"ASSET_SUFFIXES = \((.*?)\)", self.api, re.S)
+        allowed = m.group(1)
+        for bad in (".py", ".sh", ".env", ".sql", ".pem", ".key"):
+            self.assertNotIn(bad, allowed,
+                             "%s must never be servable" % bad)

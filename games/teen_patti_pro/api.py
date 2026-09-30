@@ -1340,9 +1340,15 @@ audit_entity="game", audit_entity_id=m.group(1),
     # home and the admin shell. Served by this process because three pages
     # referencing /shared/* with no route 404'd in production.
     SHARED_DIR = Path(__file__).parent.parent.parent / "apps" / "shared"
-    ASSET_SUFFIXES = (".svg", ".png", ".webp", ".jpg", ".jpeg", ".json")
+    # .mp4/.webm are here for the loading clip. Without them the handler
+    # returned 404 for a file that was committed and present, and the
+    # preloader sat on a black frame forever -- an allowlist gap, not a
+    # missing asset.
+    ASSET_SUFFIXES = (".svg", ".png", ".webp", ".jpg", ".jpeg", ".json",
+                      ".mp4", ".webm")
     ASSET_MIME = {".svg": "image/svg+xml", ".png": "image/png",
                   ".webp": "image/webp", ".jpg": "image/jpeg",
+                  ".mp4": "video/mp4", ".webm": "video/webm",
                   ".jpeg": "image/jpeg", ".json": "application/json"}
     MASTER_KINDS = {"lottie": ("application/json; charset=utf-8", ".json"),
                     "gif": ("image/gif", ".gif"),
