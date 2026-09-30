@@ -12,6 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.diag_dashboard import db_url  # noqa: E402
 
+# Every column the dashboard and rules reads, so this stays a complete check
+# rather than a snapshot of whatever was failing when it was written.
 QUERIES = [
     ("dashboard.rounds_live",
      "SELECT count(*) FROM rounds WHERE status IN ('BETTING_OPEN','DEALING')"),
@@ -29,6 +31,18 @@ QUERIES = [
     ("rules.latest",
      "SELECT version, confirmed, tbc, payload, created_at FROM game_configuration "
      "WHERE game_id = %s ORDER BY created_at DESC LIMIT 1", ("teen-patti-pro",)),
+    ("dashboard.games",
+     "SELECT count(*) FILTER (WHERE status = 'live'), count(*), "
+     "count(*) FILTER (WHERE NOT (lower(status) NOT IN "
+     "('disabled','offline','retired'))) FROM game"),
+    ("games.list_admin",
+     "SELECT game_id, name, status FROM game ORDER BY game_id"),
+    ("packages.list",
+     "SELECT package_id, name, coins, price_minor, currency, bonus_percent, "
+     "bonus_coins, is_active, sort_order, tags, created_at, updated_at "
+     "FROM token_package ORDER BY sort_order, package_id"),
+    ("withdrawals.pending",
+     "SELECT count(*) FROM withdrawal_request WHERE status = 'PENDING'"),
 ]
 
 
@@ -48,7 +62,8 @@ def main() -> int:
                 try:
                     cur.execute(sql, args)
                     rows = cur.fetchall()
-                    print("ok   %-28s -> %s" % (name, str(rows[0])[:70]))
+                    print("ok   %-28s -> %s" % (
+                        name, str(rows[0])[:70] if rows else "(no rows)"))
                 except Exception as exc:
                     bad += 1
                     print("FAIL %-28s" % name)

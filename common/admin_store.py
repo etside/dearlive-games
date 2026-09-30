@@ -459,9 +459,14 @@ class PostgresAdminStore(AdminStore):
     def list_games_admin(self) -> List[Dict[str, Any]]:
         cur = self._cursor_factory()
         try:
-            cur.execute("SELECT game_id, name, status, enabled FROM game ORDER BY game_id")
+            # There is no `enabled` column on `game`: the deployed table
+            # (007) carries a lifecycle `status`, and set_game_enabled has
+            # always written 'live' / 'disabled' into it. The lobby toggle is
+            # derived from that rather than duplicated into a second column
+            # that nothing would keep in step.
+            cur.execute("SELECT game_id, name, status FROM game ORDER BY game_id")
             return [{"game_id": r[0], "name": r[1], "status": r[2],
-                     "enabled": bool(r[3])} for r in cur.fetchall()]
+                     "enabled": _game_enabled(r[2])} for r in cur.fetchall()]
         finally:
             self._close(cur)
 
@@ -484,15 +489,15 @@ class PostgresAdminStore(AdminStore):
                     "ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, "
                     "updated_at = NOW()",
                     (f"game_message:{game_id}", json.dumps({"message": message})))
-            cur.execute("UPDATE game SET enabled = %s, status = %s WHERE game_id = %s "
-                        "RETURNING game_id, name, status, enabled",
-                        (bool(enabled), str(status), game_id))
+            cur.execute("UPDATE game SET status = %s WHERE game_id = %s "
+                        "RETURNING game_id, name, status",
+                        (str(status), game_id))
             r = cur.fetchone()
             if not r:
                 raise KeyError(game_id)
             self._commit(cur)
             return {"game_id": r[0], "name": r[1], "status": r[2],
-                    "enabled": bool(r[3]), "message": message}
+                    "enabled": _game_enabled(r[2]), "message": message}
         except Exception:
             self._rollback(cur)
             raise
@@ -721,11 +726,14 @@ class PostgresAdminStore(AdminStore):
 
         cur = self._cursor_factory()
         try:
-            # 1. games: live vs total. `status` is the source of truth;
-            #    `enabled` is the lobby toggle and can disagree with it during
-            #    maintenance, so both are reported.
+            # 1. games: live vs total. `status` is the only column `game` has,
+            #    so "not live" is derived from it. There is no separate `enabled`
+            #    toggle on this table -- reading one made the whole dashboard
+            #    fail with UndefinedColumn.
             cur.execute("SELECT count(*) FILTER (WHERE status = 'live'), "
-                        "count(*), count(*) FILTER (WHERE NOT enabled) FROM game")
+                        "count(*), count(*) FILTER (WHERE NOT ("
+                        "  lower(status) NOT IN ('disabled', 'offline', 'retired')"
+                        ")) FROM game")
             g = cur.fetchone() or (0, 0, 0)
             games_live, games_total, games_disabled = int(g[0]), int(g[1]), int(g[2])
 
@@ -1175,6 +1183,24 @@ class PostgresAdminStore(AdminStore):
                 closer()
             except Exception:
                 pass
+
+
+# Statuses that mean "not offered in the lobby". Anything else counts as live,
+# so a game row created with a new status value is offered rather than silently
+# hidden -- failing closed on an unknown status would take a game offline
+# because someone added a value to an enum-like column.
+_GAME_OFF_STATES = ("disabled", "offline", "retired")
+
+
+def _game_enabled(status) -> bool:
+    """The lobby toggle, derived from `game.status`.
+
+    `game` has a lifecycle `status` column, not an `enabled` boolean, and
+    set_game_enabled writes 'live' / 'disabled' into it. Deriving the toggle
+    from that keeps one source of truth; a second column would be a third thing
+    to keep in step and is what made the dashboard query fail.
+    """
+    return str(status or "").strip().lower() not in _GAME_OFF_STATES
 
 
 def _next_version(game_id: str, proposed) -> str:

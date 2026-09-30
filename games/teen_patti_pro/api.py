@@ -1866,17 +1866,14 @@ audit_entity="game", audit_entity_id=m.group(1),
                 except AdminStoreUnavailable as exc:
                     return self.send(503, E.err(str(exc), E.E_INTERNAL))
                 except Exception as exc:
-                    # UndefinedColumn / UndefinedTable with no detail is
-                    # undiagnosable from the response: the operator sees only
-                    # the exception class. Log the driver's message, which
-                    # names the table and column, and include it in the reply
-                    # so the console can show something actionable. This is a
-                    # read-only admin path, so there is nothing secret in it.
+                    # The driver's message names the offending table and
+                    # column, which is exactly what an operator needs and
+                    # exactly what must not reach the client -- a Postgres
+                    # error string is schema information. It goes to the
+                    # journal; the response carries the class only.
                     log.exception("admin dashboard_kpis failed")
                     return self.send(502, E.err(
-                        "admin dashboard query failed: "
-                        f"{type(exc).__name__}: "
-                        f"{str(getattr(exc, 'diag', None) and exc.diag.message_primary or exc)}",
+                        f"admin dashboard query failed: {type(exc).__name__}",
                         E.E_INTERNAL))
                 # Settlement health is live engine state, not a database fact:
                 # a round stuck in SETTLED_PENDING exists only in memory until it
