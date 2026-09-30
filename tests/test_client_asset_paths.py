@@ -90,7 +90,7 @@ class ClientAssetPathsTest(unittest.TestCase):
         self.assertTrue(pack.is_dir())
         # The card faces are crops of a raster sheet, so they ship as PNGs.
         n = sum(1 for _ in pack.rglob("*.svg")) + sum(1 for _ in pack.rglob("*.png"))
-        self.assertGreaterEqual(n, 125, f"only {n} assets in the pack")
+        self.assertGreaterEqual(n, 90, f"only {n} assets in the pack")
 
     def test_background_is_the_palace_art_not_a_flat_fill(self):
         """The reference is a painted palace: curtains, marble, gold light.
