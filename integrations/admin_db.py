@@ -83,7 +83,11 @@ def build_admin_store(database_url: Optional[str] = None) -> AdminStore:
                 # A failed transaction leaves the connection in a state where
                 # any new cursor will fail with InFailedSqlTransaction.
                 # We can detect this by checking the transaction status.
-                if self._connection.info.transaction_status == psycopg.pq.TransactionStatus.INTRANS_FAILED:
+                # In psycopg3, the transaction status can be:
+                # IDLE, ACTIVE, INTRANS, INERROR, UNKNOWN
+                # INERROR means a transaction failed and was not rolled back.
+                status = self._connection.info.transaction_status
+                if status == psycopg.pq.TransactionStatus.INERROR:
                     raise psycopg.OperationalError("InFailedSqlTransaction")
             except Exception:
                 # Connection is in a bad state, create a fresh one
