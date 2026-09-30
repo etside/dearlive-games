@@ -93,3 +93,66 @@ class FigmaSetIsNotSilentlyLiveTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoSolidFallbackBlocksTest(unittest.TestCase):
+    """A missing image must never paint a coloured block.
+
+    The chair, chip, card and panel fallbacks already route through
+    placeholder() -- a 7% white wash and a 16% hairline. Two paths did not: the
+    toolbar icons fell back to a solid #6b4fa0 disc and the avatar to a solid
+    #4b3a72 disc. On a slow connection those are what a player actually sees
+    while the art is in flight, and a saturated disc is indistinguishable from
+    a rendering bug.
+
+    This asserts the rule rather than the two specific colours, so the next
+    fallback added does not reintroduce the class of problem.
+    """
+    CLIENT = os.path.join(ROOT, "games", "teen_patti_pro", "client", "game.js")
+
+    def _sources(self):
+        with open(self.CLIENT, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_no_saturated_hex_fill_in_a_fallback_branch(self):
+        import re
+        js = self._sources()
+        # Every "else {" that guards a missing image, and what it paints.
+        branches = re.findall(
+            r"else\s*\{(.{0,400}?)\}", js, re.S)
+        banned = {"#6b4fa0", "#4b3a72", "#2196f3", "#ff00ff", "#8e44ad",
+                  "#c0392b", "#2471a3", "#1e8449", "#e91e63", "#ff4081"}
+        offenders = []
+        for b in branches:
+            if "fillStyle" not in b:
+                continue
+            for m in re.findall(r"fillStyle\s*=\s*'(#[0-9a-fA-F]{6})'", b):
+                if m.lower() in banned:
+                    offenders.append(m)
+        self.assertEqual(offenders, [],
+                         "saturated fills left in a fallback branch: %s" % offenders)
+
+    def test_the_icon_fallback_is_a_stroke_not_a_fill(self):
+        import re
+        js = self._sources()
+        m = re.search(r"function icon\(img, act\) \{(.*?)\n    \}", js, re.S)
+        self.assertIsNotNone(m, "toolbar icon() not found")
+        # Strip comments first: a colour named in an explanatory comment is
+        # the whole point of those comments, and the assertion is about code.
+        body = re.sub(r"//[^\n]*", "", m.group(1))
+        body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+        self.assertNotIn("#6b4fa0", body, "the solid purple disc is back")
+        self.assertIn("ctx.stroke()", body,
+                      "the fallback should draw a hairline ring")
+
+    def test_placeholder_is_the_shared_skeleton(self):
+        js = self._sources()
+        m = re.search(r"function placeholder\(x, y, w, h, r\) \{(.*?)\n  \}", js, re.S)
+        self.assertIsNotNone(m, "placeholder() not found")
+        body = m.group(1)
+        self.assertIn("rgba(255,255,255,.07)", body,
+                      "the skeleton must be a faint wash, not a colour")
+        self.assertIn("rgba(255,255,255,.16)", body,
+                      "the skeleton must have a hairline edge")
+        self.assertNotRegex(body, r"fillStyle\s*=\s*'#[0-9a-fA-F]{3,6}'",
+                            "placeholder() must never fill with an opaque colour")

@@ -1443,15 +1443,21 @@
     const ir = r * 0.86;
     const gap = ir * 2 + 5;
     let x = W - SAFE.r - ir - 2;
-    function icon(img, act, fallback) {
+    function icon(img, act) {
       if (imageReady(img, 1, 1)) ctx.drawImage(img, x - ir, h - ir, ir * 2, ir * 2);
-      else { ctx.fillStyle = fallback; ctx.beginPath();
-             ctx.arc(x, h, ir, 0, 7); ctx.fill(); }
+      // The fallback is a hairline ring, not the solid #6b4fa0 disc this used
+      // to paint. A saturated disc where an icon belongs is indistinguishable
+      // from a missing-image bug to a player, and on a slow connection it is
+      // what they actually saw: coloured blobs across the toolbar.
+      else {
+        ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(x, h, ir * 0.62, 0, 7); ctx.stroke();
+      }
       if (act) S._ctl.push({ x: x, y: h, r: ir * 1.15, act: act });
       x -= gap;
     }
-    icon(PAL_IMG.gear, 'menu', '#6b4fa0');
-    icon(PAL_IMG.help, 'help', '#6b4fa0');
+    icon(PAL_IMG.gear, 'menu');
+    icon(PAL_IMG.help, 'help');
     // avatar: the local player's own look, falling back to a neutral disc
     const av = loadAvatarImage(appearanceFor(null).avatar);
     if (av && av.complete && av.naturalWidth) {
@@ -1460,11 +1466,14 @@
       ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.arc(x, h, ir, 0, 7); ctx.stroke();
     } else {
-      ctx.fillStyle = '#4b3a72'; ctx.beginPath(); ctx.arc(x, h, ir, 0, 7); ctx.fill();
-      ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 1.6; ctx.stroke();
+      // No avatar art: an empty ring, not a filled disc. The solid fill sat
+      // exactly where the player's own portrait belongs and read as a block.
+      ctx.fillStyle = 'rgba(255,255,255,.05)';
+      ctx.beginPath(); ctx.arc(x, h, ir, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.20)'; ctx.lineWidth = 1.4; ctx.stroke();
     }
     x -= gap;
-    icon(PAL_IMG.clock, null, '#6b4fa0');
+    icon(PAL_IMG.clock, null);
     // Latency and connection state ride just left of the clock, which is
     // where the reference carries the connection affordance. Both were on
     // their own row under the toolbar, which is not in the reference, and the

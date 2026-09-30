@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Teen Patti Pro — Demo</title>
+  <link rel="stylesheet" href="/demo2.css" />
+</head>
+<body>
+  <!-- Main canvas — the entire game draws here -->
+  <canvas id="demo-canvas" aria-label="Teen Patti Pro table"></canvas>
+
+  <!-- Top status overlay (round#, connection) -->
+  <div id="status-strip" class="overlay top">
+    <div id="round-label">Round —</div>
+    <div id="conn-status" class="conn offline">offline</div>
+  </div>
+
+  <!-- Center phase banner (About to Start, Betting Closed, etc.) -->
+  <div id="phase-banner" class="overlay center hidden"></div>
+
+  <!-- Spectator badge -->
+  <div id="spectator-badge" class="overlay top-right hidden">Spectating</div>
+
+  <!-- Bottom toast (bet feedback) -->
+  <div id="toast" class="overlay bottom hidden"></div>
+
+  <!-- Exit / help / sound (drawn in canvas too, but real buttons for a11y) -->
+  <button id="btn-exit" class="hud-btn" aria-label="Exit">←</button>
+  <button id="btn-help" class="hud-btn hud-btn-right" aria-label="Help">?</button>
+
+  <script src="/demo2.js"></script>
+</body>
+</html>

@@ -1500,7 +1500,8 @@ audit_entity="game", audit_entity_id=m.group(1),
         takes a fixed name, never a URL-derived relative path, so there is no
         traversal surface at all.
         """
-        allowed = {"api-docs.html", "index.html", "app.js", "styles.css"}
+        allowed = {"api-docs.html", "index.html", "app.js", "styles.css",
+                   "demo2.html", "demo2.css", "demo2.js"}
         if name not in allowed:
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         target = (self.PLAYER_DIR / name).resolve()
@@ -1705,10 +1706,15 @@ audit_entity="game", audit_entity_id=m.group(1),
                     # caller asking for teen-patti-high used to be redirected
                     # into teen-patti-low, so the page loaded a table the
                     # operator never asked for.
+                    # redirect=demo2 lands on the canvas demo page instead of
+                    # the main client (used by /demo2 deployments + Vercel).
+                    dest = "/teen-patti-pro/?session="
+                    if qs.get("redirect") == ["demo2"]:
+                        dest = "/demo2?session="
                     self.send_response(302)
                     self.send_header(
                         "Location",
-                        "/teen-patti-pro/?session="
+                        dest
                         + urllib.parse.quote(session_token, safe="")
                         + "&room=" + urllib.parse.quote(room, safe=""))
                     self.end_headers()
@@ -1778,6 +1784,15 @@ audit_entity="game", audit_entity_id=m.group(1),
                 return self.serve_player_doc("app.js")
             if path == "/styles.css":
                 return self.serve_player_doc("styles.css")
+            # Teen Patti Pro canvas demo (server-authoritative, no deps).
+            # Demo URL: /demo2?session=<token>&room=teen-patti-low
+            # Mint: /teen-patti-pro?operator=demo&redirect=demo2
+            if path in ("/demo2", "/demo2/"):
+                return self.serve_player_doc("demo2.html")
+            if path == "/demo2.css":
+                return self.serve_player_doc("demo2.css")
+            if path == "/demo2.js":
+                return self.serve_player_doc("demo2.js")
             m = re.fullmatch(r"/teen-patti-pro/([A-Za-z0-9][A-Za-z0-9._-]*)", path)
             if m:
                 return self.serve_client(m.group(1))

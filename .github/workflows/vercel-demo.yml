@@ -1,0 +1,139 @@
+# Deploy the Teen Patti Pro demo2 canvas page to Vercel.
+#
+# Trigger: push to main touching the demo bundle, vercel.json, or this workflow.
+# Manual: Actions tab -> "Deploy demo2 to Vercel" -> Run workflow.
+#
+# Required repository secrets (Vercel Dashboard -> Account -> Tokens,
+# then `vercel link` locally to get the IDs):
+#   VERCEL_TOKEN      `vercel` personal token (vercel login -> Tokens)
+#   VERCEL_ORG_ID     from .vercel/project.json after `vercel link`
+#   VERCEL_PROJECT_ID from .vercel/project.json after `vercel link`
+#
+# Until those three secrets exist every job skips with a notice (same pattern
+# as deploy.yml: inert by default, safe to ship).
+#
+# Local deploy (same thing CI does):
+#   npm i -g vercel
+#   vercel login            # one-time, opens browser
+#   vercel link             # one-time, writes .vercel/project.json
+#   vercel pull --yes       # optional, sync env
+#   vercel deploy --prebuilt --prod   # this workflow's deploy step
+#
+# Live URL after deploy:
+#   https://<project>.vercel.app/demo2?session=<token>&room=teen-patti-low
+# Mint a session against a running engine first:
+#   https://<engine>/teen-patti-pro?operator=demo&redirect=demo2
+
+name: Deploy demo2 to Vercel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/player/public/demo2.*"
+      - "vercel.json"
+      - ".github/workflows/vercel-demo.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-demo2
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Check Vercel configuration
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Decide whether Vercel secrets exist
+        id: check
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "${VERCEL_TOKEN}" ] || [ -z "${VERCEL_ORG_ID}" ] || [ -z "${VERCEL_PROJECT_ID}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Vercel deploy skipped::Set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID repository secrets. See the header of .github/workflows/vercel-demo.yml."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate demo bundle
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check demo2 files exist and reference each other
+        run: |
+          test -f apps/player/public/demo2.html
+          test -f apps/player/public/demo2.css
+          test -f apps/player/public/demo2.js
+          grep -q '/demo2.css' apps/player/public/demo2.html
+          grep -q '/demo2.js' apps/player/public/demo2.html
+          grep -q 'demo-canvas' apps/player/public/demo2.html
+          node --check apps/player/public/demo2.js
+          echo "demo2 bundle ok"
+          ls -la apps/player/public/demo2.*
+
+  deploy:
+    name: Deploy to Vercel (production)
+    needs: [preflight, validate]
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: demo2
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build for Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt output
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Deployed demo2 to ${URL}/demo2"
+
+      - name: Smoke-check the live page
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          for attempt in $(seq 1 12); do
+            CODE=$(curl -s -o /tmp/demo2.html -w '%{http_code}' "${URL}/demo2" || echo 000)
+            if [ "$CODE" = "200" ] && grep -q 'demo-canvas' /tmp/demo2.html; then
+              echo "demo2 live at ${URL}/demo2"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::demo2 did not serve correctly at ${URL}/demo2"
+          exit 1
