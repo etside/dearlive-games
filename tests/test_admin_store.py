@@ -317,8 +317,29 @@ class GameConfigVersioningTest(unittest.TestCase):
         out = PostgresAdminStore(db.cursor).save_game_config_version("g", {"a": 1})
         self.assertEqual(out["payload"], {"a": 1})
         params = db.executed[0][1]
-        self.assertEqual(params[3], "[]")
-        self.assertEqual(params[4], '{"a": 1}')
+        # Positional order is (game_id, version, config_version, confirmed,
+        # tbc, payload, is_active, created_by). Both version columns are
+        # constrained -- config_version is NOT NULL and half the primary key --
+        # so they must be written with the same label.
+        self.assertEqual(params[4], "[]")
+        self.assertEqual(params[5], '{"a": 1}')
+        self.assertEqual(params[1], params[2],
+                         "version and config_version must not disagree")
+
+    def test_save_writes_every_not_null_column(self):
+        """A column the insert omits and the table will not default is a 502.
+
+        This bit the rules endpoint: it supplied neither version column, so
+        every save raised NotNullViolation and the console reported a generic
+        internal error. Assert on the column list, so a future column that
+        cannot be defaulted is caught here instead of in production.
+        """
+        db = FakeDB(one=("g", "vNEW", False, "[]", '{"a":1}', "ts"))
+        PostgresAdminStore(db.cursor).save_game_config_version("g", {"a": 1})
+        sql = db.sql[0]
+        for col in ("game_id", "version", "config_version", "confirmed",
+                    "tbc", "payload", "is_active", "created_by"):
+            self.assertIn(col, sql, "rules save must write %s" % col)
 
     def test_rollback_copies_forward_and_records_source(self):
         # statement 1: read the old version; statement 2: insert forward
