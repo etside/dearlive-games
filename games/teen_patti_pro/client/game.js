@@ -1340,7 +1340,13 @@
     // groups against a 5px gap within one, so nine cards read as a single
     // continuous row across the table. The reference shows three clearly
     // separated hands.
-    const cw = Math.max(24, Math.min(colW * 0.256, 56)), ch = cw * 1.42;
+    // Group width is what actually separates the hands. A group of
+    // 3 * cw + 2 * gap must be clearly narrower than its column or the nine
+    // cards read as one row: at 0.256 * colW the group filled 0.79 of the
+    // column, leaving ~21px between groups against a 5px gap inside one. 0.21
+    // per card gives a 0.75-wide group and a 0.25 * colW gutter -- roughly
+    // 32px at 390px wide, five times the gap inside a hand.
+    const cw = Math.max(24, Math.min(colW * 0.21, 52)), ch = cw * 1.42;
     // The pot/deck anchor. Animation code asks for `L.y.centre` /
     // `L.band.centre` (the old layout's centre band), which this grid does not
     // define, so those reads were undefined and every deck/pot position came
@@ -1527,9 +1533,12 @@
     const hands = s.hands || {};
     POS.forEach(function (p) {
       const pt = L.seats[p];
-      const top = L.y.cards + 4;
+      // Sit the hands in the lower half of the cards band. Anchored at the
+      // band's top edge they floated ~95px above the chairs with a dead gap
+      // beneath, which read as "the cards are not attached to the table".
+      const top = L.y.cards + L.usable * L.band.cards * 0.34;
       const n = 3;
-      const gap = L.cw * 0.14;
+      const gap = L.cw * 0.20;
       const totalW = n * L.cw + (n - 1) * gap;
       const x0 = pt.x - totalW / 2;
       const h = (hands[p] && hands[p].length) ? hands[p] : ['**', '**', '**'];
@@ -1549,18 +1558,20 @@
     // how "Total Bet / My total bet" came to be reported missing.
     const l1 = 'Total Bet: ' + pot;
     const l2 = 'My total bet: ' + mine;
-    ctx.font = '600 ' + u.f(12);
+    // 12px semibold cream on a translucent plate was legible in a screenshot
+    // and invisible on a phone in daylight. Bigger, and the plate opaque.
+    ctx.font = 'bold ' + u.f(14);
     const wMax = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width);
     const padX = u.f(12), padY = u.f(7);
     const boxW = wMax + padX * 2, boxH = u.f(30) + padY;
     const bx = L.cx - boxW / 2, by = h - boxH / 2;
-    ctx.fillStyle = 'rgba(28,14,54,.86)';
+    ctx.fillStyle = 'rgba(16,8,32,.94)';
     rr(bx, by, boxW, boxH, u.f(6)); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,213,74,.45)'; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.fillStyle = PAL_THEME.cream;
-    ctx.fillText(l1, L.cx, by + padY + u.f(5));
-    ctx.fillStyle = '#ffe9a8';
-    ctx.fillText(l2, L.cx, by + padY + u.f(20));
+    ctx.strokeStyle = 'rgba(255,213,74,.85)'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(l1, L.cx, by + padY + u.f(6));
+    ctx.fillStyle = '#ffd75a';
+    ctx.fillText(l2, L.cx, by + padY + u.f(22));
   }
 
   function palaceChairs(L, u) {
@@ -1605,12 +1616,21 @@
     // One panel per explicit third of the drawable width, inset from the slot
     // edge. Deriving x from the seat centre and a width fraction let a panel
     // straddle two slots, which is how panel A ended up over the frame.
-    const slotW = (W - SAFE.l - SAFE.r) / 3;
-    const inset = Math.max(0, slotW * 0.05);
-    const pw = slotW - inset * 2;
+    // Width first, gaps second, so 3 * pw + 2 * gap is exactly the drawable
+    // width by construction. The previous slot-then-inset form left the outer
+    // panels sitting on the frame, and adding a gap on top of a third-based
+    // width overflows to W-16 and clips them.
+    const gap = Math.max(4, Math.min(10, W * 0.022));
+    // A minimum outer margin as well as the safe insets. SAFE.l/r are 0 on a
+    // canvas with no reserved gutter, which put panel A hard against x=0 and
+    // panel C against the right edge -- the table frame runs through them and
+    // the outermost panel reads as clipped.
+    const margin = Math.max(SAFE.l, SAFE.r, Math.max(12, W * 0.04));
+    const drawL = margin, drawR = W - margin;
+    const pw = (drawR - drawL - gap * 2) / 3;
     S._panels = [];
     POS.forEach(function (p, i) {
-      const px = SAFE.l + slotW * i + inset;
+      const px = drawL + i * (pw + gap);
       const cx = px + pw / 2;
       const art = PAL_IMG['panel' + p];
       const occ = s.seatOccupancy || {};
@@ -1623,7 +1643,15 @@
       const mult = num((s.multipliers || {})[p]) || 2.9;
       const sel = S.selPos === p;
       if (imageReady(art, 1, 1)) {
-        ctx.drawImage(art, px, top, pw, hgt);
+        // Contain-fit. The panel art is a framed plate with a border in the
+        // SVG; stretching it to an arbitrary box aspect crops that frame, which
+        // is what a "broken / clipped red panel" looks like on a phone.
+        var ar = art.naturalWidth && art.naturalHeight
+          ? art.naturalWidth / art.naturalHeight : pw / hgt;
+        var boxAR = pw / hgt;
+        var dw = pw, dh = hgt;
+        if (ar > boxAR) { dh = pw / ar; } else { dw = hgt * ar; }
+        ctx.drawImage(art, px + (pw - dw) / 2, top + (hgt - dh) / 2, dw, dh);
       } else {
         placeholder(px, top, pw, hgt, 10);
       }
@@ -1845,8 +1873,16 @@
   function chipLabel(d) { return d >= 1000 ? (d / 1000) + 'K' : String(d); }
   function fmtCompact(n) {
     if (!Number.isFinite(n)) return '0';
-    if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(2) + 'K';
+    // toFixed(2) unconditionally produced "10.00K" -- and at a glance in the
+    // condensed balance font the full stop reads as a comma, so the pill showed
+    // what looked like "10,00K". Only show decimals when there are decimals:
+    // 10,000 must read "10K", not "10.00K" and certainly not "10,00K".
+    function trim(v, unit) {
+      var t = v.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+      return t + unit;
+    }
+    if (n >= 1e6) return trim(n / 1e6, 'M');
+    if (n >= 1000) return trim(n / 1000, 'K');
     return String(Math.round(n));
   }
 

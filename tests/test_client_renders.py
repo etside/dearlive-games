@@ -278,10 +278,22 @@ class OnScreenGeometryTest(unittest.TestCase):
 
     def test_cards_are_three_separated_groups_of_three(self):
         out = self._boxes(LIVE_SNAPSHOT)
-        starts = [int(m) for m in re.findall(r"x=\s*(\d+) y=\s*196", out)]
-        self.assertEqual(len(starts), 9,
-                         "expected nine cards, got %d at the card row" % len(starts))
-        gaps = [b - (a + 33) for a, b in zip(starts, starts[1:])]
+        # Derive the card row from the boxes instead of pinning y and width.
+        # The hand is sized and placed from the layout grid, so a hardcoded
+        # "y=196, w=33" only ever described one canvas size and failed the
+        # moment the card geometry was legitimately retuned.
+        boxes = [(int(x), int(y), int(w), int(h)) for x, y, w, h in
+                 re.findall(r"x=\s*(-?\d+)\s+y=\s*(-?\d+)\s+w=\s*(\d+)\s+h=\s*(\d+)", out)]
+        cards = [b for b in boxes if 15 <= b[0] and b[0] + b[2] <= 390
+                 and 30 <= b[1] <= 420 and b[2] < b[3] and b[2] <= 60]
+        self.assertEqual(len(cards), 9,
+                         "expected nine cards on the card row, got %d: %s"
+                         % (len(cards), cards))
+        card_w = cards[0][2]
+        starts = [c[0] for c in sorted(cards)]
+        self.assertEqual(len({c[1] for c in cards}), 1,
+                         "all nine cards must share one row")
+        gaps = [b - (a + card_w) for a, b in zip(starts, starts[1:])]
         within = [g for g in gaps if g < 15]
         between = [g for g in gaps if g >= 15]
         self.assertEqual(len(within), 6, "six within-group gaps expected")

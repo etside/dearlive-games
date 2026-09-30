@@ -8,7 +8,7 @@ Defaults below are the widely-standard Teen Patti rules, provided ONLY as
 explicitly-unconfirmed working defaults (JEV req-analysis: acceptable 0.89).
 """
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Dict, Tuple
 
 CONFIG_VERSION = "tpp-1.0.0-tbc"
 
@@ -33,6 +33,11 @@ class TeenPattiConfig:
     jokers: int = 0  # wild jokers added to the 52-deck (reference uses 3; TBC)
     seats: Tuple[str, ...] = ("A", "B", "C")
     cards_per_hand: int = 3
+    # Named chip ladders. The ladder is table configuration, not a client
+    # choice: the client must never offer a chip the server will reject. "low"
+    # fits a 10,000 demo balance; "high" is for a banked table where 100,000
+    # is a single bet. Selected with `chip_set`.
+    chip_set: str = "low"
     denoms: Tuple[int, ...] = (20, 100, 500, 1000)
     min_bet: int = 20
     max_bet: int = 100_000
@@ -54,3 +59,22 @@ class TeenPattiConfig:
 
 
 DEFAULT_CONFIG = TeenPattiConfig()
+
+
+# The two ladders, kept beside the config so a room cannot name a chip_set the
+# server has no denominations for.
+CHIP_SETS: Dict[str, Tuple[int, ...]] = {
+    "low": (20, 100, 500, 1000),
+    "high": (1000, 10_000, 50_000, 100_000),
+}
+
+
+def denoms_for(chip_set: str, explicit: Tuple[int, ...] = ()) -> Tuple[int, ...]:
+    """Denominations for a chip_set, with `explicit` winning when given.
+
+    Resolving this on the server is the whole point: the client reads the
+    resulting `denoms` and never decides the ladder itself.
+    """
+    if explicit:
+        return tuple(int(d) for d in explicit)
+    return CHIP_SETS.get(str(chip_set or "low").lower(), CHIP_SETS["low"])

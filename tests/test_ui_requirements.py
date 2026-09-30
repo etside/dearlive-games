@@ -535,6 +535,14 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         # Assert the grid really orders them that way.
         self.assertIn("y.cards", JS, "hand must be placed from the cards band")
         self.assertIn("y.chairs", JS, "chairs must be placed from the chairs band")
+        # The hand is positioned as a fraction of its band, not at a literal
+        # pixel offset. A hardcoded "L.y.cards + 4" anchored the cards to the
+        # top edge of a band 145px tall, leaving ~95px of dead space between
+        # the cards and the chairs -- which is what read as "floating too
+        # high" -- and it could not survive a different canvas height.
+        self.assertRegex(JS, r"L\.y\.cards\s*\+\s*L\.usable\s*\*\s*L\.band\.cards",
+                         "the hand must be placed a fraction of the way down "
+                         "its band, not at the band's top edge")
         m = _re.search(r"w = \{([\s\S]*?)\};", JS)
         self.assertIsNotNone(m, "band weight table not found")
         weights = m.group(1)
@@ -551,8 +559,10 @@ class SingleToolbarAndIconTest(unittest.TestCase):
                          "palace bands must be declared in reference order")
         self.assertNotIn("roundbar", weights,
                          "the reference has no separate round/status row")
-        # and the hand is drawn from the cards band top, not the seat centre
-        self.assertIn("const top = L.y.cards + 4;", JS)
+        # and the hand is drawn from the cards band, not the seat centre.
+        # The offset is band-relative; see the assertion above.
+        self.assertNotIn("L.seats[p].y -", JS.split("function palaceCards")[1][:600],
+                         "the hand must not be positioned off the seat centre")
 
     def test_toolbar_never_wraps(self):
         """Guards a fix that was silently lost once.
@@ -602,3 +612,29 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         self.assertIn('class="pillbtn" id="hHist"', html,
                       "history must use the pill slot its asset needs")
         self.assertIn(".pillbtn{", html)
+
+
+class BalanceFormatTest(unittest.TestCase):
+    """The coin pill must never read "10,00K".
+
+    fmtCompact used toFixed(2) unconditionally, so a 10,000 demo balance
+    rendered as "10.00K" -- and at phone size, in the condensed balance font,
+    the full stop reads as a comma. Decimals are now shown only when there
+    are decimals.
+    """
+    def _fmt(self, src):
+        import re as _re
+        m = _re.search(r"function fmtCompact\(n\) \{(.*?)\n  \}", src, _re.S)
+        self.assertIsNotNone(m, "fmtCompact not found")
+        return m.group(1)
+
+    def test_whole_thousands_have_no_decimals(self):
+        body = self._fmt(JS)
+        self.assertIn(".replace(/\\.00$/, '')", body,
+                      "a whole number of thousands must drop its decimals")
+        self.assertNotIn("toFixed(2) + 'K'", body,
+                         "the unconditional toFixed(2) is what produced 10.00K")
+
+    def test_the_coin_pill_uses_the_compact_formatter(self):
+        self.assertRegex(JS, r"fmtCompact\(num\(S\.balance\)\)",
+                         "the balance pill must go through fmtCompact")

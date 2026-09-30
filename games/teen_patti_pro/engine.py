@@ -739,6 +739,7 @@ class Room:
                     # the bar were unbettable and tapping one returned a
                     # validation error. Same lesson as the bot chip bug.
                     "denoms": list(getattr(self.config, "denoms", ()) or ()),
+                    "chip_set": str(getattr(self.config, "chip_set", "low") or "low"),
                     "max_bet": int(getattr(self.config, "max_bet", 0) or 0),
                     **self._occupancy(viewer)}
         reveal = r.status in (RoundStatus.RESULT, RoundStatus.SETTLED, RoundStatus.CLOSED)
@@ -774,6 +775,7 @@ class Room:
             "winners": r.winner_positions if reveal else [],
             "config_version": r.config_version,
             "denoms": list(getattr(self.config, "denoms", ()) or ()),
+                    "chip_set": str(getattr(self.config, "chip_set", "low") or "low"),
             "max_bet": int(getattr(self.config, "max_bet", 0) or 0),
             **self._occupancy(viewer),
         }
