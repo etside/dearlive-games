@@ -242,10 +242,18 @@ class UiRequirementTest(unittest.TestCase):
         # The HUD added two animations. Reduced motion has to neutralise both.
         # The @keyframes rules correctly live outside the media query -- it is
         # the animation property that has to be overridden.
-        block = HTML.split("prefers-reduced-motion", 1)[1][:400]
-        self.assertIn("spin", block, "HUD spinner not covered")
-        self.assertIn("animation:none", block.replace(" ", ""),
+        # Scan every reduced-motion block rather than a fixed 400-char window
+        # from the first occurrence. The window assumed this block was the first
+        # one in the file, which stopped being true when the loading clip added
+        # its own rule -- the assertion then silently inspected the wrong block.
+        blocks = [b[:600] for b in HTML.split("prefers-reduced-motion")[1:]]
+        self.assertTrue(blocks, "no reduced-motion block in the document")
+        region = "\n".join(blocks).replace(" ", "")
+        self.assertIn("spin", region, "HUD spinner not covered")
+        self.assertIn("animation:none", region,
                       "connection blink must be disabled, not just slowed")
+        self.assertIn(".tpp-boot", "".join(blocks),
+                      "the loading clip must be covered by reduced motion")
         for name in ("@keyframes spin", "@keyframes blink"):
             self.assertIn(name, HTML, f"{name} missing")
 

@@ -306,6 +306,44 @@
     setVeil(null);
   }
 
+  // ---- loading clip -------------------------------------------------
+  // Dismissed as soon as the first snapshot lands, in either direction: a
+  // snapshot over the websocket or one over the polling fallback. It is
+  // removed rather than left on a transparent overlay, because a stuck
+  // preloader over a playable table is the worst possible failure.
+  const _boot = document.getElementById('tpp-boot');
+  const _bootVideo = document.getElementById('tpp-boot-video');
+  let _bootGone = false;
+  function dismissBoot() {
+    if (_bootGone || !_boot) return;
+    _bootGone = true;
+    // Autoplay is refused unless muted+playsinline, which is set in the markup,
+    // but a WebView can still reject it. Never let that block the table.
+    try { if (_bootVideo) { _bootVideo.pause(); _bootVideo.removeAttribute('src'); } } catch (e) {}
+    _boot.classList.add('is-out');
+    setTimeout(function () { if (_boot && _boot.parentNode) _boot.parentNode.removeChild(_boot); }, 320);
+  }
+
+  // ---- event_id idempotency ------------------------------------------
+  // The server stamps every event with a uuid. A socket that drops mid-round
+  // redelivers on resubscribe, and a snapshot refetch can race an in-flight
+  // event, so an effect keyed on position rather than on identity flies twice
+  // or reveals twice. Keyed on event_id it cannot.
+  const consumedEvents = new Set();
+  const MAX_CONSUMED = 500;   // bounded, so a long session cannot grow forever
+  function claimEvent(ev) {
+    const id = ev && (ev.event_id || ev.eventId);
+    if (!id) return true;                 // no id: cannot dedupe, do not block
+    if (consumedEvents.has(id)) return false;
+    consumedEvents.add(id);
+    if (consumedEvents.size > MAX_CONSUMED) {
+      const drop = consumedEvents.size - MAX_CONSUMED;
+      let i = 0;
+      for (const k of consumedEvents) { if (i++ >= drop) break; consumedEvents.delete(k); }
+    }
+    return true;
+  }
+
   function setVeil(kind, title, text, onRetry) {
     if (!hud.veil) return;
     if (!kind) { hud.veil.dataset.show = '0'; return; }
@@ -2282,6 +2320,7 @@
     try {
       const prev = S.snap;
       S.snap = await api('/api/v1/games/teen-patti-pro/rounds/current?room=' + encodeURIComponent(ROOM));
+      dismissBoot();
       syncClock(S.snap && S.snap.serverTime);
       if (setDenoms(S.snap && S.snap.denoms)) refresh();
       refreshAppearances(S.snap);
@@ -2536,6 +2575,7 @@
         const m = JSON.parse(ev.data);
         if (m.kind === 'snapshot' && m.data) {
           S.snap = m.data; S.srvNow = Date.now(); S.locNow = Date.now();
+          dismissBoot();
           syncClock(S.snap && S.snap.serverTime);
           if (setDenoms(S.snap && S.snap.denoms)) refresh();
           refreshAppearances(m.data);
@@ -2544,6 +2584,9 @@
           setVeil(null);
         }
         else if (m.kind === 'event' && m.data) {
+          // Claim before animating. A redelivered event after a reconnect is
+          // dropped here, so no effect runs twice for one server event.
+          if (!claimEvent(m.data)) { refresh(); return; }
           if (m.data.seq > S.lastSeq) S.lastSeq = m.data.seq;
           // Handle specific event types for animations
           const kind = m.data.kind || m.data.event;
