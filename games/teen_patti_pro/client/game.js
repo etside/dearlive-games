@@ -1331,12 +1331,23 @@
     cream: '#fff6dc', panelInk: '#3a1030', shadow: 'rgba(12,6,28,.55)'
   };
 
+  // Safe-area insets, read from the CSS custom properties the stylesheet
+  // publishes. A notch and a gesture bar both eat canvas space, and the
+  // toolbar and chip bar sat inside them.
+  function safeInsets() {
+    const cs = window.getComputedStyle && window.getComputedStyle(document.documentElement);
+    const px = (v, fb) => { const n = parseFloat(cs && cs.getPropertyValue(v)); return isFinite(n) ? n : fb; };
+    return { t: px('--dl-safe-top', 0), b: px('--dl-safe-bottom', 0),
+             l: px('--dl-safe-left', 0), r: px('--dl-safe-right', 0) };
+  }
+
   function palaceLayout() {
     // One grid, weights normalised over the space the canvas owns. Every band
     // is a fraction of that space, so the frame holds together from 360x640 to
     // a tablet instead of each element anchoring itself to H separately.
-    const top = SAFE.t + 4;
-    const usable = Math.max(1, H - top - SAFE.b);
+    const ins = safeInsets();
+    const top = SAFE.t + ins.t + 4;
+    const usable = Math.max(1, H - top - SAFE.b - ins.b);
     // Weights taken from the placement reference, top to bottom: toolbar,
     // timer, cards, total-bet, chairs, betting panels, chip bar. There is no
     // separate round/status row -- the reference carries round and room in the
@@ -1370,7 +1381,7 @@
     // row and the Repeat button were all drawn below the visible area and
     // simply never appeared. The loop and this line disagreed, and the
     // reference screenshot is the only thing that shows it.
-    const colW = (W - SAFE.l - SAFE.r) / 3;
+    const colW = (W - SAFE.l - SAFE.r - ins.l - ins.r) / 3;
     const seats = {};
     POS.forEach(function (p, i) {
       seats[p] = { x: SAFE.l + colW * (i + 0.5), y: y.chairs + usable * band.chairs * 0.52 };
@@ -1591,6 +1602,31 @@
     ctx.lineWidth = Math.max(3, r * 0.16); ctx.strokeStyle = PAL_THEME.gold; ctx.stroke();
     if (secs !== null) {
       const frac = Math.max(0, Math.min(1, secs / (num(s.betting_seconds) || 30)));
+      // Urgent in the last 3s: the number goes amber then red and the whole
+      // badge pulses. The number itself is still recomputed from the server
+      // deadline every frame -- the pulse is cosmetic, the countdown is not a
+      // local counter being decremented.
+      const urgent = secs <= 3 && !REDUCED;
+      if (urgent) {
+        // Date.now(), not the rAF timestamp: palaceTimer receives (L, u),
+        // so a bare `now` here is a ReferenceError that would kill the
+        // draw loop the moment any phone reached the last 3 seconds.
+        const beat = (Math.sin(Date.now() * 0.006) + 1) / 2;
+        ctx.save();
+        ctx.translate(L.cx, cy);
+        ctx.scale(1 + 0.15 * beat, 1 + 0.15 * beat);
+        ctx.translate(-L.cx, -cy);
+        ctx.beginPath(); ctx.arc(L.cx, cy, r, 0, 7);
+        ctx.fillStyle = 'rgba(20,10,40,.86)'; ctx.fill();
+        ctx.lineWidth = Math.max(3, r * 0.16);
+        ctx.strokeStyle = beat > 0.5 ? '#ff5a5a' : '#ffb648';
+        ctx.stroke();
+        ctx.fillStyle = beat > 0.5 ? '#ff8080' : '#ffe9a8';
+        ctx.font = 'bold ' + u.f(Math.round(r * 0.82));
+        ctx.fillText(String(Math.ceil(secs)), L.cx, cy + 1);
+        ctx.restore();
+        return;
+      }
       ctx.beginPath();
       ctx.arc(L.cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
       ctx.strokeStyle = secs < 5 ? '#ff8a8a' : '#ffe9a8';
@@ -1801,6 +1837,16 @@
         ctx.drawImage(art, ax, ay, dw, dh);
       } else {
         placeholder(px, top, pw, hgt, 10);
+      }
+      // Losing seats recede so the winning panel reads first. Dimming the
+      // art only -- the text stays at full contrast, because a pot a player
+      // has money in must stay readable when they lose.
+      const lost = !!(s.winners && s.winners.length) && s.winners.indexOf(p) < 0;
+      if (lost) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(10,4,22,.30)';
+        rr(px, ay, pw, ah, 10); ctx.fill();
+        ctx.restore();
       }
       if (sel) {
         ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 3;

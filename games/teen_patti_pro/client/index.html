@@ -98,6 +98,15 @@
   .latency{font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
   .latency[data-state="bad"]{color:#f87171}
   .latency[data-state="warn"]{color:var(--dl-accent)}
+  /* Safe-area insets, published for the canvas renderer.
+     env(safe-area-inset-*) is 0 on desktop and the real inset on a notched
+     device; max() keeps it non-negative when a browser reports 0. */
+  :root{
+    --dl-safe-top:max(env(safe-area-inset-top,0px),0px);
+    --dl-safe-right:max(env(safe-area-inset-right,0px),0px);
+    --dl-safe-bottom:max(env(safe-area-inset-bottom,0px),0px);
+    --dl-safe-left:max(env(safe-area-inset-left,0px),0px);
+  }
   /* UI-12: loading and empty. Shown over the canvas, never instead of it. */
   .veil{position:fixed;inset:0;z-index:8;display:none;place-items:center;
     background:rgba(5,9,20,.86);padding:24px;text-align:center}
