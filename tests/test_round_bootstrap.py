@@ -768,3 +768,53 @@ class SnapshotRoundMarkerTest(unittest.TestCase):
         svc.sessions.create("p2", "t2", "teen-patti-pro")
         self.assertFalse(self._veil_says_busy(svc.state("t2", "p2")),
                          "an idle table must still show the waiting veil")
+
+
+class RulesTypeGuardTest(unittest.TestCase):
+    """A rule value of the wrong type must not reach the live config.
+
+    Regression, seen live: an operator stored {"seats": 3} through the rules
+    API. `_load_latest_rules` applied it verbatim, so cfg.seats became the int
+    3. Every subsequent list(cfg.seats) raised TypeError, and /admin/games
+    returned a bare 500 with a healthy database and a healthy service. The
+    rules API accepts arbitrary JSON, so this is reachable by a normal panel
+    edit -- the guard belongs where rules are applied.
+    """
+
+    def _guard(self):
+        from games.teen_patti_pro.api import _coerce_config_kwargs
+        from games.teen_patti_pro.config import TeenPattiConfig
+        return _coerce_config_kwargs, TeenPattiConfig
+
+    def test_int_for_a_tuple_field_is_dropped(self):
+        guard, cfg_cls = self._guard()
+        kw = {"seats": 3, "min_bet": 20}
+        dropped = guard(cfg_cls, kw)
+        self.assertTrue(any("seats" in d for d in dropped), dropped)
+        self.assertNotIn("seats", kw, "the bad field must not survive")
+        self.assertEqual(kw["min_bet"], 20, "valid fields still apply")
+        # And the config must still be constructible from what remains.
+        cfg_cls(**kw)
+
+    def test_correct_types_are_kept(self):
+        guard, cfg_cls = self._guard()
+        kw = {"seats": ["A", "B", "C"], "min_bet": 20, "guess_ms": 30000,
+              "version": "v1", "confirmed": True}
+        dropped = guard(cfg_cls, kw)
+        self.assertEqual(dropped, [])
+        self.assertEqual(kw["seats"], ["A", "B", "C"])
+        cfg_cls(**kw)
+
+    def test_string_for_an_int_field_is_dropped(self):
+        guard, cfg_cls = self._guard()
+        kw = {"min_bet": "twenty"}
+        dropped = guard(cfg_cls, kw)
+        self.assertTrue(any("min_bet" in d for d in dropped), dropped)
+        self.assertNotIn("min_bet", kw)
+
+    def test_a_bool_is_not_accepted_for_an_int_field(self):
+        # bool is a subclass of int, so True would silently become min_bet=1.
+        guard, cfg_cls = self._guard()
+        kw = {"min_bet": True}
+        self.assertTrue(guard(cfg_cls, kw))
+        self.assertNotIn("min_bet", kw)

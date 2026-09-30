@@ -31,6 +31,39 @@ from .service import TeenPattiService, ServiceError
 log = logging.getLogger(__name__)
 
 
+def _coerce_config_kwargs(config_cls, kwargs):
+    """Drop fields whose stored value cannot be that field's type.
+
+    Returns the dropped field names so the caller can log them. A rule value of
+    the wrong type is an operator error in the panel, not a reason to take the
+    game offline: the offending field is skipped and the rest still applies.
+    """
+    import dataclasses
+    import typing
+    dropped = []
+    for f in dataclasses.fields(config_cls):
+        if f.name not in kwargs:
+            continue
+        want = f.type
+        value = kwargs[f.name]
+        ok = True
+        text = str(want)
+        if "Tuple" in text or "tuple" in text:
+            ok = isinstance(value, (list, tuple))
+        elif "int" in text and "str" not in text:
+            ok = isinstance(value, int) and not isinstance(value, bool)
+        elif "float" in text:
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        elif "str" in text:
+            ok = isinstance(value, str)
+        elif "bool" in text:
+            ok = isinstance(value, bool)
+        if not ok:
+            dropped.append("%s=%r (expected %s)" % (f.name, value, want))
+            kwargs.pop(f.name)
+    return dropped
+
+
 def _json_default(value):
     """Make a Postgres value JSON-encodable.
 
@@ -285,6 +318,17 @@ class Handler(BaseHTTPRequestHandler):
             tbc = (data or {}).get("tbc")
             if tbc:
                 kwargs["tbc"] = tuple(tbc)
+            # Reject any field whose stored type does not match the dataclass.
+            # The rules API accepts arbitrary JSON, so an operator can store
+            # {"seats": 3} where the config wants a tuple of seat names -- and
+            # that was applied verbatim, replacing cfg.seats with an int. Every
+            # later list(cfg.seats) then raised TypeError, which surfaced as a
+            # bare 500 on /admin/games with a healthy database and healthy
+            # service. One bad rule value must not take the game down, so a
+            # mismatched field is dropped and the rest of the rules still apply.
+            dropped = _coerce_config_kwargs(TenPattiConfig, kwargs)
+            if dropped:
+                log.warning("dropping rules fields with wrong type: %s", dropped)
             cls.svc.config = TeenPattiConfig(**kwargs)
             return True
         except Exception:
