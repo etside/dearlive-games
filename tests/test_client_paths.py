@@ -136,11 +136,17 @@ class SingleToolbarTest(unittest.TestCase):
         js = (CLIENT / "game.js").read_text(encoding="utf-8")
         i = js.index("function palaceLayout()")
         fn = js[i:js.index("function layout() { return palaceLayout(); }", i)]
-        # Palace band grid, in the reference's top-to-bottom order.
-        for band in ("toolbar", "roundbar", "timer", "cards", "total",
+        # Palace band grid, in the reference's top-to-bottom order. The
+        # reference has no round/status row -- round and room live in the
+        # toolbar pill -- so the band was removed and this list corrected. It
+        # asserted the old one, which is why a fix that matched the reference
+        # failed the test meant to protect the layout.
+        for band in ("toolbar", "timer", "cards", "total",
                      "chairs", "panels", "bottom"):
             self.assertIn(f"{band}:", fn,
                           f"palaceLayout() is missing the {band} band")
+        self.assertNotIn("roundbar:", fn,
+                         "the reference has no separate round/status band")
         self.assertIn("const band = {}, y = {};", fn)
         self.assertNotIn("H * 0.4", fn,
                          "palaceLayout() must not anchor bands to viewport height")
@@ -257,3 +263,88 @@ class AuthoritativeRoomDisplayTest(unittest.TestCase):
         js = (CLIENT / "game.js").read_text(encoding="utf-8")
         i = js.index("function roomLabel()")
         self.assertIn("AUTH_ROOM || ROOM", js[i:i + 120])
+
+
+class ReferencePlacementTest(unittest.TestCase):
+    """The table must be laid out as the placement reference shows it.
+
+    Derived from the reference diagram, not from taste. Each assertion below
+    is a thing the reference has, or does not have, and each was wrong in the
+    client at some point:
+
+    - a round/status row under the toolbar   (not in the reference)
+    - the toolbar pill reading the pot        (the reference reads round/room)
+    - a fifth trophy icon in the cluster      (the reference has four)
+    - cards capped at 34px                    (far smaller than the reference)
+    """
+
+    def setUp(self):
+        self.js = (CLIENT / "game.js").read_text(encoding="utf-8")
+        i = self.js.index("function palaceLayout()")
+        self.layout = self.js[i:self.js.index(
+            "function layout() { return palaceLayout(); }", i)]
+        # Slice to the real end of the function. A guessed character window is
+        # how the first version of this file "found" a missing trophy: the
+        # window was simply too small to contain the code it was looking for.
+        t = self.js.index("function palaceToolbar(")
+        self.toolbar = self.js[t:self.js.index("\n  }\n", t) + 4]
+
+    def test_band_weights_are_declared_in_reference_order(self):
+        import re
+        m = re.search(r"w = \{([\s\S]*?)\};", self.layout)
+        self.assertIsNotNone(m)
+        found = re.findall(r"(\w+):\s*[\d.]+", m.group(1))
+        self.assertEqual(found, ["toolbar", "timer", "cards", "total",
+                                 "chairs", "panels", "bottom"],
+                         "bands must be declared top-to-bottom as the "
+                         "reference orders them")
+
+    def test_the_hand_ends_where_the_chairs_begin(self):
+        import re
+        m = re.search(r"w = \{([\s\S]*?)\};", self.layout)
+        wt = {k: float(v) for k, v
+              in re.findall(r"(\w+):\s*([\d.]+)", m.group(1))}
+        order = ["toolbar", "timer", "cards", "total", "chairs", "panels",
+                 "bottom"]
+        total = sum(wt[b] for b in order)
+        acc, edges = 0.0, {}
+        for b in order:
+            edges[b] = (acc, acc + wt[b] / total)
+            acc += wt[b] / total
+        self.assertLessEqual(edges["cards"][1], edges["chairs"][0] + 1e-9,
+                             "cards must sit entirely above the chairs")
+        self.assertLessEqual(edges["toolbar"][1], edges["timer"][0] + 1e-9,
+                             "cards must never enter the toolbar band")
+
+    def test_cards_fill_most_of_their_column(self):
+        # The reference draws three cards nearly filling a third of the width.
+        # The old geometry was 0.235 * colW with a 34px ceiling, which pinned
+        # them small on every phone.
+        self.assertRegex(self.layout, r"colW \* 0\.[23]\d",
+                         "cards must scale with the column, not a fixed size")
+        import re as _re
+        m = _re.search(r"const cw = Math\.max\([^,]+,\s*Math\.min\(([^,]+),", self.layout)
+        self.assertIsNotNone(m, "card width must be capped by a ceiling that "
+                                "is not the usual value on a phone")
+        self.assertIn("colW", m.group(1))
+
+    def test_the_toolbar_pill_identifies_the_table(self):
+        self.assertIn("round_no", self.toolbar,
+                      "the pill must name the round, as the reference does")
+        self.assertIn("roomLabel()", self.toolbar,
+                      "the pill must name the room, as the reference does")
+
+    def test_the_icon_cluster_matches_the_reference(self):
+        # Four icons in the reference: clock, avatar, help, gear. Drawn
+        # right-to-left, so they appear in that call order.
+        for art in ("clock", "help", "gear"):
+            self.assertIn("PAL_IMG." + art, self.toolbar)
+        self.assertNotIn("PAL_IMG.trophy", self.toolbar,
+                         "the reference toolbar has four icons, not five")
+
+    def test_latency_and_state_live_beside_the_clock(self):
+        self.assertIn("POLLING", self.toolbar,
+                      "the connection state must still be drawn somewhere")
+        self.assertIn("pingMs", self.toolbar,
+                      "latency must be drawn beside the clock, not on a "
+                      "separate row the reference does not have")

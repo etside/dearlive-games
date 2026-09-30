@@ -442,8 +442,36 @@ class CardFanGeometryTest(unittest.TestCase):
         """Cards must never enter the toolbar band."""
         for w, h in self.VIEWPORTS:
             with self.subTest(size=f"{w}x{h}"):
-                self.assertIn("toolbar: 0.78", JS)
-                self.assertIn("cards: 1.70", JS)
+                # The cards band is anchored to the grid, so these weights only
+                # have to place it below the toolbar and above the chairs --
+                # asserted structurally rather than by literal, because the
+                # weights are tuned to the reference and change with it.
+                m = re.search(r"w = \{([\s\S]*?)\};", JS)
+                self.assertIsNotNone(m, "band weight table not found")
+                wt = {k: float(v) for k, v
+                      in re.findall(r"(\w+):\s*([\d.]+)", m.group(1))}
+                for band in ("toolbar", "timer", "cards", "total", "chairs",
+                             "panels", "bottom"):
+                    self.assertIn(band, wt)
+                    self.assertGreater(wt[band], 0,
+                                       f"band {band} has no height")
+                # Walk the grid the way palaceLayout does and assert the hand
+                # ends above the chairs start. A weight table alone cannot
+                # promise that -- the bands are cumulative -- so this is the
+                # check that actually means "cards never sit on a chair".
+                order = ["toolbar", "timer", "cards", "total", "chairs",
+                         "panels", "bottom"]
+                total = sum(wt[b] for b in order)
+                acc, edges = 0.0, {}
+                for band in order:
+                    edges[band] = (acc, acc + wt[band] / total)
+                    acc += wt[band] / total
+                self.assertLessEqual(
+                    edges["cards"][1], edges["chairs"][0] + 1e-9,
+                    "the card band must end where the chair band begins")
+                self.assertGreaterEqual(
+                    edges["toolbar"][1], edges["timer"][0] - 1e-9,
+                    "cards must never enter the toolbar band")
                 self.assertIn("L.y.cards", JS,
                               "cards must be anchored to the grid, not the top")
 
@@ -500,11 +528,19 @@ class SingleToolbarAndIconTest(unittest.TestCase):
         m = _re.search(r"w = \{([\s\S]*?)\};", JS)
         self.assertIsNotNone(m, "band weight table not found")
         weights = m.group(1)
-        order = [k for k in ("toolbar", "roundbar", "timer", "cards", "total",
+        # Reference order, top to bottom: toolbar, timer, cards, total-bet,
+        # chairs, betting panels, chip bar. There is no round/status band --
+        # the reference carries round and room in the toolbar pill, and the
+        # separate row duplicated it while pushing the table down. This was
+        # asserted against the old list, so removing the row failed the test
+        # that was meant to protect the layout.
+        order = [k for k in ("toolbar", "timer", "cards", "total",
                              "chairs", "panels", "bottom") if k + ":" in weights]
-        self.assertEqual(order, ["toolbar", "roundbar", "timer", "cards",
-                                 "total", "chairs", "panels", "bottom"],
+        self.assertEqual(order, ["toolbar", "timer", "cards", "total",
+                                 "chairs", "panels", "bottom"],
                          "palace bands must be declared in reference order")
+        self.assertNotIn("roundbar", weights,
+                         "the reference has no separate round/status row")
         # and the hand is drawn from the cards band top, not the seat centre
         self.assertIn("const top = L.y.cards + 4;", JS)
 

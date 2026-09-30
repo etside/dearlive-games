@@ -1301,8 +1301,13 @@
     // a tablet instead of each element anchoring itself to H separately.
     const top = SAFE.t + 4;
     const usable = Math.max(1, H - top - SAFE.b);
-    const w = { toolbar: 0.78, roundbar: 0.34, timer: 1.00, cards: 1.70,
-                total: 0.44, chairs: 1.46, panels: 2.24, bottom: 1.40 };
+    // Weights taken from the placement reference, top to bottom: toolbar,
+    // timer, cards, total-bet, chairs, betting panels, chip bar. There is no
+    // separate round/status row -- the reference carries round and room in the
+    // toolbar pill, and a band for them pushed the whole table down while
+    // saying nothing the pill did not.
+    const w = { toolbar: 0.92, timer: 0.95, cards: 1.45, total: 0.42,
+                chairs: 1.42, panels: 2.10, bottom: 1.10 };
     const sum = Object.keys(w).reduce(function (a, k) { return a + w[k]; }, 0);
     const band = {}, y = {};
     let acc = top;
@@ -1317,7 +1322,12 @@
     POS.forEach(function (p, i) {
       seats[p] = { x: SAFE.l + colW * (i + 0.5), y: y.chairs + usable * band.chairs * 0.52 };
     });
-    const cw = Math.max(24, Math.min(34, colW * 0.235)), ch = cw * 1.42;
+    // Three cards per position, filling most of the column as in the
+    // reference. Capped in absolute terms so a tablet does not render cards
+    // the size of playing cards, but the cap is a ceiling and not the usual
+    // value: at 0.235 * colW the old geometry was already under a third of
+    // the column, and the 34px ceiling pinned it there on every phone.
+    const cw = Math.max(26, Math.min(colW * 0.30, 64)), ch = cw * 1.42;
     // The pot/deck anchor. Animation code asks for `L.y.centre` /
     // `L.band.centre` (the old layout's centre band), which this grid does not
     // define, so those reads were undefined and every deck/pot position came
@@ -1380,23 +1390,34 @@
     }
     S._ctl.push({ x: SAFE.l + 2 + r, y: h, r: r, act: 'back' });
 
-    // POT pill, immediately right of back
-    const potTxt = 'POT: ' + fmtCompact(num(s.pot_total));
-    ctx.font = '600 ' + u.f(12);
-    const pw = ctx.measureText(potTxt).width + r * 2.4;
+    // Table identity pill, immediately right of Back. The reference shows
+    // "Round #N / Room: name" here. It used to read the pot instead, which put
+    // the same number as the one already centred under the cards and left the
+    // player with no way to tell which table they were on.
+    const roomName = roomLabel();
+    const pillTxt = 'Round ' + (s.round_no || s.round_id || '—')
+      + '  ·  ' + roomName;
+    ctx.font = '600 ' + u.f(11);
+    const avail = W - SAFE.r - (W - SAFE.l) - r * 8;
+    const pw = Math.min(avail, ctx.measureText(pillTxt).width + r * 1.8);
     const px = SAFE.l + 2 + r * 2 + 8;
     ctx.fillStyle = 'rgba(28,14,54,.88)';
     rr(px, h - r * 0.78, pw, r * 1.56, r * 0.78); ctx.fill();
     ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 1.4; ctx.stroke();
-    if (imageReady(PAL_IMG.coin, 1, 1)) {
-      const cr = r * 0.62;
-      ctx.drawImage(PAL_IMG.coin, px + r * 0.34, h - cr, cr * 2, cr * 2);
-    }
     ctx.fillStyle = PAL_THEME.cream; ctx.textAlign = 'left';
-    ctx.fillText(potTxt, px + r * 1.5, h + 1);
+    // Clip rather than overflow: a long room name must not run under the
+    // icon cluster.
+    ctx.save();
+    ctx.beginPath(); ctx.rect(px + r * 0.9, h - r, pw - r * 1.2, r * 2);
+    ctx.clip();
+    ctx.fillText(pillTxt, px + r * 0.9, h + 1);
+    ctx.restore();
     ctx.textAlign = 'center';
 
-    // Right cluster: clock, avatar, help, gear, trophy
+    // Right cluster, drawn right-to-left so it reads left-to-right as
+    // clock, avatar, help, gear -- the reference order. The trophy is not in
+    // the reference toolbar and has been dropped from the cluster; it stays
+    // reachable from the ranking panel.
     const ir = r * 0.86;
     const gap = ir * 2 + 5;
     let x = W - SAFE.r - ir - 2;
@@ -1407,7 +1428,6 @@
       if (act) S._ctl.push({ x: x, y: h, r: ir * 1.15, act: act });
       x -= gap;
     }
-    icon(PAL_IMG.trophy, 'ranking', '#c9a227');
     icon(PAL_IMG.gear, 'menu', '#6b4fa0');
     icon(PAL_IMG.help, 'help', '#6b4fa0');
     // avatar: the local player's own look, falling back to a neutral disc
@@ -1423,27 +1443,35 @@
     }
     x -= gap;
     icon(PAL_IMG.clock, null, '#6b4fa0');
+    // Latency and connection state ride just left of the clock, which is
+    // where the reference carries the connection affordance. Both were on
+    // their own row under the toolbar, which is not in the reference, and the
+    // row also repeated the round number the pill already shows.
+    //
+    // The state word is kept: the canvas and the DOM HUD must use the same
+    // wording, or the player sees "polling" in one place and "reconnecting"
+    // in the other, which is worse than either word alone. POLLING in
+    // particular is not an error -- the table is fully playable.
+    const stTxt = S.connected ? '' : (S.polling ? 'POLLING' : 'OFFLINE');
+    const ping = S.connected ? Math.max(1, Math.round(num(S.pingMs))) : 0;
+    const leftTxt = stTxt || (ping ? ping + 'ms' : '');
+    if (leftTxt) {
+      ctx.textAlign = 'right';
+      ctx.font = '600 ' + u.f(10);
+      ctx.fillStyle = stTxt === 'OFFLINE' ? '#ff9c9c'
+        : stTxt === 'POLLING' ? '#9be7ff'
+        : (S.pingMs > 400) ? '#ff9c9c'
+        : (S.pingMs > 180) ? '#ffe9a8' : '#7ef29a';
+      ctx.fillText(leftTxt, x + ir * 0.55, h);
+      ctx.textAlign = 'center';
+    }
   }
 
-  function palaceRoundBar(L, u) {
-    const s = S.snap || {};
-    const h = L.y.roundbar + L.usable * L.band.roundbar * 0.5;
-    // "10ms  Round: #N" -- the reference shows latency then round, both left.
-    const ping = S.connected ? Math.max(1, Math.round(num(S.pingMs))) : 0;
-    ctx.textAlign = 'left';
-    ctx.font = '600 ' + u.f(11);
-    ctx.fillStyle = S.connected ? '#7ef29a' : '#ff9c9c';
-    ctx.fillText(ping + 'ms', SAFE.l + 2, h);
-    const w1 = ctx.measureText(ping + 'ms').width;
-    ctx.fillStyle = PAL_THEME.cream;
-    ctx.fillText('Round: ' + (s.round_no || s.round_id || '—'),
-                 SAFE.l + 2 + w1 + 8, h);
-    ctx.textAlign = 'right';
-    const stTxt = s.status || (S.connected ? 'POLLING' : 'OFFLINE');
-    ctx.fillStyle = S.connected ? '#9be7ff' : '#ffb4b4';
-    ctx.fillText(stTxt, W - SAFE.r - 2, h);
-    ctx.textAlign = 'center';
-  }
+  // Latency and connection state used to occupy their own band under the
+  // toolbar. The reference has no such row, and it repeated the round number
+  // the toolbar pill already shows. Latency now sits beside the clock icon,
+  // which is where the reference puts the connection affordance, and the
+  // connection state is carried by the icon colour and the veil.
 
   function palaceTimer(L, u) {
     const s = S.snap || {};
@@ -1662,6 +1690,79 @@
     S._repeat = { x: rx + rw / 2, y: ry + rh / 2, r: Math.max(rw, rh) * 0.5 };
   }
 
+  // Numeric coercion that treats a missing or non-numeric value as zero.
+  //
+  // This was called from seven places -- pot, balance, per-seat pot,
+  // multiplier, latency, betting seconds -- and was never defined anywhere in
+  // the file. The first call site is in palaceToolbar, the second function in
+  // the draw chain, so the very first frame drew the background and then threw
+  // ReferenceError. requestAnimationFrame(draw) is the last statement in
+  // draw(), so the loop never restarted: one background, then a permanently
+  // empty table, with no error shown to the player and nothing in the server
+  // log, because it happened in the browser.
+  //
+  // Every one of those seven fields is legitimately absent before the first
+  // snapshot arrives or when a seat is empty, so the coercion is the contract,
+  // not a convenience: a null pot is 0, an unknown latency is 0, and neither
+  // may be allowed to reach a canvas call as null.
+  // Rounded rectangle path. The draw code calls rr() in a dozen places -- the
+  // toolbar pill, the balance pill, the chair and panel fallbacks, the chip
+  // bar, the panels -- and it was never defined, so the first rr() call threw
+  // and took the whole render loop with it.
+  //
+  // Written on the path API rather than roundRect, which is not in every
+  // WebView the game is asked to run in.
+  function rr(x, y, w, h, r) {
+    const rad = Math.max(0, Math.min(Number(r) || 0, Math.abs(w) / 2, Math.abs(h) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.lineTo(x + w - rad, y);
+    if (rad) ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+    ctx.lineTo(x + w, y + h - rad);
+    if (rad) ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+    ctx.lineTo(x + rad, y + h);
+    if (rad) ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+    ctx.lineTo(x, y + rad);
+    if (rad) ctx.quadraticCurveTo(x, y, x + rad, y);
+    ctx.closePath();
+  }
+
+  // One card. faceUp is false for a hidden card, which the reference shows as
+  // a gold patterned back; faceUp draws the rank and suit.
+  //
+  // Also previously undefined, and called once per card per position -- nine
+  // times a frame -- so it sat directly behind rr() as the next thing to throw.
+  function card(x, y, w, h, face) {
+    const up = face !== '**' && face !== undefined && face !== null;
+    const art = up ? PAL_IMG.cardFront : PAL_IMG.cardBack;
+    ctx.save();
+    if (imageReady(art, 1, 1)) {
+      ctx.drawImage(art, x, y, w, h);
+    } else {
+      // No art: a legible card beats an invisible one. The face is a paper
+      // rectangle; the back is the table's purple.
+      rr(x, y, w, h, Math.max(2, w * 0.10));
+      ctx.fillStyle = up ? '#f7f4ec' : '#8e44ad';
+      ctx.fill();
+      ctx.strokeStyle = up ? '#8b0000' : '#ffd54a';
+      ctx.lineWidth = Math.max(1, w * 0.05);
+      ctx.stroke();
+    }
+    if (up) {
+      const red = /[HD]$/.test(String(face));
+      ctx.fillStyle = red ? '#b71c1c' : '#212121';
+      ctx.font = 'bold ' + Math.round(h * 0.30) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(face), x + w / 2, y + h * 0.58);
+    }
+    ctx.restore();
+  }
+
+  function num(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
   function chipLabel(d) { return d >= 1000 ? (d / 1000) + 'K' : String(d); }
   function fmtCompact(n) {
     if (!Number.isFinite(n)) return '0';
@@ -1678,7 +1779,6 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     palaceBackground(L, u);
     palaceToolbar(L, u);
-    palaceRoundBar(L, u);
     palaceTimer(L, u);
     palaceCards(L, u);
     palaceTotalBet(L, u);
