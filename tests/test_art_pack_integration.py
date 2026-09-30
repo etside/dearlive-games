@@ -75,7 +75,7 @@ def _all_pack_paths():
         slug = f"{d // 1000}k" if d >= 1000 else d
         paths.add(f"chips/chip-{slug}.svg")
 
-    # card faces: card-<rank>-<suit>.svg for every rank x suit the engine can
+    # card faces: card-<rank>-<suit>.png for every rank x suit the engine can
     # deal, reconstructed from the engine's own RANKS and SUITS.
     rank_slug = dict(re.findall(r"'(\d+)':\s*'([A-Z])'", JS))
     suit_slug = dict(re.findall(r"([SHDC]):\s*'([a-z]+)'", JS))
@@ -86,7 +86,7 @@ def _all_pack_paths():
         code = str(rank)
         slug = rank_slug.get(code, code)
         for suit in SUITS:
-            paths.add(f"cards/card-{slug}-{suit_slug[suit]}.svg")
+            paths.add(f"cards/card-{slug}-{suit_slug[suit]}.png")
     return paths
 
 
@@ -101,11 +101,14 @@ BUILD_TIME_INPUTS = {
 
 def _orphan_paths():
     all_files = {str(p.relative_to(PACK))
-                 for p in PACK.rglob("*.svg")}
+                 for p in list(PACK.rglob("*.svg")) + list(PACK.rglob("*.png"))}
     referenced = _all_pack_paths()
     referenced |= {"avatars/avatar-placeholder.svg",
                    "avatars/avatar-frame-navy.svg"}
     referenced |= set(BUILD_TIME_INPUTS)
+    # extracted/ is the unpacked source the crops were made from. It is kept
+    # for provenance and is never drawn, so it is not an orphan.
+    all_files = {p for p in all_files if not p.startswith("extracted/")}
     return sorted(all_files - referenced)
 
 
@@ -166,7 +169,12 @@ class PackWiringTest(unittest.TestCase):
 
     def test_every_wired_pack_file_is_valid_xml(self):
         import xml.etree.ElementTree as ET
+        # The card faces are crops of a raster reference sheet and ship as
+        # PNG; there is no XML to validate in those. Everything else must
+        # still parse, because a malformed SVG fails silently as a blank image.
         for rel in _all_pack_paths():
+            if not rel.endswith(".svg"):
+                continue
             try:
                 ET.parse(PACK / rel)
             except ET.ParseError as exc:
@@ -231,11 +239,29 @@ class OrphanAssetTest(unittest.TestCase):
     def test_card_faces_are_all_wired(self):
         # Superseded: the 52 faces were left procedural in the first pass and
         # are now wired behind imageReady with the procedural card as fallback.
-        cards = sorted((PACK / "cards").glob("*.svg"))
-        self.assertEqual(len(cards), 59, "card pack size changed; revisit this")
-        self.assertIn("function cardArt(face)", JS)
+        cards = sorted((PACK / "cards").glob("*.png"))
+        self.assertEqual(len(cards), 53,
+                         "52 faces plus the back; revisit this if it changed")
         self.assertIn("RANK_SLUG", JS)
         self.assertIn("SUIT_SLUG", JS)
+
+    def test_the_face_crops_are_actually_reached_at_runtime(self):
+        """cardArt() existed with all 52 faces on disk and was never called.
+
+        The previous version of this file asserted only that the function was
+        DEFINED, which is why the table painted a single generic card-front
+        with the label overprinted on it and every revealed card looked
+        identical. The contract is now that the per-card crop is what card()
+        draws, and that is asserted against the call site.
+        """
+        body = re.search(r"function card\(x, y, w, h, face\) \{(.*?)\n  \}", JS, re.S)
+        self.assertIsNotNone(body, "card() not found")
+        self.assertIn("cardArt(face)", body.group(1),
+                      "card() must draw the per-card face crop")
+        self.assertIn("CARD_BACK_IMAGE", body.group(1),
+                      "card() must draw the cropped back when face-down")
+        self.assertNotIn("PAL_IMG.cardFront : PAL_IMG.cardBack", body.group(1),
+                         "the generic front is a fallback, never the face-up art")
 
     def test_build_time_inputs_still_exist(self):
         # An exemption that points at a deleted file is worse than an orphan.
@@ -267,7 +293,7 @@ class OrphanAssetTest(unittest.TestCase):
         # 52 faces, plus the back and the face template which also match the
         # cards/card- prefix.
         faces = [p for p in _all_pack_paths() if p.startswith("cards/card-")
-                 and p not in ("cards/card-back-teenpatti.svg",
+                 and p not in ("cards/card-back-teenpatti.png",
                                "cards/card-face-template.svg")]
         self.assertEqual(len(faces), 52)
 
@@ -309,7 +335,8 @@ class PackResolvesOverHttpTest(unittest.TestCase):
             path = "/assets/games/teen-patti-pro/" + rel
             code, ctype = self.status(path)
             self.assertEqual(code, 200, f"{rel} -> {code}")
-            self.assertIn("svg", ctype.lower(), rel)
+            want = "svg" if rel.endswith(".svg") else "png"
+            self.assertIn(want, ctype.lower(), rel)
 
     def test_pack_traversal_is_still_refused(self):
         code, _ = self.status("/assets/games/teen-patti-pro/../../../.env")

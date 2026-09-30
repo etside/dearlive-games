@@ -147,7 +147,14 @@ class HandoffNumbersTest(unittest.TestCase):
         self.assertGreaterEqual(int(m.group(1)), int(claimed.group(1)))
 
     def test_asset_count_is_current(self):
-        pack = list((ROOT / "assets/games/teen-patti-pro").rglob("*.svg"))
+        # The card faces and the back are crops of a raster reference sheet and
+        # ship as PNGs; everything else is SVG. extracted/ is unpacked source,
+        # never drawn, so it is excluded. The runtime total is unchanged at 93
+        # because 52 SVGs became 52 PNGs.
+        base = ROOT / "assets/games/teen-patti-pro"
+        pack = [p for p in base.rglob("*")
+                if p.is_file() and p.suffix in (".svg", ".png")
+                and "extracted" not in p.relative_to(base).parts]
         self.assertEqual(len(pack), 93)
         self.assertIn("93 / 93", HANDOFF)
 

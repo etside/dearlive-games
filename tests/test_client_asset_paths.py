@@ -88,8 +88,9 @@ class ClientAssetPathsTest(unittest.TestCase):
         """93 assets, 0 orphans -- the pack the client draws from."""
         pack = ROOT / "assets/games/teen-patti-pro"
         self.assertTrue(pack.is_dir())
-        n = sum(1 for _ in pack.rglob("*.svg"))
-        self.assertGreaterEqual(n, 90, f"only {n} svg assets in the pack")
+        # The card faces are crops of a raster sheet, so they ship as PNGs.
+        n = sum(1 for _ in pack.rglob("*.svg")) + sum(1 for _ in pack.rglob("*.png"))
+        self.assertGreaterEqual(n, 125, f"only {n} assets in the pack")
 
     def test_background_is_the_palace_art_not_a_flat_fill(self):
         """The reference is a painted palace: curtains, marble, gold light.

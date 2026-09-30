@@ -456,7 +456,7 @@
                 cardEl.style.top = deckPos.y + 'px';
                 cardEl.style.width = '48px';
                 cardEl.style.height = '68px';
-                cardEl.style.background = 'url(/assets/teen-patti/cards/card-back-teenpatti.svg) center/contain no-repeat';
+                cardEl.style.background = 'url(/assets/games/teen-patti-pro/cards/card-back-teenpatti.png) center/contain no-repeat';
                 cardEl.style.pointerEvents = 'none';
                 cardEl.style.zIndex = 1000;
                 document.body.appendChild(cardEl);
@@ -519,7 +519,7 @@
           front.style.width = '100%';
           front.style.height = '100%';
           front.style.backfaceVisibility = 'hidden';
-          front.style.background = 'url(/assets/teen-patti/cards/card-back-teenpatti.svg) center/contain no-repeat';
+          front.style.background = 'url(/assets/games/teen-patti-pro/cards/card-back-teenpatti.png) center/contain no-repeat';
           cardDiv.appendChild(front);
           const back = document.createElement('div');
           back.style.position = 'absolute';
@@ -1138,7 +1138,7 @@
   // and preloads on demand, so a face that is never dealt is never fetched.
   const RANK_SLUG = { '11': 'J', '12': 'Q', '13': 'K', '14': 'A' };
   const SUIT_SLUG = { S: 'spade', H: 'heart', D: 'diamond', C: 'club' };
-  const CARD_BACK_ART = ART_BASE + 'cards/card-back-teenpatti.svg';
+  const CARD_BACK_ART = ART_BASE + 'cards/card-back-teenpatti.png';
   const CARD_BACK_IMAGE = preloadImage(CARD_BACK_ART);
   const cardArtCache = {};
   function cardArt(face) {
@@ -1146,7 +1146,7 @@
     const m = String(face).match(/^(\d+)([SHDC])$/);
     if (!m) return null;
     const rank = RANK_SLUG[m[1]] || m[1];
-    const src = ART_BASE + 'cards/card-' + rank + '-' + SUIT_SLUG[m[2]] + '.svg';
+    const src = ART_BASE + 'cards/card-' + rank + '-' + SUIT_SLUG[m[2]] + '.png';
     if (!cardArtCache[src]) cardArtCache[src] = preloadImage(src);
     return cardArtCache[src];
   }
@@ -1259,7 +1259,11 @@
     stOnline:  PAL + 'status/status-online.svg',
     stOffline: PAL + 'status/status-offline.svg',
     stHot:     PAL + 'status/status-hot.svg',
-    cardBack:  PAL + 'cards/card-back-teenpatti.svg',
+    // The cropped sheet back, same file the canvas and the flip animation
+    // both use. This pointed at a different back in the other asset
+    // namespace, so the table had two card backs and only one of them was
+    // ever seen.
+    cardBack:  ART_BASE + 'cards/card-back-teenpatti.png',
     cardFront: PAL + 'cards/card-front.svg',
     coin:      PAL + 'icons/coin.svg',
     trophy:    PAL + 'icons/trophy.svg',
@@ -1491,6 +1495,22 @@
   // which is where the reference puts the connection affordance, and the
   // connection state is carried by the icon colour and the veil.
 
+  // The one place a lifecycle status becomes something a player reads.
+  // Keys are RoundStatus values from common/lifecycle.py; anything unknown
+  // falls through to '0' rather than leaking an enum onto the canvas.
+  function timerLabel(status, secs) {
+    switch (status) {
+      case 'BETTING_OPEN':
+        return secs === null || secs === undefined ? '0' : String(Math.ceil(secs));
+      case 'BETTING_CLOSED': return '0';
+      case 'RESULT_PROCESSING': return '\u2026';
+      case 'RESULT': return '\u2605';
+      case 'SETTLED': case 'SETTLED_PENDING': return '\u2605';
+      case 'UPCOMING': case 'CLOSED': return '0';
+      default: return '0';
+    }
+  }
+
   function palaceTimer(L, u) {
     const s = S.snap || {};
     const cy = L.y.timer + L.usable * L.band.timer * 0.5;
@@ -1518,10 +1538,14 @@
       ctx.font = 'bold ' + u.f(Math.round(r * 0.82));
       ctx.fillText(String(Math.ceil(secs)), L.cx, cy + 1);
     } else {
-      ctx.fillStyle = PAL_THEME.cream;
-      ctx.font = 'bold ' + u.f(Math.round(r * 0.46));
-      const t = s.status ? s.status.replace(/_/g, ' ').slice(0, 9) : 'WAIT';
-      ctx.fillText(t, L.cx, cy + 1);
+      // Never paint the raw status enum. "CLOSED" and "RESULT PROCESSING"
+      // are server vocabulary, not table state, and they were being shown to
+      // the player inside the countdown badge. Every lifecycle value the
+      // engine can publish maps to something a player can read.
+      const lbl = timerLabel(s.status, secs);
+      ctx.fillStyle = lbl === '\u2605' ? '#ffd54a' : PAL_THEME.cream;
+      ctx.font = 'bold ' + u.f(Math.round(r * (lbl.length > 2 ? 0.40 : 0.62)));
+      ctx.fillText(lbl, L.cx, cy + 1);
     }
   }
 
@@ -1583,11 +1607,14 @@
       const active = !!(s.turn_position === p || s.active_position === p);
       const win = s.winners && s.winners.indexOf(p) >= 0;
       const mine = s.mySeat === p;
-      if (active || win) {
+      // The player's own seat is ringed in gold. This replaces a bare "You"
+      // string that used to float under the panel -- redundant with "You: X"
+      // inside the panel, and it drifted out of the panel box entirely.
+      if (active || win || mine) {
         ctx.save();
         if (!REDUCED) { ctx.shadowColor = win ? '#fff0a0' : '#ffd54a'; ctx.shadowBlur = 22; }
         ctx.strokeStyle = win ? '#fff0a0' : '#ffd54a';
-        ctx.lineWidth = 3; ctx.beginPath();
+        ctx.lineWidth = mine ? 2.5 : 3; ctx.beginPath();
         ctx.arc(pt.x, pt.y, size * 0.60, 0, 7); ctx.stroke(); ctx.restore();
       }
       const art = PAL_IMG['seat' + p];
@@ -1659,22 +1686,20 @@
         ctx.strokeStyle = PAL_THEME.gold; ctx.lineWidth = 3;
         rr(px - 2, top - 2, pw + 4, hgt + 4, 11); ctx.stroke();
       }
-      // Header strip: my stake / seat pot, then the multiplier -- the
-      // reference's "0/0" and "x2.9".
+      // Three labelled lines, and no "/" anywhere. "0/1000" was two numbers
+      // welded together with a slash and no indication of which was which, so
+      // the only way to read a panel was to know the order already.
       ctx.fillStyle = 'rgba(0,0,0,.30)';
-      rr(px + pw * 0.08, top + hgt * 0.06, pw * 0.84, hgt * 0.15, 6); ctx.fill();
+      rr(px + pw * 0.08, top + hgt * 0.05, pw * 0.84, hgt * 0.19, 6); ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.font = '600 ' + u.f(12);
-      ctx.fillText(myStake + '/' + pot, cx, top + hgt * 0.135);
-      ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.20)));
+      ctx.font = 'bold ' + u.f(13);
+      ctx.fillText('POT: ' + pot, cx, top + hgt * 0.145);
+      ctx.font = u.f(12);
       ctx.fillStyle = 'rgba(255,255,255,.92)';
-      ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.44);
-      ctx.font = u.f(10);
-      ctx.fillStyle = 'rgba(255,255,255,.85)';
-      // Just "You" on your own panel. The seat letter used to be prefixed
-      // here, so a player in seat C saw "C  YOU" on the green panel while the
-      // letter was already on the chair directly above it.
-      ctx.fillText(s.mySeat === p ? 'You' : '', cx, top + hgt * 0.66);
+      ctx.fillText('You: ' + myStake, cx, top + hgt * 0.315);
+      ctx.font = 'bold ' + u.f(Math.max(15, Math.round(hgt * 0.20)));
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.fillText('x' + mult.toFixed(1), cx, top + hgt * 0.58);
       S._panels.push({ p: p, x: cx, y: top + hgt * 0.45, w: pw, h: hgt });
     });
   }
@@ -1803,10 +1828,20 @@
   // times a frame -- so it sat directly behind rr() as the next thing to throw.
   function card(x, y, w, h, face) {
     const up = face !== '**' && face !== undefined && face !== null;
-    const art = up ? PAL_IMG.cardFront : PAL_IMG.cardBack;
+    // Face-down is one shared back. Face-up is the per-card crop of the
+    // reference sheet, so a king of diamonds is drawn as the king of
+    // diamonds. This used to paint a single generic card-front and overprint
+    // the label on it, which is why every revealed card looked like the same
+    // blank with text on it -- cardArt() existed with all 52 faces on disk and
+    // was never called from anywhere.
+    const art = up ? cardArt(face) : CARD_BACK_IMAGE;
     ctx.save();
     if (imageReady(art, 1, 1)) {
       ctx.drawImage(art, x, y, w, h);
+    } else if (up && imageReady(PAL_IMG.cardFront, 1, 1)) {
+      // The crop has not decoded yet: the generic face plus the label is a
+      // far better placeholder than an empty slot.
+      ctx.drawImage(PAL_IMG.cardFront, x, y, w, h);
     } else {
       // No art: a legible card beats an invisible one. The face is a paper
       // rectangle; the back is the table's purple.
@@ -1817,12 +1852,14 @@
       ctx.lineWidth = Math.max(1, w * 0.05);
       ctx.stroke();
     }
-    if (up) {
-      const red = /[HD]$/.test(String(face));
+    // The label is a fallback for the generic face, not an overlay on the real
+    // art -- overprinting "KD" across the king's face is what this used to do.
+    if (up && !imageReady(cardArt(face), 1, 1)) {
+      const red = /[HD]$/.test(String(face).toUpperCase().trim());
       ctx.fillStyle = red ? '#b71c1c' : '#212121';
       ctx.font = 'bold ' + Math.round(h * 0.30) + 'px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(String(face), x + w / 2, y + h * 0.58);
+      ctx.fillText(formatCard(face), x + w / 2, y + h * 0.58);
     }
     ctx.restore();
   }
@@ -1871,6 +1908,35 @@
   }
 
   function chipLabel(d) { return d >= 1000 ? (d / 1000) + 'K' : String(d); }
+
+  // Card faces arrive as the engine's wire codes: RANKS is 2..14 with
+  // 11=J 12=Q 13=K 14=A, and the joker is the (0, "J") sentinel. Drawing the
+  // raw code put "13D" on a card where a player expects to read K-diamond.
+  const RANK_LABELS = {
+    1: 'A', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
+    9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A'
+  };
+  const SUIT_LABELS = { S: '\u2660', H: '\u2665', D: '\u2666', C: '\u2663' };
+  const RANK_SUITS = { S: '\u2660', H: '\u2665', D: '\u2666', C: '\u2663' };
+
+  function formatCard(raw) {
+    if (raw === null || raw === undefined) return '';
+    if (typeof raw === 'object') {
+      return formatCard(String(raw.rank) + String(raw.suit || ''));
+    }
+    var t = String(raw).trim();
+    if (t === '**' || t === '') return t;
+    // The joker is the (0, "J") sentinel, so its "suit" is the letter J. It
+    // has to be in the pattern or a joker falls through untouched and a player
+    // is shown the code "0J".
+    var m = t.match(/^(\d+)[-_ ]?([SHDCJ])$/i);
+    if (!m) return t;
+    var rank = Number(m[1]), suit = m[2].toUpperCase();
+    // Rank 0 is the joker sentinel, not a card.
+    if (rank === 0) return 'JOKER';
+    var r = RANK_LABELS[rank];
+    return (r === undefined ? String(rank) : r) + (SUIT_LABELS[suit] || suit);
+  }
   function fmtCompact(n) {
     if (!Number.isFinite(n)) return '0';
     // toFixed(2) unconditionally produced "10.00K" -- and at a glance in the
@@ -1904,16 +1970,34 @@
     // winner banner over the panels
     if (s && s.winners && s.winners.length &&
         (s.status === 'RESULT' || s.status === 'SETTLED' || s.status === 'CLOSED')) {
-      const bw = Math.min(W * 0.74, 320), bh = bw * 0.24;
-      const by = L.y.panels + L.usable * L.band.panels * 0.18;
+      // Centred on the winning chair, not floating across the table.
+      //
+      // There is no free 80px band anywhere on a 390x844 canvas: the cards
+      // end at 280, the pot plate runs 338-380, the chairs and their labels
+      // run 404-507 and the panels start at 523. An earlier version anchored
+      // the banner 18% into the panels band and covered all three panels --
+      // hiding the pot and the multiplier at the exact moment a player wants
+      // to read them. A version anchored above the panels then clipped the
+      // chairs instead. So the banner goes on the winner's own seat, which is
+      // already ringed in gold: it covers art that is decoration, and leaves
+      // every number readable.
+      // Multi-winner splits share the first winner's seat for the badge; each
+      // winning chair still gets its own gold ring from palaceChairs().
+      const wp = L.seats[s.winners[0]] || { x: L.cx, y: potPos(L).y };
+      const bw = Math.min(150, W * 0.40), bh = u.f(26);
+      const by = Math.max(L.y.timer + L.usable * L.band.timer,
+                          wp.y - u.f(74));
+      const bx = Math.max(L.cx - bw / 2, Math.min(wp.x - bw / 2, W - bw - 4));
       if (imageReady(PAL_IMG.winner, 1, 1)) {
-        ctx.drawImage(PAL_IMG.winner, W / 2 - bw / 2, by, bw, bh);
+        ctx.drawImage(PAL_IMG.winner, bx, by, bw, bh);
       } else {
-        ctx.fillStyle = 'rgba(0,0,0,.6)'; rr(W / 2 - bw / 2, by, bw, bh, 10); ctx.fill();
+        ctx.fillStyle = 'rgba(12,6,28,.92)';
+        rr(bx, by, bw, bh, bh / 2); ctx.fill();
+        ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 1.6; ctx.stroke();
       }
       ctx.fillStyle = PAL_THEME.gold;
-      ctx.font = 'bold ' + u.f(14);
-      ctx.fillText('WINNER: ' + s.winners.join(' & '), W / 2, by + bh / 2);
+      ctx.font = 'bold ' + u.f(12);
+      ctx.fillText('WINNER ' + s.winners.join(' & '), bx + bw / 2, by + bh / 2 + 1);
     }
 
     if (S.msg) {
@@ -2154,7 +2238,11 @@
         else Sound.play('lose');
         status('Result · winner ' + S.snap.winners.join(' and '), 'success');
       } else if (prev && prev.status === 'BETTING_OPEN' && S.snap.status !== 'BETTING_OPEN') {
-        status('Betting closed — waiting for the result.', 'info');
+        // Deliberately silent. The reference has no such line, and the
+        // countdown badge already shows the state: 0 during the closed
+        // phase, then the result glyph once the outcome is published.
+        // The old message added a line of prose that repeated the badge
+        // and was the only thing between the player and the cards.
       }
       // Timer pulse sync
       if (S.snap && S.snap.status === 'BETTING_OPEN' && S.snap.betting_end_at) {
