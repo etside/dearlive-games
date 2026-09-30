@@ -20,6 +20,22 @@
 
   function h(tag, attrs, kids) {
     var el = document.createElement(tag);
+    // Children may arrive as a single node, a string, or nothing. This
+    // crashed the whole console on "(kids || []).forEach is not a function"
+    // the first time a caller passed a bare string, and a rendering helper
+    // that takes a whole page down over one argument shape is not worth the
+    // brevity.
+    if (kids !== undefined && kids !== null && !Array.isArray(kids)) {
+      kids = [kids];
+    }
+    // h("p", "text") is a natural thing to write; treat a non-object second
+    // argument as children rather than as an attribute bag.
+    if (attrs !== undefined && attrs !== null
+        && (typeof attrs !== "object" || Array.isArray(attrs)
+            || attrs instanceof Node)) {
+      kids = kids === undefined ? [attrs] : [attrs].concat(kids);
+      attrs = null;
+    }
     if (attrs) {
       Object.keys(attrs).forEach(function (k) {
         if (k === "class") el.className = attrs[k];

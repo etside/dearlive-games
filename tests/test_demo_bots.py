@@ -436,7 +436,10 @@ class BotBettingTest(unittest.TestCase):
         bets = [b for b in room.round.bets
                 if b.player_id in bot_ids and b.status == "accepted"]
         self.assertTrue(bets, "a seated bot must bet during BETTING_OPEN")
-        self.assertIn(bets[0].amount, (1000, 10000, 50000))
+        # Any denomination the table accepts, not a fixed list: _choose_chip
+        # reads config.denoms precisely so it cannot offer a chip the table
+        # refuses. The old hardcoded set made this fail on a valid 500 chip.
+        self.assertIn(bets[0].amount, [int(d) for d in self.svc.config.denoms])
 
     def test_a_bot_does_not_bet_twice_in_one_round(self):
         self.mgr.on_player_join("demo-low", "human", is_real=True)

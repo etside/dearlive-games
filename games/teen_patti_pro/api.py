@@ -1308,7 +1308,31 @@ audit_entity="game", audit_entity_id=m.group(1),
         except ValueError:
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         allowed = (".html", ".js", ".css", ".svg", ".png", ".json", ".ico")
-        if target.suffix.lower() not in allowed or not target.is_file():
+        # Single-page app: the console navigates with pushState to real paths
+        # (/admin/dashboard, /admin/rules) and reads location.pathname on
+        # load, so a refresh or a pasted link hit this handler with a path that
+        # has no file behind it and returned 404. Reloading a console page and
+        # losing the page is not acceptable, so an extensionless path serves
+        # the shell. A request for a missing asset still 404s: only a path
+        # with no extension is treated as a route.
+        if target.suffix.lower() not in allowed:
+            # Decide "is this a route or a file?" from the last URL segment, not
+            # from Path.suffix: for a dotfile like .env the suffix is empty, so
+            # a suffix test treats /admin/.env as a route and answers 200 with
+            # the shell. It leaked nothing, but a dotfile is a file request and
+            # must 404 like any other unknown asset.
+            last = rel.rsplit("/", 1)[-1]
+            if "." in last:
+                return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+            shell = (self.ADMIN_DIR / "index.html").resolve()
+            try:
+                shell.relative_to(self.ADMIN_DIR.resolve())
+            except ValueError:
+                return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+            if not shell.is_file():
+                return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+            target = shell
+        elif not target.is_file():
             return self.send(404, E.err("Not found", E.E_NOT_FOUND))
         mime = {".html": "text/html; charset=utf-8",
                 ".js": "application/javascript; charset=utf-8",
