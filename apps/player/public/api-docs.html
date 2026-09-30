@@ -76,6 +76,8 @@
   <a href="#mint">Mint Session</a>
   <a href="#bet">Place Bet</a>
   <a href="#events">Event contract</a>
+  <a href="#anim">Animations</a>
+  <a href="#layout">Layout &amp; dimensions</a>
   <a href="#ws">WebSocket Events</a>
   <a href="#integration">Integration</a>
   <a href="#support">Support</a>
@@ -257,6 +259,63 @@ curl -X POST https://api.ura-dhura.com/api/v1/sessions \
   <code>SETTLED_PENDING</code> and <code>SETTLE_FAILED</code> exist for the settlement-retry path and
   are not normal gameplay states. A settled result is held for ~6s before the next round is
   dealt, so the outcome is actually watchable.</p>
+</section>
+
+<section id="layout">
+  <h2>Layout &amp; dimensions</h2>
+  <p>Recorded so an integrator's own overlay lines up with the built-in renderer.
+  The canvas is responsive; the values below are the fixed sizes and the band
+  boundaries at a 390x844 baseline (the proportions hold from 360x800 to
+  430x932).</p>
+  <table>
+    <tr><th>Element</th><th>Size</th><th>Note</th></tr>
+    <tr><td>Toolbar row</td><td>56px</td><td>Fixed. The toolbar <em>band</em> is 11% of the canvas (92px at 844); only its top 56px is drawn into, so the controls sit where the reference has them.</td></tr>
+    <tr><td>Toolbar controls</td><td>36px (r=18)</td><td>Back, round/room pill, clock, avatar, help, settings.</td></tr>
+    <tr><td>Timer circle</td><td>64px diameter (r=32)</td><td>Recomputed every frame from <code>betting_end_at</code> against the server clock, so it is monotonic within a round and resets only when <code>round_id</code> changes.</td></tr>
+    <tr><td>Cards</td><td>27 x 46 at 390px</td><td><code>0.21 * columnWidth</code>, box ratio 1.70 matching the crops' real 1.69. Three groups of three, one per seat, ~38px between groups against ~5px within one.</td></tr>
+    <tr><td>Chairs</td><td>~104 x 89</td><td>Contain-fitted from 256x222, so the aspect is preserved.</td></tr>
+    <tr><td>Betting panels</td><td>114 x 140 slot</td><td>Width is <code>(W - 2*16 - 2*8) / 3</code> exactly. The art is 260x205 (1.27) and is contain-fitted to 114x90 inside that slot; labels are anchored to the drawn rect, not the slot.</td></tr>
+    <tr><td>Chip stack</td><td>6 max, ~33px each</td><td>Capped at 6 with a <code>+N</code> suffix. Built greedily from the server's <code>denoms</code> against the server's per-seat pot, so a stack always totals the pot exactly.</td></tr>
+    <tr><td>Chips (tray)</td><td>48px diameter</td><td>Fixed. Denominations come from the snapshot: <code>low</code> = 20/100/500/1K, <code>high</code> = 1K/10K/50K/100K.</td></tr>
+    <tr><td>Balance pill</td><td>120px wide</td><td>Value from the wallet endpoint only.</td></tr>
+    <tr><td>Repeat button</td><td>124 x 44</td><td>Replays the last three bets from <code>history</code>.</td></tr>
+  </table>
+  <p><strong>Band boundaries</strong> (cumulative, % of canvas height):
+  toolbar 11, timer 24, cards 41, total bet 45, chairs 71, panels 91, bottom bar 100.
+  Measured from the placement reference; the renderer uses a weighted grid whose
+  bands normalise to exactly these boundaries at any canvas height.</p>
+</section>
+
+<section id="anim">
+  <h2>Animations</h2>
+  <p>Every effect is driven by a server event. Nothing is triggered by a local
+  timer, a guessed state, or an optimistic update &mdash; if the server has not
+  accepted it, it is not animated. A rejected bet produces no flight, no stack
+  change and no balance movement.</p>
+  <table>
+    <tr><th>Event</th><th>Effect</th></tr>
+    <tr><td><code>round.created</code> / new <code>round_id</code></td><td>Cards sweep back to the deck, then deal to A/B/C with a stagger along a bezier arc.</td></tr>
+    <tr><td>snapshot <code>status: BETTING_OPEN</code></td><td>Countdown recomputed from <code>betting_end_at</code> every frame. The timer badge shows seconds while betting, <code>0</code> once closed, an ellipsis while the result computes, and a star once published &mdash; never a raw status enum.</td></tr>
+    <tr><td><code>bet.accepted</code></td><td>One chip flies from the tray to the correct seat on a bezier arc, lands with a bounce, and the stack grows. Uses the chip art for that denomination &mdash; no gradient, no printed value. Keyed on <code>event_id</code>, so a redelivered event cannot fly a second chip.</td></tr>
+    <tr><td><code>betting.closed</code></td><td>Controls disable immediately, in-flight chips finish cleanly.</td></tr>
+    <tr><td><code>result.published</code></td><td>Cards turn face-up, winner chair rings gold, winner badge appears on the winning seat, payout floats up. The badge sits on the chair because there is no free 80px band on a 390x844 canvas &mdash; an earlier version covered all three betting panels.</td></tr>
+    <tr><td><code>settlement.completed</code></td><td>Balance updates. Never before this event; the wallet is the only authority.</td></tr>
+  </table>
+  <p><strong>Result dwell.</strong> A settled round is held about 6 seconds before the
+  next is dealt. Without it, close &rarr; publish &rarr; settle &rarr; next all ran
+  inside one tick and a client never observed a result state at all: cards never
+  turned over, the winner never lit up, and the table looked like it skipped
+  from betting straight to the next round.</p>
+  <p><strong>Reconnect and resume.</strong> On socket drop the client re-subscribes
+  and reads <code>state_version</code> from the snapshot. Equal means nothing was
+  missed and no animation replays; higher means only the transition is animated.
+  The seat is re-bound through <code>reconnect</code>, and a snapshot refetch alone
+  never re-triggers an effect.</p>
+  <p><strong>Reduced motion.</strong> With <code>prefers-reduced-motion: reduce</code>
+  every animation returns immediately: the deal, the chip flight, the flip, the
+  winner glow and the timer pulse all short-circuit, and the table renders its
+  settled state directly. Functional feedback is unaffected &mdash; only the
+  movement is removed.</p>
 </section>
 
 <section id="ws">
