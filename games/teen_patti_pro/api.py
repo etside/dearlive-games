@@ -11,10 +11,10 @@ import argparse
 import hmac
 import json
 import logging
-
-log = logging.getLogger(__name__)
 import os
 import re
+import secrets
+import subprocess
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1460,6 +1460,32 @@ audit_entity="game", audit_entity_id=m.group(1),
                 except ServiceError as exc:
                     return self.fail(exc)
             if self.serve_provider("GET", path, url.query):
+                return
+            if self.serve_provider("GET", path, url.query):
+                return
+            # Auto-mint demo session when operator=demo
+            if path in ("/teen-patti-pro", "/teen-patti-pro/") and url.query.get("operator") == "demo":
+                qs = urllib.parse.parse_qs(url.query)
+                player_id = str(qs.get("user", ["demo_" + secrets.token_hex(8)])[0] or "demo_" + secrets.token_hex(8))
+                room = str(qs.get("room", ["teen-patti-low"])[0] or "teen-patti-low")
+                # Mint a session for the demo user
+                try:
+                    b = json.dumps({"player_id": player_id, "game_code": "teen-patti-pro",
+                                    "currency": "COIN", "language": "en"})
+                    p = subprocess.run(["/opt/dearlive-venv/bin/python", "tools/provider_sign.py",
+                                        "POST", "/api/v1/sessions", "--body", b],
+                                     capture_output=True, text=True,
+                                     env={**os.environ, "PROVIDER_BASE_URL": "http://127.0.0.1:5002"})
+                    l = [x for x in p.stdout.split("\n") if x.startswith("curl")][0]
+                    d = json.loads(subprocess.run(l[0], shell=True, capture_output=True, text=True).stdout)["data"]
+                    session_token = d["session_token"]
+                    # Redirect to canonical URL with session token
+                    self.send_response(302)
+                    self.send_header("Location", "/teen-patti-pro/?session=" + session_token + "&room=teen-patti-low")
+                    self.end_headers()
+                    return
+                except Exception:
+                    pass  # Fall through to normal serve
                 return
             if path in ("/teen-patti-pro", "/teen-patti-pro/"):
                 return self.serve_client("index.html", "text/html; charset=utf-8")
