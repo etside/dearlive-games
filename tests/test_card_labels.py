@@ -334,3 +334,66 @@ class CardArtIsWiredTest(unittest.TestCase):
         self.assertIn("cards/card-back-teenpatti.png", self.js)
         self.assertNotIn("card-back-teenpatti.svg", self.js,
                          "the sheet's back replaced the older placeholder")
+
+
+class ChipDeliveryTest(unittest.TestCase):
+    """A bet is delivered as real chip artwork, never as a coloured block.
+
+    animateChipBet built the flying chip out of a CSS gradient disc with the
+    denomination printed on top of it. That is a gradient pretending to be an
+    asset, and it is exactly what the render rules forbid. The chip pack already
+    carries one piece of art per denomination, so the animation now uses that
+    and prints nothing over it.
+    """
+    def _js(self):
+        with open(os.path.join(ROOT, "games", "teen_patti_pro", "client", "game.js"),
+                  encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_flying_chip_is_real_artwork(self):
+        import re as _re
+        js = self._js()
+        m = _re.search(r"function animateChipBet\(fromPos, toPos, amount\) \{(.*?)\n    \}", js, _re.S)
+        self.assertIsNotNone(m, "animateChipBet not found")
+        body = m.group(1)
+        self.assertIn("chipArt(amount)", body,
+                      "the flying chip must use the chip art for its value")
+        self.assertNotIn("linear-gradient", body,
+                         "a gradient must not stand in for a chip asset")
+        self.assertNotIn("chip.textContent", body,
+                         "the value is already in the artwork; printing it on "
+                         "top is a text character standing in for an asset")
+
+    def test_a_stack_is_built_only_from_server_denominations(self):
+        import re as _re
+        js = self._js()
+        self.assertIn("function chipsFor(amount, denoms)", js)
+        self.assertIn("DENOMS", js,
+                      "the stack must be built from the denominations the "
+                      "server offered, not a client-invented list")
+        m = _re.search(r"function chipsFor\(amount, denoms\) \{(.*?)\n  \}", js, _re.S)
+        body = m.group(1)
+        self.assertIn("remainder", body,
+                      "an amount the ladder cannot make up must be reported, "
+                      "not silently dropped")
+
+    def test_stacks_render_from_the_server_pot(self):
+        import re as _re
+        js = self._js()
+        m = _re.search(r"function palaceChipStacks\(L, u\) \{(.*?)\n  \}", js, _re.S)
+        self.assertIsNotNone(m, "palaceChipStacks not found")
+        self.assertIn("s.pots", m.group(1),
+                      "a stack must be drawn from the server's per-seat pot, "
+                      "never from a client-side accumulator")
+        self.assertNotIn("S.myBets[p]", m.group(1),
+                         "the local per-seat bet tally is not authoritative")
+
+    def test_stacks_are_drawn_and_capped(self):
+        import re as _re
+        js = self._js()
+        self.assertIn("palaceChipStacks(L, u);", js,
+                      "the stacks must actually be in the draw order")
+        self.assertIn("const STACK_CAP", js,
+                      "an uncapped stack grows without bound and eats the table")
+        self.assertIn("drawContain(art,", js,
+                      "chips must be drawn with their own aspect preserved")

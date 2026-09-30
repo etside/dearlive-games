@@ -578,7 +578,14 @@
         chip.style.width = '40px';
         chip.style.height = '40px';
         chip.style.borderRadius = '50%';
-        chip.style.background = 'linear-gradient(135deg, #ffd700, #b8860b)';
+        // The real chip artwork for the denomination. This was a CSS gradient
+        // disc with the value printed on top of it -- a gradient pretending to
+        // be an asset, which rule 6 forbids. The chip art carries its own
+        // value, so nothing is drawn over it.
+        chip.style.backgroundImage = 'url("' + chipArt(amount) + '")';
+        chip.style.backgroundSize = 'contain';
+        chip.style.backgroundRepeat = 'no-repeat';
+        chip.style.backgroundPosition = 'center';
         chip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
         chip.style.display = 'flex';
         chip.style.alignItems = 'center';
@@ -588,7 +595,6 @@
         chip.style.color = '#1a1a1a';
         chip.style.pointerEvents = 'none';
         chip.style.zIndex = 1000;
-        chip.textContent = amount >= 1000 ? (amount/1000)+'K' : amount;
         document.body.appendChild(chip);
         const ctrlX = fromPos.x + (toPos.x - fromPos.x) * 0.3;
         const ctrlY = Math.min(fromPos.y, toPos.y) - 80;
@@ -1600,6 +1606,58 @@
     });
   }
 
+  // How many chips of each denomination make up `amount`, largest first.
+  // Greedy against the denominations the SERVER offered, so a stack always
+  // totals exactly the server's pot. It never invents a denomination: a stack
+  // that does not add up to the pot is worse than no stack at all.
+  function chipsFor(amount, denoms) {
+    var left = Math.max(0, Math.floor(amount || 0));
+    var out = [];
+    var ds = (denoms && denoms.length ? denoms : [1000]).slice()
+      .sort(function (a, b) { return b - a; });
+    for (var i = 0; i < ds.length && left > 0; i++) {
+      var n = Math.floor(left / ds[i]);
+      for (var k = 0; k < n; k++) { out.push(ds[i]); left -= ds[i]; }
+    }
+    return { chips: out, remainder: left };
+  }
+
+  const STACK_CAP = 6;   // past this the "+N" suffix carries the truth
+
+  function palaceChipStacks(L, u) {
+    const s = S.snap || {};
+    const pots = s.pots || {};
+    POS.forEach(function (p) {
+      const amount = num(pots[p]);
+      if (amount <= 0) return;
+      const pn = L.seats[p];
+      if (!pn) return;
+      const cs = Math.min(W * 0.085, 30);
+      const gapY = cs * 0.26;
+      const split = chipsFor(amount, DENOMS);
+      const shown = Math.min(split.chips.length, STACK_CAP);
+      // Sits directly above its own panel, inside the column, so a stack never
+      // reaches the chair above it or the neighbouring seat.
+      const baseY = L.y.panels - u.f(4);
+      for (let k = 0; k < shown; k++) {
+        const art = chipImage(split.chips[k]);
+        const y = baseY - cs - k * gapY;
+        if (imageReady(art, 1, 1)) drawContain(art, pn.x - cs / 2, y, cs, cs);
+        else placeholder(pn.x - cs / 2, y, cs, cs, cs / 2);
+      }
+      const hidden = split.chips.length - shown + (split.remainder > 0 ? 1 : 0);
+      const label = (hidden > 0 ? '+' + hidden + '  ' : '') + String(amount);
+      ctx.font = 'bold ' + u.f(11);
+      const tw = ctx.measureText(label).width;
+      const ly = baseY - cs - shown * gapY - u.f(9);
+      ctx.fillStyle = 'rgba(12,6,28,.82)';
+      rr(pn.x - tw / 2 - u.f(5), ly - u.f(8), tw + u.f(10), u.f(15), u.f(7));
+      ctx.fill();
+      ctx.fillStyle = '#ffd75a';
+      ctx.fillText(label, pn.x, ly);
+    });
+  }
+
   function palaceTotalBet(L, u) {
     const s = S.snap || {};
     const h = L.y.total + L.usable * L.band.total * 0.5;
@@ -2007,6 +2065,7 @@
     palaceCards(L, u);
     palaceTotalBet(L, u);
     palaceChairs(L, u);
+    palaceChipStacks(L, u);
     palacePanels(L, u);
     palaceBottom(L, u);
 
