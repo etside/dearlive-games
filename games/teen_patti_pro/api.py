@@ -1388,6 +1388,7 @@ audit_entity="game", audit_entity_id=m.group(1),
         return self.wfile.write(body)
 
     PLAYER_DIR = Path(__file__).parent.parent.parent / "apps" / "player" / "public"
+    SCRIPTS_DIR = Path(__file__).parent.parent.parent / "scripts"
 
     def serve_repo_asset(self, rel: str):
         """Serve a file from the repo assets/ tree, read-only and contained.
@@ -1653,6 +1654,26 @@ audit_entity="game", audit_entity_id=m.group(1),
                 return self.serve_shared(path[len("/shared"):])
             if path == "/api-docs":
                 return self.serve_player_doc("api-docs.html")
+            if path == "/install":
+                # The one-line installer. Served as text/x-shellscript with no
+                # caching, so `curl -fsSL .../install | bash` always runs what
+                # is in the repo. Deliberately a plain file read: it is a
+                # script, not an endpoint, and nothing here takes input.
+                target = (self.SCRIPTS_DIR / "install.sh").resolve()
+                try:
+                    target.relative_to(self.SCRIPTS_DIR.resolve())
+                except ValueError:
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+                try:
+                    body = target.read_bytes()
+                except OSError:
+                    return self.send(404, E.err("Not found", E.E_NOT_FOUND))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/x-shellscript; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return self.wfile.write(body)
             # The player home page and its assets. / returned 404 with a JSON
             # body while the markup sat complete in apps/player/public, so the
             # front door of the site did not exist and the navbar's "/" brand
